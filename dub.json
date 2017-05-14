@@ -1,0 +1,8 @@
+{
+    "name" : "mecca",
+    "targetType": "library",
+    "importPaths": ["src"],
+    "sourcePaths": ["src"],
+    "description" : "Mecca - Weka's reactor and infrastructure library",
+    "dependencies" : {}
+}

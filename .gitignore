@@ -1,0 +1,7 @@
+.dub/
+.project
+.settings/
+*.o
+*.a
+mecca-test-library
+
