@@ -10,7 +10,7 @@ mixin template registerService() {
     shared static this() {
         import mecca.node;
         import std.string;
-        import std.mecca;
+        import std.traits;
 
         Node.Service svc;
         static if (is(typeof(instance.SERVICE_NAME))) {
@@ -18,7 +18,7 @@ mixin template registerService() {
         }
         else {
             svc.name = typeof(this).stringof;
-            if (svc.name.lower.endsWith("service")) {
+            if (svc.name.toLower.endsWith("service")) {
                 svc.name = svc.name[0 .. $-6];
             }
         }
@@ -34,8 +34,8 @@ mixin template registerService() {
             }
         }
 
-        srv.setup = &instance.setup;
-        srv.teardown = &instance.teardown;
+        svc.setup = &instance.setup;
+        svc.teardown = &instance.teardown;
     }
 }
 
@@ -81,13 +81,13 @@ struct Node {
     }
 
     void setupServices() {
-        foreach(name; services) {
+        foreach(name; services.keys) {
             _setupService(name);
         }
     }
 
-    void _teardwnService(string name) {
-        final switch (services[name].phase) with (Service.Phase) {
+    void _teardownService(string name) {
+        /+final switch (services[name].phase) with (Service.Phase) {
             case DOWN:
                 break;
             case UP:
@@ -102,11 +102,11 @@ struct Node {
                 assert (false, "%s: cycle".format(name));
             case TEARING_DOWN:
                 assert (false, "%s: TEARING_DOWN".format(name));
-        }
+        }+/
     }
 
     void teardownServices() {
-        foreach(name; services) {
+        foreach(name; services.keys) {
             _teardownService(name);
         }
     }
@@ -116,6 +116,8 @@ struct Node {
 __gshared Node thisNode;
 
 version (unittest) {
+}
+else {
     void main(string[] args) {
         thisNode.main();
     }
