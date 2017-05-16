@@ -1,0 +1,7 @@
+bld.objects(
+    source=bld.path.make_node('.').ant_glob("*.d"),
+    target='mecca-containers',
+    install_path=None,
+    use=["mecca-lib"],
+)
+
