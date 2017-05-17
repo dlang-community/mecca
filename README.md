@@ -1,5 +1,5 @@
 ♫ The moment I wekapp
 
-I put on my meccap ♫
+Before I put on my meccapp ♫
 
 -@ord
