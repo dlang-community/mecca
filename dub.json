@@ -1,6 +1,6 @@
 {
     "name" : "mecca",
-    "targetType": "library",
+    "targetType": "executable",
     "importPaths": ["src"],
     "sourcePaths": ["src"],
     "description" : "Mecca - Weka's reactor and infrastructure library",

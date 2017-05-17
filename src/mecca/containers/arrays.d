@@ -13,7 +13,4 @@ struct FixedArray(T, size_t N) {
 
 unittest {
     FixedArray!(uint, 8) fa;
-
-    import std.stdio;
-    writeln(fa.length);
 }

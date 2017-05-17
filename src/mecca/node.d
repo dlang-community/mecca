@@ -119,7 +119,7 @@ version (unittest) {
 }
 else {
     void main(string[] args) {
-        thisNode.main();
+        thisNode.main(args);
     }
 }
 
