@@ -106,9 +106,12 @@ struct Node {
     }
 
     void teardownServices() {
-        foreach(name; services.keys) {
-            _teardownService(name);
-        }
+        /+string[string] reversedTopology;
+        foreach(name, ref svc; services.keys) {
+            foreach(depName; svc.deps) {
+                depName
+            }
+        }+/
     }
 
 }

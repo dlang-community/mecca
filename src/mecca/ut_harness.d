@@ -5,6 +5,7 @@ version(unittest):
 import std.stdio;
 import std.string;
 import std.datetime;
+import std.path: absolutePath, buildNormalizedPath;
 import core.sys.posix.unistd: isatty;
 import core.runtime: Runtime;
 
@@ -59,11 +60,35 @@ int main(string[] argv) {
         }
     }
 
+    bool shouldRun(string name) {
+        if (do_run.length == 0 && dont_run.length == 0) {
+            return true;
+        }
+        foreach(prefix; do_run) {
+            if (name.startsWith(prefix)) {
+                return true;
+            }
+        }
+        foreach(prefix; dont_run) {
+            if (name.startsWith(prefix)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    size_t totalUTs;
+    foreach(m; ModuleInfo) {
+        if (m && m.unitTest) {
+            totalUTs++;
+        }
+    }
+
     size_t counter;
     bool failed = false;
     auto startTime = MonoTime.currTime();
 
-    notify("1;36", "Started UT of %s".format(argv[0]));
+    notify("1;36", "Started UT of %s (a total of %s found)".format(buildNormalizedPath(argv[0].absolutePath()), totalUTs));
 
     foreach(m; ModuleInfo) {
         if (m is null) {
@@ -73,24 +98,11 @@ int main(string[] argv) {
         if (fp is null) {
             continue;
         }
-        auto name = m.name;
-        auto shouldRun = (do_run.length == 0);
-        foreach(prefix; do_run) {
-            if (name.startsWith(prefix)) {
-                shouldRun = true;
-                break;
-            }
-        }
-        foreach (prefix; dont_run) {
-            if (name.startsWith(prefix)) {
-                shouldRun = false;
-                break;
-            }
-        }
-        if (!shouldRun) {
+        if (!shouldRun(m.name)) {
             continue;
         }
 
+        counter++;
         notify("33", "Running UT of ", "1;37", m.name);
         try {
             fp();
@@ -121,7 +133,6 @@ int main(string[] argv) {
             failed = true;
             break;
         }
-        counter++;
     }
     auto endTime = MonoTime.currTime();
     auto secs = (endTime - startTime).total!"msecs" / 1000.;
@@ -133,7 +144,7 @@ int main(string[] argv) {
     }
     else if (counter == 0) {
         notify("1;31", "Did not find any unittests to run");
-        return 1;
+        return 2;
     }
     else {
         notify("1;32", "Success. Ran %s unittests in %.2f seconds".format(counter, secs));

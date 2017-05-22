@@ -1,4 +1,31 @@
-module mecca.lib.closure;
+module mecca.lib.reflection;
+
+public import std.traits;
+public import std.meta;
+
+
+template CapacityType(size_t n) {
+    static if (n <= ubyte.max) {
+        alias CapacityType = ubyte;
+    }
+    else static if (n <= ushort.max) {
+        alias CapacityType = ushort;
+    }
+    else static if (n <= uint.max) {
+        alias CapacityType = uint;
+    }
+    else {
+        alias CapacityType = ulong;
+    }
+}
+
+unittest {
+    static assert (is(CapacityType!17 == ubyte));
+    static assert (is(CapacityType!17_000 == ushort));
+    static assert (is(CapacityType!17_000_000 == uint));
+    static assert (is(CapacityType!17_000_000_000 == ulong));
+}
+
 
 struct _Closure(size_t ARGS_SIZE) {
     private void function(void*) wrapper;
@@ -43,6 +70,7 @@ struct _Closure(size_t ARGS_SIZE) {
         _set(fn, args);
     }
     void set(T...)(void delegate(T) dg, T args) {
+        // XXX: ABI
         _set(dg.funcptr, args, dg.ptr);
     }
 
@@ -57,7 +85,6 @@ struct _Closure(size_t ARGS_SIZE) {
 }
 
 alias Closure = _Closure!64;
-
 
 unittest {
     static long sum;
@@ -101,5 +128,60 @@ unittest {
     c();
     assert (sum == 50_000);
 }
+
+
+void setToInit(T)(ref T val) if (!isPointer!T) {
+    auto arr = cast(ubyte[])typeid(T).initializer();
+    if (arr.ptr is null) {
+        val.asBytes[] = 0;
+    }
+    else {
+        // Use fill to duplicate 'arr' to work around https://issues.dlang.org/show_bug.cgi?id=16394
+        import std.algorithm : fill;
+        (cast(ubyte*)&val)[0 .. T.sizeof].fill(arr);
+    }
+}
+
+void setToInit(T)(T* val) if (!isPointer!T) {
+    pragma(inline, true);
+    setToInit(*val);
+}
+
+void copyTo(T)(const ref T src, ref T dst) {
+    pragma(inline, true);
+    (cast(ubyte*)&dst)[0 .. T.sizeof] = (cast(ubyte*)&src)[0 .. T.sizeof];
+}
+
+ubyte[] asBytes(T)(const ref T val) if (!isPointer!T) {
+    pragma(inline, true);
+    return (cast(ubyte*)&val)[0 .. T.sizeof];
+}
+
+unittest {
+    ulong x;
+    setToInit(x);
+    ulong[17] y;
+    setToInit(y);
+}
+
+template IOTA(size_t N) {
+    template helper(size_t i) {
+        static if (i >= N) {
+            alias helper = AliasSeq!();
+        }
+        else {
+            alias helper = AliasSeq!(i, helper!(i+1));
+        }
+    }
+    alias IOTA = helper!0;
+}
+
+unittest {
+    foreach(i; IOTA!10) {
+        enum x = i;
+    }
+}
+
+
 
 

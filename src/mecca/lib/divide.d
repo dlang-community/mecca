@@ -15,7 +15,7 @@ module mecca.lib.divide;
 import std.stdint;
 
 
-@("notrace") private enum {
+private enum {
     LIBDIVIDE_32_SHIFT_MASK = 0x1F,
     LIBDIVIDE_64_SHIFT_MASK = 0x3F,
     LIBDIVIDE_ADD_MARKER = 0x40,
@@ -25,7 +25,7 @@ import std.stdint;
     LIBDIVIDE_NEGATIVE_DIVISOR = 0x80,
 }
 
-@("notrace") private static int32_t libdivide__count_trailing_zeros32(uint32_t val) pure nothrow @safe @nogc {
+private static int32_t libdivide__count_trailing_zeros32(uint32_t val) pure nothrow @safe @nogc {
     /* Fast way to count trailing zeros */
     //return __builtin_ctz(val);
     /* Dorky way to count trailing zeros.   Note that this hangs for val = 0! */
@@ -38,7 +38,7 @@ import std.stdint;
     return result;
 }
 
-@("notrace") private static int32_t libdivide__count_leading_zeros32(uint32_t val) pure nothrow @safe @nogc {
+private static int32_t libdivide__count_leading_zeros32(uint32_t val) pure nothrow @safe @nogc {
     /* Fast way to count leading zeros */
     //return __builtin_clz(val);
     /* Dorky way to count leading zeros.  Note that this hangs for val = 0! */
@@ -50,7 +50,7 @@ import std.stdint;
     return result;
 }
 
-@("notrace") private static uint32_t libdivide_64_div_32_to_32(uint32_t u1, uint32_t u0, uint32_t v, uint32_t *r) pure nothrow @safe @nogc {
+private static uint32_t libdivide_64_div_32_to_32(uint32_t u1, uint32_t u0, uint32_t v, uint32_t *r) pure nothrow @safe @nogc {
 //libdivide_64_div_32_to_32: divides a 64 bit uint {u1, u0} by a 32 bit uint {v}.  The result must fit in 32 bits.
 //Returns the quotient directly and the remainder in *r
 //#if (LIBDIVIDE_IS_X86_64)
@@ -69,13 +69,13 @@ import std.stdint;
 //#endif
 }
 
-@("notrace") static uint32_t libdivide__mullhi_u32(uint32_t x, uint32_t y) pure nothrow @safe @nogc {
+static uint32_t libdivide__mullhi_u32(uint32_t x, uint32_t y) pure nothrow @safe @nogc {
     uint64_t xl = x, yl = y;
     uint64_t rl = xl * yl;
     return cast(uint32_t)(rl >> 32);
 }
 
-@("notrace") private static int32_t libdivide__count_trailing_zeros64(uint64_t val) pure nothrow @safe @nogc {
+private static int32_t libdivide__count_trailing_zeros64(uint64_t val) pure nothrow @safe @nogc {
     // Fast way to count trailing zeros.  Note that we disable this in 32 bit because gcc does something horrible -
     // it calls through to a dynamically bound function.
     //return __builtin_ctzll(val);
@@ -86,7 +86,7 @@ import std.stdint;
     return 32 + libdivide__count_trailing_zeros32(val >> 32);
 }
 
-@("notrace") private static int64_t libdivide__mullhi_s64(int64_t x, int64_t y) pure nothrow @safe @nogc {
+private static int64_t libdivide__mullhi_s64(int64_t x, int64_t y) pure nothrow @safe @nogc {
     static if (is(cent)) {
         cent xl = x, yl = y;
         cent rl = xl * yl;
@@ -104,13 +104,13 @@ import std.stdint;
     }
 }
 
-@("notrace") private static int32_t libdivide__mullhi_s32(int32_t x, int32_t y) pure nothrow @safe @nogc {
+private static int32_t libdivide__mullhi_s32(int32_t x, int32_t y) pure nothrow @safe @nogc {
     int64_t xl = x, yl = y;
     int64_t rl = xl * yl;
     return cast(int32_t)(rl >> 32); //needs to be arithmetic shift
 }
 
-@("notrace") private static int32_t libdivide__count_leading_zeros64(uint64_t val) pure nothrow @safe @nogc {
+private static int32_t libdivide__count_leading_zeros64(uint64_t val) pure nothrow @safe @nogc {
     /* Fast way to count leading zeros */
     //return __builtin_clzll(val);
     /* Dorky way to count leading zeros.  Note that this hangs for val = 0! */
@@ -122,18 +122,18 @@ import std.stdint;
     return result;
 }
 
-@("notrace") private static uint64_t libdivide_128_div_64_to_64(uint64_t u1, uint64_t u0, uint64_t v, uint64_t *r) pure nothrow @safe @nogc {
-    const uint64_t b = (1UL << 32); // Number base (16 bits).
-    uint64_t un1, un0,        // Norm. dividend LSD's.
-    vn1, vn0,        // Norm. divisor digits.
-    q1, q0,          // Quotient digits.
-    un64, un21, un10,// Dividend digit pairs.
-    rhat;            // A remainder.
-    int s;                  // Shift amount for norm.
+private static uint64_t libdivide_128_div_64_to_64(uint64_t u1, uint64_t u0, uint64_t v, uint64_t *r) pure nothrow @safe @nogc {
+    const uint64_t b = (1UL << 32);  // Number base (16 bits).
+    uint64_t un1, un0,               // Norm. dividend LSD's.
+    vn1, vn0,                        // Norm. divisor digits.
+    q1, q0,                          // Quotient digits.
+    un64, un21, un10,                // Dividend digit pairs.
+    rhat;                            // A remainder.
+    int s;                           // Shift amount for norm.
 
-    if (u1 >= v) {            // If overflow, set rem.
-        if (r !is null) {        // to an impossible value,
-            *r = cast(uint64_t)(-1);    // and return the largest
+    if (u1 >= v) {                   // If overflow, set rem.
+        if (r !is null) {            // to an impossible value,
+            *r = cast(uint64_t)(-1); // and return the largest
         }
         else {
             return cast(uint64_t)(-1);    // possible quotient.
@@ -185,7 +185,7 @@ again2:
     return q1*b + q0;
 }
 
-@("notrace") private static uint64_t libdivide__mullhi_u64(uint64_t x, uint64_t y) pure nothrow @safe @nogc {
+private static uint64_t libdivide__mullhi_u64(uint64_t x, uint64_t y) pure nothrow @safe @nogc {
     static if (is(ucent)) {
         ucent xl = x, yl = y;
         ucent rl = xl * yl;
@@ -207,7 +207,7 @@ again2:
     }
 }
 
-@("notrace") struct S32Denominator {
+struct S32Divisor {
     alias Type = typeof(magic);
     int32_t magic;
     uint8_t more;
@@ -253,20 +253,25 @@ again2:
         }
     }
 
-    int32_t opBinaryRight(string op: "/")(int32_t numer) const pure nothrow @safe @nogc {
+    ref auto opAssign(int32_t d) {
+        this.__ctor(d);
+        return this;
+    }
+
+    int32_t opBinaryRight(string op: "/")(int32_t dividend) const pure nothrow @safe @nogc {
         if (more & LIBDIVIDE_S32_SHIFT_PATH) {
             uint8_t shifter = more & LIBDIVIDE_32_SHIFT_MASK;
-            int32_t q = numer + ((numer >> 31) & ((1 << shifter) - 1));
+            int32_t q = dividend + ((dividend >> 31) & ((1 << shifter) - 1));
             q = q >> shifter;
             int32_t shiftMask = cast(int8_t)(more >> 7); //must be arithmetic shift and then sign-extend
             q = (q ^ shiftMask) - shiftMask;
             return q;
         }
         else {
-            int32_t q = libdivide__mullhi_s32(magic, numer);
+            int32_t q = libdivide__mullhi_s32(magic, dividend);
             if (more & LIBDIVIDE_ADD_MARKER) {
                 int32_t sign = cast(int8_t)(more >> 7); //must be arithmetic shift and then sign extend
-                q += ((numer ^ sign) - sign);
+                q += ((dividend ^ sign) - sign);
             }
             q >>= more & LIBDIVIDE_32_SHIFT_MASK;
             q += (q < 0);
@@ -275,7 +280,7 @@ again2:
     }
 }
 
-@("notrace") struct U32Denominator {
+struct U32Divisor {
     alias Type = typeof(magic);
     uint32_t magic;
     uint8_t more;
@@ -319,14 +324,19 @@ again2:
         }
     }
 
-    uint32_t opBinaryRight(string op: "/")(uint32_t numer) const pure nothrow @safe @nogc {
+    ref auto opAssign(uint32_t d) {
+        this.__ctor(d);
+        return this;
+    }
+
+    uint32_t opBinaryRight(string op: "/")(uint32_t dividend) const pure nothrow @safe @nogc {
         if (more & LIBDIVIDE_U32_SHIFT_PATH) {
-            return numer >> (more & LIBDIVIDE_32_SHIFT_MASK);
+            return dividend >> (more & LIBDIVIDE_32_SHIFT_MASK);
         }
         else {
-            uint32_t q = libdivide__mullhi_u32(magic, numer);
+            uint32_t q = libdivide__mullhi_u32(magic, dividend);
             if (more & LIBDIVIDE_ADD_MARKER) {
-                uint32_t t = ((numer - q) >> 1) + q;
+                uint32_t t = ((dividend - q) >> 1) + q;
                 return t >> (more & LIBDIVIDE_32_SHIFT_MASK);
             }
             else {
@@ -336,7 +346,7 @@ again2:
     }
 }
 
-@("notrace") struct S64Denominator {
+struct S64Divisor {
     alias Type = typeof(magic);
     int64_t magic;
     uint8_t more;
@@ -380,20 +390,25 @@ again2:
         }
     }
 
-    int64_t opBinaryRight(string op: "/")(int64_t numer) const pure nothrow @safe @nogc {
+    ref auto opAssign(int64_t d) {
+        this.__ctor(d);
+        return this;
+    }
+
+    int64_t opBinaryRight(string op: "/")(int64_t dividend) const pure nothrow @safe @nogc {
         if (magic == 0) { //shift path
             uint32_t shifter = more & LIBDIVIDE_64_SHIFT_MASK;
-            int64_t q = numer + ((numer >> 63) & ((1L << shifter) - 1));
+            int64_t q = dividend + ((dividend >> 63) & ((1L << shifter) - 1));
             q = q >> shifter;
             int64_t shiftMask = cast(int8_t)(more >> 7); //must be arithmetic shift and then sign-extend
             q = (q ^ shiftMask) - shiftMask;
             return q;
         }
         else {
-            int64_t q = libdivide__mullhi_s64(magic, numer);
+            int64_t q = libdivide__mullhi_s64(magic, dividend);
             if (more & LIBDIVIDE_ADD_MARKER) {
                 int64_t sign = cast(int8_t)(more >> 7); //must be arithmetic shift and then sign extend
-                q += ((numer ^ sign) - sign);
+                q += ((dividend ^ sign) - sign);
             }
             q >>= more & LIBDIVIDE_64_SHIFT_MASK;
             q += (q < 0);
@@ -402,7 +417,7 @@ again2:
     }
 }
 
-@("notrace") struct U64Denominator {
+struct U64Divisor {
     alias Type = typeof(magic);
     uint64_t magic;
     uint8_t more;
@@ -446,14 +461,19 @@ again2:
         }
     }
 
-    uint64_t opBinaryRight(string op: "/")(uint64_t numer) const pure nothrow @safe @nogc {
+    ref auto opAssign(uint64_t d) {
+        this.__ctor(d);
+        return this;
+    }
+
+    uint64_t opBinaryRight(string op: "/")(uint64_t dividend) const pure nothrow @safe @nogc {
         if (more & LIBDIVIDE_U64_SHIFT_PATH) {
-            return numer >> (more & LIBDIVIDE_64_SHIFT_MASK);
+            return dividend >> (more & LIBDIVIDE_64_SHIFT_MASK);
         }
         else {
-            uint64_t q = libdivide__mullhi_u64(magic, numer);
+            uint64_t q = libdivide__mullhi_u64(magic, dividend);
             if (more & LIBDIVIDE_ADD_MARKER) {
-                uint64_t t = ((numer - q) >> 1) + q;
+                uint64_t t = ((dividend - q) >> 1) + q;
                 return t >> (more & LIBDIVIDE_64_SHIFT_MASK);
             }
             else {
@@ -463,18 +483,18 @@ again2:
     }
 }
 
-@("notrace") auto denominator(T)(T value) {
+auto divisor(T)(T value) {
     static if (is(T == uint32_t)) {
-        return U32Denominator(value);
+        return U32Divisor(value);
     }
     else static if (is(T == int32_t)) {
-        return S32Denominator(value);
+        return S32Divisor(value);
     }
     else static if (is(T == uint64_t)) {
-        return U64Denominator(value);
+        return U64Divisor(value);
     }
     else static if (is(T == int64_t)) {
-        return S64Denominator(value);
+        return S64Divisor(value);
     }
     else {
         static assert (false, "T must be an int, uint, long, ulong, not " ~ T.stringof);
@@ -483,9 +503,10 @@ again2:
 
 
 unittest {
-    assert (1000 / U32Denominator(31) == 32);
-    assert (1000 / S32Denominator(50) == 20);
-    assert (1000 / denominator(11) == 90);
+    static assert (1000 / U32Divisor(17) == 58);
+    assert (1000 / U32Divisor(31) == 32);
+    assert (1000 / S32Divisor(50) == 20);
+    assert (1000 / divisor(11) == 90);
 }
 
 unittest {
@@ -494,10 +515,10 @@ unittest {
     import std.typetuple;
 
     int counter;
-    alias denominators = TypeTuple!(S32Denominator, U32Denominator, S64Denominator, U64Denominator);
+    alias divisors = TypeTuple!(S32Divisor, U32Divisor, S64Divisor, U64Divisor);
     enum tests = 5000;
 
-    foreach(D; denominators) {
+    foreach(D; divisors) {
         foreach(j; 0 .. tests) {
             D.Type d = uniform(1, D.Type.max);
             D.Type n = uniform(D.Type.min, D.Type.max);
@@ -509,47 +530,8 @@ unittest {
             counter++;
         }
     }
-    assert(counter == denominators.length * tests, "counter=%s".format(counter));
+    assert(counter == divisors.length * tests, "counter=%s".format(counter));
 }
 
-unittest {
-    import std.stdio;
-    import std.random;
 
-    enum iters = 30_000_000;
-    ulong freq = uniform(2_000_000_000, 4_000_000_000);
-    auto freqD = denominator(freq);
-
-    static ulong readTSC() {
-        asm {
-            naked;
-            rdtsc;         // result = EDX(hi):EAX(lo)
-            shl RDX, 32;
-            or RAX, RDX;   // RAX |= (RDX << 32)
-            ret;
-        }
-    }
-
-    ulong sum1;
-    auto t0 = readTSC();
-    foreach(ulong i; 0 .. iters) {
-        sum1 += ((i<<32) / freq);
-    }
-    auto t1 = readTSC();
-
-    assert (sum1 > 0);
-
-    ulong sum2;
-    auto t2 = readTSC();
-    foreach(ulong i; 0 .. iters) {
-        sum2 += ((i<<32) / freqD);
-    }
-    auto t3 = readTSC();
-
-    assert (sum1 == sum2);
-
-    //writeln("regular div: ", t1 - t0);                             // 619678956
-    //writeln("libdivide div: ", t3 - t2);                           // 70542926
-    //writeln("factor: ", (t1 - t0) / (cast(double)(t3 - t2)));      // x8.7 faster
-}
 
