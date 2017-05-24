@@ -3,15 +3,16 @@ module mecca.containers.lists;
 import mecca.lib.memory: prefetch;
 
 
+///////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// LinkedList: doubly-linked list of elements; next/prev stored in-element (intrusive)
+//
+///////////////////////////////////////////////////////////////////////////////////////////////////
+
 struct _LinkedList(T, string nextAttr, string prevAttr, bool withLength) {
     T head;
     static if (withLength) {
         size_t length;
-    }
-
-    @property bool empty() const pure nothrow {
-        static if (withLength) assert (head !is null || length == 0, "head is null but length != 0");
-        return head is null;
     }
 
     static T getNextOf(T node) {
@@ -36,6 +37,10 @@ struct _LinkedList(T, string nextAttr, string prevAttr, bool withLength) {
         mixin("node." ~ prevAttr ~ " = val;");
     }
 
+    @property bool empty() const pure nothrow {
+        static if (withLength) assert (head !is null || length == 0, "head is null but length != 0");
+        return head is null;
+    }
     @property T tail() nothrow {
         static if (withLength) assert (head !is null || length == 0, "head is null but length != 0");
         return head is null ? null : getPrevOf(head);
@@ -341,6 +346,12 @@ unittest {
 }
 
 
+///////////////////////////////////////////////////////////////////////////////////////////////////
+//
+// LinkedQueue: singly-linked list of elements; next pointer is stored in-element (intrusive).
+//              insert in the head or tail, from only from head
+//
+///////////////////////////////////////////////////////////////////////////////////////////////////
 
 struct _LinkedQueue(T, string nextAttr, bool withLength) {
     T head;
@@ -408,7 +419,6 @@ struct _LinkedQueue(T, string nextAttr, bool withLength) {
             static if (withLength) assert (length == 0);
         }
 
-        import std.stdio; writeln("popHead ", node.value);
         return node;
     }
 
@@ -440,20 +450,14 @@ struct _LinkedQueue(T, string nextAttr, bool withLength) {
     }
 
     static struct Range {
-        T _front;
-        T next;
+        T front;
 
         @property empty() const pure @safe @nogc nothrow {
             return front is null;
         }
-        @property front() @safe @nogc nothrow {
-            next = getNextOf(_front);
-            return front;
-        }
         void popFront() {
             assert (front);
-            front = next;
-            next = getNextOf(next);
+            front = getNextOf(front);
         }
     }
     @property auto range() {
@@ -513,10 +517,10 @@ unittest {
 
     void matchElements(R)(R range, int[] expected) {
         int[] arr;
-        foreach(n; queue.range) {
+        foreach(n; range) {
             arr ~= n.value;
         }
-        writeln(arr);
+        //writeln(arr);
         assert (arr == expected, "%s != %s".format(arr, expected));
     }
 
@@ -524,18 +528,63 @@ unittest {
     assert (!queue.empty);
 
     matchElements(queue.consumingRange, [9, 8, 7, 0, 1, 2, 3, 4, 5, 6]);
-    foreach(n; queue.range) {
-        writeln("XXXXXXX ", n.value);
-    }
+    assert (queue.empty);
 
-    /+writeln(queue.head);
-    writeln(queue.tail);
+    LinkedQueue!(Node*) queue2;
 
-    assert (queue.empty);+/
+    queue.append(&nodes[0]);
+    queue.append(&nodes[1]);
+    queue.append(&nodes[2]);
 
+    queue2.append(&nodes[3]);
+    queue2.append(&nodes[4]);
+    queue2.append(&nodes[5]);
 
+    matchElements(queue.range, [0, 1, 2]);
+    matchElements(queue2.range, [3, 4, 5]);
+    queue.splice(&queue2);
+    assert(queue2.empty);
+    matchElements(queue.range, [0, 1, 2, 3, 4, 5]);
 }
 
+unittest {
+    struct Node {
+        static Node[10] theNodes;
+
+        int value;
+        ubyte nextIdx = ubyte.max;
+
+        @property Node* _next() nothrow {
+            return nextIdx == ubyte.max ? null : &theNodes[nextIdx];
+        }
+        @property void _next(Node* n) nothrow {
+            nextIdx = n is null ? ubyte.max : cast(ubyte)(n - theNodes.ptr);
+        }
+    }
+
+    foreach(int i, ref n; Node.theNodes) {
+        n.value = 100 + i;
+    }
+
+    LinkedQueue!(Node*) queue;
+    assert (queue.empty);
+
+    queue.append(&Node.theNodes[0]);
+    assert (!queue.empty);
+    queue.append(&Node.theNodes[1]);
+    queue.append(&Node.theNodes[2]);
+    queue.append(&Node.theNodes[3]);
+    queue.append(&Node.theNodes[4]);
+
+    int[] arr;
+    foreach(n; queue.range) {
+        arr ~= n.value;
+    }
+    assert(arr == [100, 101, 102, 103, 104]);
+
+    queue.removeAll();
+    assert (queue.empty);
+}
 
 
 
