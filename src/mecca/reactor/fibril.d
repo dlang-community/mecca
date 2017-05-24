@@ -1,5 +1,6 @@
 module mecca.reactor.fibril;
 
+
 version (D_InlineAsm_X86_64) version (Posix) {
     private pure nothrow @trusted @nogc:
 
@@ -67,6 +68,7 @@ version (D_InlineAsm_X86_64) version (Posix) {
     }
 }
 
+
 extern(C) private void _fibril_wrapper(void function(void*) fn /* RDI */, void* opaque /* RSI */) {
     import core.stdc.stdlib: abort;
     void writeErr(const(char[]) text) {
@@ -86,9 +88,10 @@ extern(C) private void _fibril_wrapper(void function(void*) fn /* RDI */, void* 
         abort();
     }
     // we add an extra call to abort here, so the compiler would be forced to emit `call` instead of `jmp`
-    // above, thus leaving this function on the call stack. produces a more explciit backtrace.
+    // above, thus leaving this function on the call stack. it produces a more readable backtrace.
     abort();
 }
+
 
 struct Fibril {
     void* rsp;
@@ -100,11 +103,15 @@ struct Fibril {
         assert (rsp is null, "already set");
         rsp = _fibril_init_stack(stackArea, fn, opaque);
     }
+    void set(void[] stackArea, void delegate() nothrow dg) {
+        set(stackArea, cast(void function(void*) nothrow)dg.funcptr, dg.ptr);
+    }
     void switchTo(ref Fibril next) nothrow {
         pragma(inline, true);
         _fibril_switch(&this.rsp, next.rsp);
     }
 }
+
 
 unittest {
     import std.stdio;
@@ -113,42 +120,37 @@ unittest {
     ubyte[4096] stack1;
     ubyte[4096] stack2;
 
-    struct Context {
-        Fibril mainFib, fib1, fib2;
-        char[] order;
-    }
-    Context context;
+    Fibril mainFib, fib1, fib2;
+    char[] order;
 
-    static void func1(void* c) nothrow {
-        auto context = cast(Context*)c;
+    void func1() nothrow {
         while (true) {
-            context.order ~= '1';
+            order ~= '1';
             //try{writefln("in fib1");} catch(Throwable){}
-            context.fib1.switchTo(context.fib2);
+            fib1.switchTo(fib2);
         }
     }
-    static void func2(void* c) nothrow {
-        auto context = cast(Context*)c;
+    void func2() nothrow {
         while (true) {
-            context.order ~= '2';
+            order ~= '2';
             //try{writefln("in fib2");} catch(Throwable){}
-            context.fib2.switchTo(context.mainFib);
+            fib2.switchTo(mainFib);
         }
     }
 
-    context.fib1.set(stack1, &func1, &context);
-    context.fib2.set(stack2, &func2, &context);
+    fib1.set(stack1, &func1);
+    fib2.set(stack2, &func2);
 
     enum ITERS = 10;
-    context.order.reserve(ITERS * 3);
+    order.reserve(ITERS * 3);
 
     foreach(_; 0 .. ITERS) {
-        context.order ~= 'M';
+        order ~= 'M';
         //try{writefln("in main");} catch(Throwable){}
-        context.mainFib.switchTo(context.fib1);
+        mainFib.switchTo(fib1);
     }
 
-    assert (context.order == "M12".repeat(ITERS).join(""));
+    assert (order == "M12".repeat(ITERS).join(""), order);
 }
 
 unittest {
@@ -157,38 +159,33 @@ unittest {
     ubyte[4096] stack1;
     ubyte[4096] stack2;
 
-    struct Context {
-        Fibril mainFib, fib1, fib2;
-        size_t counter;
-    }
-    Context context;
+    Fibril mainFib, fib1, fib2;
+    size_t counter;
 
-    static void func1(void* c) nothrow {
-        auto context = cast(Context*)c;
+    void func1() nothrow {
         while (true) {
-            context.counter++;
-            context.fib1.switchTo(context.fib2);
+            counter++;
+            fib1.switchTo(fib2);
         }
     }
-    static void func2(void* c) nothrow {
-        auto context = cast(Context*)c;
+    void func2() nothrow {
         while (true) {
-            context.fib2.switchTo(context.mainFib);
+            fib2.switchTo(mainFib);
         }
     }
 
-    context.fib1.set(stack1, &func1, &context);
-    context.fib2.set(stack2, &func2, &context);
+    fib1.set(stack1, &func1);
+    fib2.set(stack2, &func2);
 
     enum ITERS = 10_000_000;
 
     import mecca.lib.time: TscTimePoint;
     auto t0 = TscTimePoint.now;
     foreach(_; 0 .. ITERS) {
-        context.mainFib.switchTo(context.fib1);
+        mainFib.switchTo(fib1);
     }
     auto dt = TscTimePoint.now.diff!"cycles"(t0);
-    assert (context.counter == ITERS);
+    assert (counter == ITERS);
     writefln("total %s cycles, per iteration %s", dt, dt / (ITERS * 3.0));
 }
 
