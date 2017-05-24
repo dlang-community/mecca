@@ -7,8 +7,8 @@ version(LDC) {
     public import ldc.intrinsics: readTSC = llvm_readcyclecounter;
 }
 else version (D_InlineAsm_X86_64) {
-    ulong readTSC() nothrow pure @nogc @trusted {
-        asm nothrow pure @nogc @trusted {
+    ulong readTSC() nothrow @nogc @trusted {
+        asm nothrow @nogc @trusted {
             naked;
             rdtsc;         // EDX(hi):EAX(lo)
             shl RDX, 32;
@@ -34,7 +34,7 @@ struct TscTimePoint {
     static shared immutable S64Divisor cyclesPerUsecDivisor;
     long cycles;
 
-    static TscTimePoint now() nothrow @nogc pure @safe {
+    static TscTimePoint now() nothrow @nogc @safe {
         return TscTimePoint(readTSC());
     }
 

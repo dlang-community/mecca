@@ -18,23 +18,24 @@ shared static this() {
 
 version (LDC) {
     import ldc.intrinsics;
-    pure nothrow @trusted @nogc:
 
-    @("notrace") void prefetch_read(const void* p) {
+    void prefetch(const void* p) pure nothrow @trusted @nogc {
         pragma(inline, true);
         llvm_prefetch(cast(void*)p, 0 /*read*/, 3 /*very local*/, 1 /*data*/);
     }
-    @("notrace") void test_and_prefetch_read(const void* p) {
+}
+else version (D_InlineAsm_X86_64) {
+    void prefetch(const void* p /* RDI */) pure nothrow @trusted @nogc {
         pragma(inline, true);
-        if (p) {
-            llvm_prefetch(cast(void*)p, 0 /*read*/, 3 /*very local*/, 1 /*data*/);
+        asm pure nothrow @trusted @nogc {
+            naked;
+            prefetcht0 [RDI];
+            ret;
         }
     }
 }
 else {
-    pure nothrow @safe @nogc:
-    @("notrace") void prefetch_read(const void*) {}
-    @("notrace") void test_and_prefetch_read(const void*) {}
+    static assert (false, "prefetch not supported");
 }
 
 struct MmapArray(T) {

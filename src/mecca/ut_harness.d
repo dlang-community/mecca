@@ -61,13 +61,14 @@ int main(string[] argv) {
     }
 
     bool shouldRun(string name) {
-        if (do_run.length == 0 && dont_run.length == 0) {
-            return true;
-        }
+        size_t numMatched = 0;
         foreach(prefix; do_run) {
             if (name.startsWith(prefix)) {
-                return true;
+                numMatched++;
             }
+        }
+        if (do_run.length > 0 && numMatched == 0) {
+            return false;
         }
         foreach(prefix; dont_run) {
             if (name.startsWith(prefix)) {
@@ -135,9 +136,8 @@ int main(string[] argv) {
         }
     }
     auto endTime = MonoTime.currTime();
-    auto secs = (endTime - startTime).total!"msecs" / 1000.;
+    auto secs = (endTime - startTime).total!"msecs" / 1000.0;
 
-    //writeln("===========================================================");
     if (failed) {
         notify("1;31", "Failed. Ran %s unittests in %.2f seconds".format(counter, secs));
         return 1;
