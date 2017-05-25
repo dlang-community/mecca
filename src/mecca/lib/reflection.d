@@ -30,7 +30,10 @@ unittest {
 struct _Closure(size_t ARGS_SIZE) {
     private void function(void*) wrapper;
     union {
-        private void* _funcptr;
+        struct {
+            private void* _funcptr;
+            private void* _ctx;
+        }
         private void[ARGS_SIZE + _funcptr.sizeof] argsBuf;
     }
 
@@ -43,8 +46,33 @@ struct _Closure(size_t ARGS_SIZE) {
     bool opCast(T: bool)() const pure nothrow @safe @nogc {
         return isSet();
     }
+    void clear() nothrow @nogc {
+        wrapper = null;
+        argsBuf.asBytes[] = 0;
+    }
 
-    private void _set(T...)(void* fn, T args) @nogc {
+    void set(void function() fn) {
+        static void fnWrapper(void* fn) {
+            (cast(void function())fn)();
+        }
+        _funcptr = fn;
+        argsBuf.asBytes[(void*).sizeof .. $] = 0;
+        wrapper = &fnWrapper;
+    }
+
+    void set(void delegate() dg) {
+        static void dgWrapper(void* fn) {
+            (cast(void delegate())fn)();
+        }
+
+        _funcptr = dg.funcptr;
+        _ctx = dg.ptr;
+        argsBuf.asBytes[(void*).sizeof * 2 .. $] = 0;
+        wrapper = &dgWrapper;
+    }
+
+
+    /+private void _set(T...)(void* fn, T args) @trusted @nogc {
         import std.string: format;
         static struct Typed {
             void function(T) fn;
@@ -61,18 +89,35 @@ struct _Closure(size_t ARGS_SIZE) {
         typed.args = args;
         (cast(ubyte[])argsBuf[Typed.sizeof .. $])[] = 0;   // don't leave dangling pointers
         wrapper = &Typed.call;
-    }
+    }+/
 
-    void clear() {
-        _set(null);
-    }
-    void set(T...)(void function(T) fn, T args) {
+    /+
+    void set(T...)(void function(T) fn, T args) nothrow @nogc {
         _set(fn, args);
     }
-    void set(T...)(void delegate(T) dg, T args) {
+    void set(T...)(void delegate(T) dg, T args) nothrow @nogc {
         // XXX: ABI
         _set(dg.funcptr, args, dg.ptr);
     }
+
+    void setF(alias F)(Parameters!F args) @trusted @nogc {
+        static assert (is(ReturnType!F == void));
+
+        import std.string: format;
+        static struct Typed {
+            Parameters!F args;
+            static void call(void* self) {
+                F((cast(Typed*)self).args);
+            }
+        }
+        static assert (Typed.sizeof <= argsBuf.length, "args require %s bytes, %s available".format(
+                Typed.sizeof, argsBuf.length));
+
+        Typed* typed = cast(Typed*)argsBuf.ptr;
+        typed.args = args;
+        (cast(ubyte[])argsBuf[Typed.sizeof .. $])[] = 0;   // don't leave dangling pointers
+        wrapper = &Typed.call;
+    }+/
 
     ref typeof(this) opAssign(typeof(null) fn) {clear(); return this;}
     ref typeof(this) opAssign(void function() fn) {set(fn); return this;}
@@ -127,41 +172,68 @@ unittest {
     c.set(toDelegate(&f), 50);
     c();
     assert (sum == 50_000);
+
+    static void h(int x, double y, string z) {
+        sum = cast(long)(x * y) + z.length;
+    }
+
+    sum = 0;
+    c.setF!h(16, 8.5, "hello");
+    c();
+    assert (sum == cast(long)(16 * 8.5 + 5));
 }
 
 
-void setToInit(T)(ref T val) if (!isPointer!T) {
-    auto arr = cast(ubyte[])typeid(T).initializer();
-    if (arr.ptr is null) {
+void setToInit(T)(ref T val) nothrow @nogc if (!isPointer!T) {
+    auto initBuf = cast(ubyte[])typeid(T).initializer();
+    if (initBuf.ptr is null) {
         val.asBytes[] = 0;
     }
     else {
-        // Use fill to duplicate 'arr' to work around https://issues.dlang.org/show_bug.cgi?id=16394
-        import std.algorithm : fill;
-        (cast(ubyte*)&val)[0 .. T.sizeof].fill(arr);
+        // duplicate static arrays to work around https://issues.dlang.org/show_bug.cgi?id=16394
+        static if (isStaticArray!T) {
+            foreach(ref e; val) {
+                e.asBytes[] = initBuf;
+            }
+        }
+        else {
+            val.asBytes[] = initBuf;
+        }
     }
 }
 
-void setToInit(T)(T* val) if (!isPointer!T) {
+void setToInit(T)(T* val) nothrow @nogc if (!isPointer!T) {
     pragma(inline, true);
     setToInit(*val);
 }
 
-void copyTo(T)(const ref T src, ref T dst) {
+void copyTo(T)(const ref T src, ref T dst) nothrow @nogc {
     pragma(inline, true);
     (cast(ubyte*)&dst)[0 .. T.sizeof] = (cast(ubyte*)&src)[0 .. T.sizeof];
 }
 
-ubyte[] asBytes(T)(const ref T val) if (!isPointer!T) {
+ubyte[] asBytes(T)(const ref T val) nothrow @nogc if (!isPointer!T) {
     pragma(inline, true);
     return (cast(ubyte*)&val)[0 .. T.sizeof];
 }
 
 unittest {
-    ulong x;
-    setToInit(x);
-    ulong[17] y;
-    setToInit(y);
+    static struct S {
+        int a = 999;
+    }
+
+    S s;
+    s.a = 111;
+    setToInit(s);
+    assert (s.a == 999);
+
+    S[17] arr;
+    foreach(ref s2; arr) {
+        s2.a = 111;
+    }
+    assert (arr[0].a == 111 && arr[$-1].a == 111);
+    setToInit(arr);
+    assert (arr[0].a == 999 && arr[$-1].a == 999);
 }
 
 template IOTA(size_t N) {

@@ -96,17 +96,17 @@ extern(C) private void _fibril_wrapper(void function(void*) fn /* RDI */, void* 
 struct Fibril {
     void* rsp;
 
-    void reset() {
+    void reset() nothrow @nogc {
         rsp = null;
     }
-    void set(void[] stackArea, void function(void*) nothrow fn, void* opaque) {
+    void set(void[] stackArea, void function(void*) nothrow fn, void* opaque) nothrow @nogc {
         assert (rsp is null, "already set");
         rsp = _fibril_init_stack(stackArea, fn, opaque);
     }
-    void set(void[] stackArea, void delegate() nothrow dg) {
+    void set(void[] stackArea, void delegate() nothrow dg) nothrow @nogc {
         set(stackArea, cast(void function(void*) nothrow)dg.funcptr, dg.ptr);
     }
-    void switchTo(ref Fibril next) nothrow {
+    void switchTo(ref Fibril next) nothrow @nogc {
         pragma(inline, true);
         _fibril_switch(&this.rsp, next.rsp);
     }

@@ -15,24 +15,24 @@ struct _LinkedList(T, string nextAttr, string prevAttr, bool withLength) {
         size_t length;
     }
 
-    static T getNextOf(T node) {
+    static T getNextOf(T node) nothrow {
         pragma(inline, true);
         T tmp = mixin("node." ~ nextAttr);
         prefetch(tmp);
         return tmp;
     }
-    static void setNextOf(T node, T val) {
+    static void setNextOf(T node, T val) nothrow {
         pragma(inline, true);
         mixin("node." ~ nextAttr ~ " = val;");
     }
 
-    static T getPrevOf(T node) {
+    static T getPrevOf(T node) nothrow {
         pragma(inline, true);
         T tmp = mixin("node." ~ prevAttr);
         prefetch(tmp);
         return tmp;
     }
-    static void setPrevOf(T node, T val) {
+    static void setPrevOf(T node, T val) nothrow {
         pragma(inline, true);
         mixin("node." ~ prevAttr ~ " = val;");
     }
@@ -46,7 +46,7 @@ struct _LinkedList(T, string nextAttr, string prevAttr, bool withLength) {
         return head is null ? null : getPrevOf(head);
     }
 
-    void _insert(bool after)(T anchor, T node) {
+    void _insert(bool after)(T anchor, T node) nothrow {
         assert (node !is null, "appending null");
         assert (getNextOf(node) is null, "next is linked");
         assert (getPrevOf(node) is null, "prev is linked");
@@ -83,21 +83,21 @@ struct _LinkedList(T, string nextAttr, string prevAttr, bool withLength) {
         static if (withLength) length++;
     }
 
-    void insertAfter(T anchor, T node) {pragma(inline, true);
+    void insertAfter(T anchor, T node) nothrow {pragma(inline, true);
         _insert!true(anchor, node);
     }
-    void insertBefore(T anchor, T node) {pragma(inline, true);
+    void insertBefore(T anchor, T node) nothrow {pragma(inline, true);
         _insert!false(anchor, node);
     }
 
-    void append(T node) {pragma(inline, true);
+    void append(T node) nothrow {pragma(inline, true);
         insertAfter(tail, node);
     }
-    void prepend(T node) {pragma(inline, true);
+    void prepend(T node) nothrow {pragma(inline, true);
         insertBefore(head, node);
     }
 
-    void remove(T node) {
+    void remove(T node) nothrow {
         assert (node);
         assert (!empty);
 
@@ -126,14 +126,14 @@ struct _LinkedList(T, string nextAttr, string prevAttr, bool withLength) {
         }
     }
 
-    T popHead() {
+    T popHead() nothrow {
         auto node = head;
         if (node) {
             remove(node);
         }
         return node;
     }
-    T popTail() {
+    T popTail() nothrow {
         auto node = tail;
         if (node) {
             remove(node);
@@ -141,7 +141,29 @@ struct _LinkedList(T, string nextAttr, string prevAttr, bool withLength) {
         return node;
     }
 
-    void removeAll() {
+    void splice(_LinkedList* second) nothrow {
+        assert (second !is &this);
+        if (second.empty) {
+            return;
+        }
+        if (empty) {
+            head = second.head;
+        }
+        else {
+            setNextOf(tail, second.head);
+            setPrevOf(second.head, tail);
+            setNextOf(second.tail, head);
+            setPrevOf(head, second.tail);
+        }
+
+        static if (withLength) length += second.length;
+
+        // For safety reasons, `second` is emptied (otherwise pop() from it would break this)
+        second.head = null;
+        static if (withLength) second.length = 0;
+    }
+
+    void removeAll() nothrow {
         while (head) {
             auto next = getNextOf(head);
             setPrevOf(head, null);
@@ -158,7 +180,7 @@ struct _LinkedList(T, string nextAttr, string prevAttr, bool withLength) {
         @property bool empty() const pure nothrow @nogc {
             return front is null;
         }
-        void popFront() {
+        void popFront() nothrow {
             assert (list);
             assert (front);
             front = getNextOf(front);
@@ -167,7 +189,7 @@ struct _LinkedList(T, string nextAttr, string prevAttr, bool withLength) {
             }
         }
     }
-    @property auto range() {
+    @property auto range() nothrow {
         return Range(&this, head);
     }
 
@@ -178,7 +200,7 @@ struct _LinkedList(T, string nextAttr, string prevAttr, bool withLength) {
         @property bool empty() const pure nothrow @nogc {
             return front is null;
         }
-        void popFront() {
+        void popFront() nothrow {
             assert (list);
             assert (front);
             front = getPrevOf(front);
@@ -187,7 +209,7 @@ struct _LinkedList(T, string nextAttr, string prevAttr, bool withLength) {
             }
         }
     }
-    @property auto reverseRange() {
+    @property auto reverseRange() nothrow {
         return ReverseRange(&this, tail);
     }
 
@@ -200,11 +222,11 @@ struct _LinkedList(T, string nextAttr, string prevAttr, bool withLength) {
         @property T front() pure nothrow @nogc {
             return list.head;
         }
-        void popFront() {
+        void popFront() nothrow {
             list.popHead();
         }
     }
-    @property auto consumingRange() {
+    @property auto consumingRange() nothrow {
         return ConsumingRange(&this);
     }
 }
@@ -360,13 +382,13 @@ struct _LinkedQueue(T, string nextAttr, bool withLength) {
         size_t length;
     }
 
-    static T getNextOf(T node) {
+    static T getNextOf(T node) nothrow {
         pragma(inline, true);
         T tmp = mixin("node." ~ nextAttr);
         prefetch(tmp);
         return tmp;
     }
-    static void setNextOf(T node, T val) {
+    static void setNextOf(T node, T val) nothrow {
         pragma(inline, true);
         mixin("node." ~ nextAttr ~ " = val;");
     }
@@ -381,7 +403,7 @@ struct _LinkedQueue(T, string nextAttr, bool withLength) {
         return head is null;
     }
 
-    void append(T node) {
+    void append(T node) nothrow {
         assert (getNextOf(node) is null && node !is head && node !is tail);
 
         if (empty) {
@@ -393,7 +415,7 @@ struct _LinkedQueue(T, string nextAttr, bool withLength) {
         }
         static if (withLength) length++;
     }
-    void prepend(T node) {
+    void prepend(T node) nothrow {
         assert (getNextOf(node) is null && node !is head && node !is tail);
 
         if (empty) {
@@ -406,7 +428,7 @@ struct _LinkedQueue(T, string nextAttr, bool withLength) {
         static if (withLength) length++;
     }
 
-    T popHead() {
+    T popHead() nothrow {
         assert (!empty);
 
         auto node = head;
@@ -422,13 +444,13 @@ struct _LinkedQueue(T, string nextAttr, bool withLength) {
         return node;
     }
 
-    void removeAll() {
+    void removeAll() nothrow {
         while (!empty) {
             popHead();
         }
     }
 
-    void splice(_LinkedQueue* second) {
+    void splice(_LinkedQueue* second) nothrow {
         assert (second !is &this);
         if (second.empty) {
             return;
@@ -455,12 +477,12 @@ struct _LinkedQueue(T, string nextAttr, bool withLength) {
         @property empty() const pure @safe @nogc nothrow {
             return front is null;
         }
-        void popFront() {
+        void popFront() nothrow {
             assert (front);
             front = getNextOf(front);
         }
     }
-    @property auto range() {
+    @property auto range() nothrow {
         return Range(head);
     }
 
@@ -473,11 +495,11 @@ struct _LinkedQueue(T, string nextAttr, bool withLength) {
         @property T front() pure @safe @nogc nothrow {
             return queue.head;
         }
-        void popFront() {
+        void popFront() nothrow {
             queue.popHead();
         }
     }
-    @property auto consumingRange() {
+    @property auto consumingRange() nothrow {
         return ConsumingRange(&this);
     }
 }
