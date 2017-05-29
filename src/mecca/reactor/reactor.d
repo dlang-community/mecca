@@ -1,6 +1,7 @@
 module mecca.reactor.reactor;
 
 import std.exception;
+import std.string;
 
 import mecca.containers.lists;
 import mecca.reactor.fibril: Fibril;
@@ -212,6 +213,8 @@ struct Reactor {
     private void switchToNext() {
         assert (!isInCriticalSection);
 
+        import std.stdio; writefln("SWITCH out of %s", thisFiber.identity);
+
         // in source fiber
         {
             //if (thisFiber !is callbacksFiber && !callbacksFiber.flag!"IN_SCHEDULED" && shouldRunTimedCallbacks()) {
@@ -233,6 +236,8 @@ struct Reactor {
             // make the switch
             prevFiber.fibril.switchTo(thisFiber.fibril);
         }
+
+        import std.stdio; writefln("SWITCH into %s", thisFiber.identity);
 
         // in destination fiber
         {
@@ -276,10 +281,9 @@ struct Reactor {
             assert (scheduledFibers.head is fib);
         }
         else {
-            assert (false);
+            assert (false, "state=%s".format(fib.state));
         }
     }
-
 
     private void resumeFiber(ReactorFiber* fib) {
         assert (!fib.flag!"SPECIAL");
@@ -311,11 +315,11 @@ struct Reactor {
         return fib;
     }
 
-    /+public FiberHandle spawnFiber(alias F)(Parameters!F args) {
+    public FiberHandle spawnFiber(T...)(T args) {
         auto fib = _spawnFiber(false);
-        fib.params.closure.set!F(args);
+        fib.params.closure.set(args);
         return FiberHandle(fib);
-    }+/
+    }
 
     @property bool isIdle() pure const nothrow @nogc {
         return thisFiber is idleFiber;
@@ -355,6 +359,8 @@ struct Reactor {
 
         thisFiber = mainFiber;
         scope(exit) thisFiber = null;
+
+        import std.stdio; writeln("MAINLOOP");
 
         while (_running) {
             /+with (criticalSection) {
@@ -399,10 +405,10 @@ struct Reactor {
         return CriticalSection();
     }
 
-    /+void yieldThisFiber() {
+    void yieldThisFiber() {
         resumeFiber(thisFiber);
         suspendThisFiber();
-    }+/
+    }
 }
 
 
@@ -419,12 +425,13 @@ unittest {
     static void fibFunc(int x) {
         foreach(i; 0 .. 10) {
             writeln(x);
+            theReactor.yieldThisFiber();
         }
         theReactor.stop();
     }
 
-    //theReactor.spawnFiber!fibFunc(10);
-    //theReactor.spawnFiber!fibFunc(20);
+    theReactor.spawnFiber(&fibFunc, 10);
+    //theReactor.spawnFiber(&fibFunc, 20);
     theReactor.mainloop();
 }
 

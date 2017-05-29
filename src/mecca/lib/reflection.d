@@ -2,6 +2,7 @@ module mecca.lib.reflection;
 
 public import std.traits;
 public import std.meta;
+import std.stdint: intptr_t;
 
 
 template CapacityType(size_t n) {
@@ -28,104 +29,91 @@ unittest {
 
 
 struct _Closure(size_t ARGS_SIZE) {
-    private void function(void*) wrapper;
+private:
+    void*                 _funcptr;
+    intptr_t              _wrapper;
     union {
-        struct {
-            private void* _funcptr;
-            private void* _ctx;
-        }
-        private void[ARGS_SIZE + _funcptr.sizeof] argsBuf;
+        void delegate()   _dg;
+        ubyte[ARGS_SIZE]  argsBuf;
     }
 
-    @property const(void*) funcptr() const pure nothrow @trusted @nogc {
-        return _funcptr;
-    }
-    @property bool isSet() const pure nothrow @trusted @nogc {
-        return _funcptr !is null;
-    }
-    bool opCast(T: bool)() const pure nothrow @safe @nogc {
-        return isSet();
-    }
-    void clear() nothrow @nogc {
-        wrapper = null;
-        argsBuf.asBytes[] = 0;
-    }
+public:
+    @property const(void*) funcptr() const pure @nogc nothrow @safe {return _funcptr;}
+    bool opCast(T: bool)() const pure @nogc nothrow {return _funcptr !is null;}
+    @property bool isSet(T: bool)() const pure @nogc nothrow {return _funcptr !is null;}
 
-    void set(void function() fn) {
-        static void fnWrapper(void* fn) {
-            (cast(void function())fn)();
-        }
+    ref auto opAssign(typeof(null)) pure @nogc nothrow {clear(); return this;}
+    ref auto opAssign(void function() fn) pure @nogc nothrow {set(fn); return this;}
+    ref auto opAssign(void delegate() dg) pure @nogc nothrow {set(dg); return this;}
+
+    void clear() pure @safe nothrow @nogc {
+        _funcptr = null;
+        _wrapper = 0;
+        argsBuf[] = 0;
+    }
+    void set(void function() fn) pure @nogc nothrow {
         _funcptr = fn;
-        argsBuf.asBytes[(void*).sizeof .. $] = 0;
-        wrapper = &fnWrapper;
+        _wrapper = 0;
+        argsBuf[] = 0;
+    }
+    void set(void delegate() dg) pure @nogc nothrow {
+        _funcptr = dg.funcptr;
+        _wrapper = 1;
+        _dg = dg;
+        argsBuf[dg.sizeof .. $] = 0;
     }
 
-    void set(void delegate() dg) {
-        static void dgWrapper(void* fn) {
-            (cast(void delegate())fn)();
+    void set(T...)(void function(T) fn, T args) pure @nogc nothrow {
+        struct Typed {T args;}
+        static assert (Typed.sizeof <= argsBuf.sizeof);
+        static void wrapper(_Closure* c) {
+            (cast(void function(T))c._funcptr)((cast(Typed*)c.argsBuf.ptr).args);
+        }
+
+        _funcptr = fn;
+        _wrapper = cast(intptr_t)&wrapper;
+        (cast(Typed*)argsBuf.ptr).args = args;
+        argsBuf[Typed.sizeof .. $] = 0;
+    }
+
+    void set(T...)(void delegate(T) dg, T args) pure @nogc nothrow {
+        struct Typed {void delegate(T) dg; T args;}
+        static assert (Typed.sizeof <= argsBuf.sizeof);
+        static void wrapper(_Closure* c) {
+            auto typed = (cast(Typed*)c.argsBuf.ptr);
+            typed.dg(typed.args);
         }
 
         _funcptr = dg.funcptr;
-        _ctx = dg.ptr;
-        argsBuf.asBytes[(void*).sizeof * 2 .. $] = 0;
-        wrapper = &dgWrapper;
+        _wrapper = cast(intptr_t)&wrapper;
+        (cast(Typed*)argsBuf.ptr).dg = dg;
+        (cast(Typed*)argsBuf.ptr).args = args;
+        argsBuf[Typed.sizeof .. $] = 0;
     }
 
-
-    /+private void _set(T...)(void* fn, T args) @trusted @nogc {
-        import std.string: format;
-        static struct Typed {
-            void function(T) fn;
-            T args;
-            static void call(void* self) {
-                (cast(Typed*)self).fn((cast(Typed*)self).args);
-            }
+    void setF(alias F)(Parameters!F args) pure @nogc nothrow {
+        struct Typed {staticMap!(Unqual, Parameters!F) args;}
+        static void wrapper(_Closure* c) {
+            F((cast(Typed*)c.argsBuf.ptr).args);
         }
-        static assert (Typed.sizeof <= argsBuf.length, "args require %s bytes, %s available".format(
-                Typed.sizeof - (void*).sizeof, argsBuf.length - (void*).sizeof));
 
-        Typed* typed = cast(Typed*)argsBuf.ptr;
-        typed.fn = cast(void function(T))fn;
-        typed.args = args;
-        (cast(ubyte[])argsBuf[Typed.sizeof .. $])[] = 0;   // don't leave dangling pointers
-        wrapper = &Typed.call;
-    }+/
-
-    /+
-    void set(T...)(void function(T) fn, T args) nothrow @nogc {
-        _set(fn, args);
+        _funcptr = &F;
+        _wrapper = cast(intptr_t)&wrapper;
+        (cast(Typed*)argsBuf.ptr).args = args;
+        argsBuf[Typed.sizeof .. $] = 0;
     }
-    void set(T...)(void delegate(T) dg, T args) nothrow @nogc {
-        // XXX: ABI
-        _set(dg.funcptr, args, dg.ptr);
-    }
-
-    void setF(alias F)(Parameters!F args) @trusted @nogc {
-        static assert (is(ReturnType!F == void));
-
-        import std.string: format;
-        static struct Typed {
-            Parameters!F args;
-            static void call(void* self) {
-                F((cast(Typed*)self).args);
-            }
-        }
-        static assert (Typed.sizeof <= argsBuf.length, "args require %s bytes, %s available".format(
-                Typed.sizeof, argsBuf.length));
-
-        Typed* typed = cast(Typed*)argsBuf.ptr;
-        typed.args = args;
-        (cast(ubyte[])argsBuf[Typed.sizeof .. $])[] = 0;   // don't leave dangling pointers
-        wrapper = &Typed.call;
-    }+/
-
-    ref typeof(this) opAssign(typeof(null) fn) {clear(); return this;}
-    ref typeof(this) opAssign(void function() fn) {set(fn); return this;}
-    ref typeof(this) opAssign(void delegate() dg) {set(dg); return this;}
 
     void opCall() {
         pragma(inline, true);
-        wrapper(argsBuf.ptr);
+        if (_wrapper == 0) {
+            (cast(void function())funcptr)();
+        }
+        else if (_wrapper == 1) {
+            _dg();
+        }
+        else {
+            (cast(void function(_Closure*))_wrapper)(&this);
+        }
     }
 }
 
