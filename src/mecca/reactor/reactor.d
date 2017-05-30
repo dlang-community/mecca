@@ -4,13 +4,15 @@ import std.exception;
 import std.string;
 
 import mecca.containers.lists;
+import mecca.containers.arrays;
 import mecca.reactor.fibril: Fibril;
 import mecca.lib.time;
 import mecca.lib.reflection;
 import mecca.lib.memory;
 import core.memory: GC;
-import core.sys.posix.sys.mman: mprotect, PROT_NONE;
+import core.sys.posix.sys.mman: munmap, mprotect, PROT_NONE;
 
+import std.stdio;
 
 
 struct ReactorFiber {
@@ -22,17 +24,13 @@ struct ReactorFiber {
         ubyte[FLS_BLOCK_SIZE] flsBlock;
     }
     enum Flags: ubyte {
-        IS_SET         = 0x01,
-        SPECIAL        = 0x02,
-        PRIORITIZED    = 0x04,
-        //HAS_EXCEPTION  = 0x10,
+        CALLBACK_SET   = 0x01,
+        SCHEDULED      = 0x02,
+        RUNNING        = 0x04,
+        SPECIAL        = 0x08,
+        IMMEDIATE      = 0x10,
+        //HAS_EXCEPTION  = 0x20,
         //REQUEST_BT     = 0x40,
-    }
-    enum State: ubyte {
-        FREE,
-        SCHEDULED,
-        PENDING,
-        RUNNING,
     }
 
 align(1):
@@ -41,8 +39,7 @@ align(1):
     ReactorFiber*  _next;
     uint           incarnationCounter;
     ubyte          _flags;
-    State          state;
-    ubyte[2]       _reserved;
+    ubyte[3]       _reserved;
 
     static assert (this.sizeof == 32);  // keep it small and cache-line friendly
 
@@ -58,7 +55,6 @@ align(1):
         _next = null;
         incarnationCounter = 0;
         _flags = 0;
-        state = State.FREE;
     }
 
     void teardown() nothrow @nogc {
@@ -91,8 +87,10 @@ align(1):
 
     private void wrapper() nothrow {
         while (true) {
+            try{writefln("wrapper on %s flags=0x%0x", identity, _flags);} catch (Throwable){}
+
             assert (theReactor.thisFiber is &this, "this is wrong");
-            assert (state == State.RUNNING);
+            assert (flag!"RUNNING");
             Throwable ex = null;
 
             try {
@@ -102,8 +100,11 @@ align(1):
                 ex = ex2;
             }
 
+            try{writefln("wrapper finished on %s, ex=%s", identity, ex);} catch (Throwable){}
+
             params.closure.clear();
-            state = State.FREE;
+            flag!"RUNNING" = false;
+            flag!"CALLBACK_SET" = false;
             incarnationCounter++;
             theReactor.fiberTerminated(ex);
         }
@@ -144,7 +145,7 @@ struct FiberHandle {
 
 
 struct Reactor {
-    enum NUM_SPECIAL_FIBERS = 3;
+    enum NUM_SPECIAL_FIBERS = 2;
 
     struct Options {
         uint     numFibers = 256;
@@ -168,7 +169,7 @@ struct Reactor {
     ReactorFiber* prevFiber;
     ReactorFiber* mainFiber;
     ReactorFiber* idleFiber;
-    ReactorFiber* callbacksFiber;
+    FixedArray!(void delegate(), 16) idleCallbacks;
 
     void setup() {
         assert (!_open);
@@ -181,10 +182,12 @@ struct Reactor {
 
         thisFiber = null;
         criticalSectionNesting = 0;
+        idleCallbacks.length = 0;
 
         foreach(i, ref fib; allFibers) {
             auto stack = fiberStacks[i * stackPerFib .. (i + 1) * stackPerFib];
-            errnoEnforce(mprotect(stack.ptr, SYS_PAGE_SIZE, PROT_NONE) == 0);
+            //errnoEnforce(mprotect(stack.ptr, SYS_PAGE_SIZE, PROT_NONE) == 0);
+            errnoEnforce(munmap(stack.ptr, SYS_PAGE_SIZE) == 0, "munmap");
             fib.setup(stack[SYS_PAGE_SIZE .. $]);
 
             if (i >= NUM_SPECIAL_FIBERS) {
@@ -194,14 +197,12 @@ struct Reactor {
 
         mainFiber = &allFibers[0];
         mainFiber.flag!"SPECIAL" = true;
+        mainFiber.flag!"CALLBACK_SET" = true;
 
         idleFiber = &allFibers[1];
         idleFiber.flag!"SPECIAL" = true;
+        idleFiber.flag!"CALLBACK_SET" = true;
         idleFiber.params.closure.set(&idleLoop);
-
-        callbacksFiber = &allFibers[2];
-        callbacksFiber.flag!"SPECIAL" = true;
-        callbacksFiber.params.closure.set(&callbacksLoop);
     }
 
     void teardown() {
@@ -210,40 +211,45 @@ struct Reactor {
         fiberStacks.free();
     }
 
-    private void switchToNext() {
-        assert (!isInCriticalSection);
+    @property private bool shouldRunTimedCallbacks() {
+        return false;
+    }
 
-        import std.stdio; writefln("SWITCH out of %s", thisFiber.identity);
+    private void switchToNext() {
+        writefln("SWITCH out of %s", thisFiber.identity);
 
         // in source fiber
         {
-            //if (thisFiber !is callbacksFiber && !callbacksFiber.flag!"IN_SCHEDULED" && shouldRunTimedCallbacks()) {
-            //    resumeSpecialFiber(callbacksFiber);
-            //}
-            //else
-            if (scheduledFibers.empty) {
+            if (thisFiber !is mainFiber && !mainFiber.flag!"SCHEDULED" && shouldRunTimedCallbacks()) {
+                resumeSpecialFiber(mainFiber);
+            }
+            else if (scheduledFibers.empty) {
                 resumeSpecialFiber(idleFiber);
-                // now scheduledFibers is surely not empty
             }
 
             assert (!scheduledFibers.empty, "scheduledList is empty");
 
             prevFiber = thisFiber;
+            prevFiber.flag!"RUNNING" = false;
+
             thisFiber = scheduledFibers.popHead();
-            assert (thisFiber.state == ReactorFiber.State.SCHEDULED);
+            assert (thisFiber.flag!"SCHEDULED");
 
-            thisFiber.state = ReactorFiber.State.RUNNING;
-            // make the switch
-            prevFiber.fibril.switchTo(thisFiber.fibril);
+            thisFiber.flag!"RUNNING" = true;
+            thisFiber.flag!"SCHEDULED" = false;
+
+            if (prevFiber !is thisFiber) {
+                // make the switch
+                prevFiber.fibril.switchTo(thisFiber.fibril);
+            }
         }
-
-        import std.stdio; writefln("SWITCH into %s", thisFiber.identity);
 
         // in destination fiber
         {
             // note that GC cannot happen here since we disabled it in the mainloop() --
             // otherwise this might have been race-prone
             prevFiber.updateStackDescriptor();
+            writefln("SWITCH into %s", thisFiber.identity);
         }
     }
 
@@ -261,56 +267,49 @@ struct Reactor {
             switchToNext();
         }
         catch (Throwable ex2) {
+            try{writeln(ex2);}catch(Throwable){}
             assert(false);
         }
     }
 
-    /+package void suspendThisFiber(Timeout timeout = Timeout.infinite) {
+    package void suspendThisFiber(Timeout timeout = Timeout.infinite) {
         //LOG("suspend");
+        assert (!isInCriticalSection);
         switchToNext();
-    }+/
+    }
 
     private void resumeSpecialFiber(ReactorFiber* fib) {
         assert (fib.flag!"SPECIAL");
+        assert (fib.flag!"CALLBACK_SET");
+        assert (!fib.flag!"SCHEDULED" || scheduledFibers.head is fib);
 
-        if (fib.state == ReactorFiber.State.PENDING) {
-            fib.state = ReactorFiber.State.SCHEDULED;
+        if (!fib.flag!"SCHEDULED") {
+            fib.flag!"SCHEDULED" = true;
             scheduledFibers.prepend(fib);
-        }
-        else if (fib.state == ReactorFiber.State.SCHEDULED) {
-            assert (scheduledFibers.head is fib);
-        }
-        else {
-            assert (false, "state=%s".format(fib.state));
         }
     }
 
     private void resumeFiber(ReactorFiber* fib) {
         assert (!fib.flag!"SPECIAL");
+        assert (fib.flag!"CALLBACK_SET");
 
-        if (fib.state == ReactorFiber.State.PENDING) {
-            fib.state = ReactorFiber.State.SCHEDULED;
-            if (fib.flag!"PRIORITIZED") {
-                fib.flag!"PRIORITIZED" = false;
+        if (!fib.flag!"SCHEDULED") {
+            fib.flag!"SCHEDULED" = true;
+            if (fib.flag!"IMMEDIATE") {
+                fib.flag!"IMMEDIATE" = false;
                 scheduledFibers.prepend(fib);
             }
             else {
                 scheduledFibers.append(fib);
             }
         }
-        else if (fib.state == ReactorFiber.State.SCHEDULED) {
-            // LOG
-        }
-        else {
-            assert (false);
-        }
     }
 
     private ReactorFiber* _spawnFiber(bool immediate) {
         auto fib = freeFibers.popHead();
-        assert (fib.state == ReactorFiber.State.FREE);
-        fib.state = ReactorFiber.State.PENDING;
-        fib.flag!"PRIORITIZED" = immediate;
+        assert (!fib.flag!"CALLBACK_SET");
+        fib.flag!"IMMEDIATE" = immediate;
+        fib.flag!"CALLBACK_SET" = true;
         resumeFiber(fib);
         return fib;
     }
@@ -333,19 +332,30 @@ struct Reactor {
 
     private void idleLoop() {
         while (true) {
+            TscTimePoint start, end;
+            end = start = TscTimePoint.now;
+
             while (scheduledFibers.empty) {
-                import core.thread;
-                import std.stdio;
+                //enterCriticalSection();
+                //scope(exit) leaveCriticalSection();
+                end = TscTimePoint.now;
+                runTimedCallbacks();
+                foreach(cb; idleCallbacks) {
+                    cb();
+                }
+                //if (!options.userlandPolling && nothingToDo) {
+                //    // when idle, sleep on epoll for 8ms
+                //    fetchEpollEventsIdle();
+                //}
                 writeln("idle");
-                Thread.sleep(1.seconds);
+                import core.thread; Thread.sleep(1.seconds);
             }
+            idleCycles += end.diff!"cycles"(start);
             switchToNext();
         }
     }
-    private void callbacksLoop() {
-        while (true) {
-            switchToNext();
-        }
+
+    void runTimedCallbacks() {
     }
 
     void mainloop() {
@@ -360,15 +370,8 @@ struct Reactor {
         thisFiber = mainFiber;
         scope(exit) thisFiber = null;
 
-        import std.stdio; writeln("MAINLOOP");
-
         while (_running) {
-            /+with (criticalSection) {
-                foreach(cb; mainCallbacks) {
-                    cb();
-                }
-                mainCallbacks.length = 0;
-            }+/
+            runTimedCallbacks();
             switchToNext();
         }
     }
@@ -422,16 +425,16 @@ unittest {
     theReactor.setup();
     scope(exit) theReactor.teardown();
 
-    static void fibFunc(int x) {
+    static void fibFunc(string name) {
         foreach(i; 0 .. 10) {
-            writeln(x);
+            writeln(name);
             theReactor.yieldThisFiber();
         }
-        theReactor.stop();
+        //theReactor.stop();
     }
 
-    theReactor.spawnFiber(&fibFunc, 10);
-    //theReactor.spawnFiber(&fibFunc, 20);
+    theReactor.spawnFiber(&fibFunc, "hello");
+    theReactor.spawnFiber(&fibFunc, "world");
     theReactor.mainloop();
 }
 

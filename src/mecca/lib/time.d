@@ -25,6 +25,9 @@ else {
 
 struct TscTimePoint {
     private enum HECTONANO = 10_000_000;
+    enum min = TscTimePoint(long.min);
+    enum zero = TscTimePoint(0);
+    enum max = TscTimePoint(long.max);
 
     static shared immutable long cyclesPerSecond;
     static shared immutable long cyclesPerMsec;
@@ -165,3 +168,26 @@ unittest {
     assert (t0.cycles > 0);
     assert (TscTimePoint.cyclesPerSecond > 1_000_000);
 }
+
+struct Timeout {
+    enum Timeout elapsed = Timeout(TscTimePoint.min);
+    enum Timeout infinite = Timeout(TscTimePoint.max);
+
+    TscTimePoint expiry;
+
+    this(TscTimePoint expiry) {
+        this.expiry = expiry;
+    }
+    this(Duration dur, TscTimePoint now = TscTimePoint.now) {
+        if (dur == Duration.max) {
+            this.expiry = TscTimePoint.max;
+        }
+        else {
+            this.expiry = now + dur;
+        }
+    }
+}
+
+
+
+
