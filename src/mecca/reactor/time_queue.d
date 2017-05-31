@@ -140,7 +140,7 @@ struct CascadingTimeQueue(T, size_t numBins, size_t numLevels) {
     }
 }
 
-unittest {
+/+unittest {
     import std.stdio;
     import std.algorithm: count, map;
     import std.array;
@@ -201,7 +201,7 @@ unittest {
 
     auto e = ctq.pop(e7.timePoint + resolution);
     assert (e is e7, "%s".format(e));
-}
+}+/
 
 /+unittest {
     import std.stdio;
