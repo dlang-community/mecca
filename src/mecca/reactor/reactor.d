@@ -418,7 +418,6 @@ struct Reactor {
 __gshared Reactor theReactor;
 
 
-
 unittest {
     import std.stdio;
 
@@ -430,7 +429,7 @@ unittest {
             writeln(name);
             theReactor.yieldThisFiber();
         }
-        //theReactor.stop();
+        theReactor.stop();
     }
 
     theReactor.spawnFiber(&fibFunc, "hello");
