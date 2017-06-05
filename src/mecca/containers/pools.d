@@ -1,6 +1,7 @@
 module mecca.containers.pools;
 
 import std.string;
+import mecca.lib.memory: MmapArray;
 import mecca.lib.reflection;
 
 
@@ -124,7 +125,79 @@ unittest {
     }
 }
 
+/+struct RCPool(T) {
+    struct Element {
+        void[T.sizeof] data;
 
+        ulong refcount;
+        union {
+            RCPool* pool;
+            Element* next;
+        }
+
+        @disable this(this);
+        @property T* value() @nogc nothrow {
+            return cast(T*)data.ptr;
+        }
+    }
+
+    Element* freeHead;
+    size_t used;
+    MmapArray!Element elements;
+
+    @property auto capacity() const pure nothrow @nogc {
+        assert (elements.ptr !is null);
+        return elements.length;
+    }
+    @property auto numInUse() const pure nothrow @nogc {
+        assert (elements.ptr !is null);
+        return used;
+    }
+    @property auto numAvailable() const pure nothrow @nogc {
+        assert (elements.ptr !is null);
+        return arr.length - used;
+    }
+
+    void open(size_t numElements, bool registerWithGC = false) {
+        elements.allocate(numElements, registerWithGC);
+        foreach(i, ref e; elements[0 .. $-1]) {
+            e.refcount = 0;
+            e.next = &elements[i+1];
+        }
+        elements[$-1].refcount = 0;
+        elements[$-1].next = null;
+        freeHead = &elements[0];
+        used = 0;
+    }
+    void close() {
+        elements.free();
+    }
+
+    T* alloc() {
+        assert (elements.ptr !is null);
+        if (used >= N) {
+            throw new PoolDepleted(typeof(this).stringof ~ " %s depleted".format(&this));
+        }
+        assert (freeHead !is null);
+        auto e = freeHead;
+        used++;
+        freeHead = e.next;
+        e.pool = &this;
+        static if (__traits(hasMember, T, "_poolElementInit")) {
+            e.value._poolElementInit();
+        }
+        else {
+            setToInit(e.value);
+        }
+        return e.value;
+    }
+
+    void incref(T* value) {
+    }
+
+    void decref(T* value) {
+    }
+}+/
 
 
 
