@@ -1,4 +1,4 @@
-module mecca.lib.log;
+module mecca.log;
 
 import std.stdio;
 
@@ -7,23 +7,27 @@ import std.stdio;
    is part of the function's template.
  */
 
-private void internalLogOutput(string TYPE, T...)(string format, T args) {
-    writefln(TYPE ~ " " ~ format, args);
+private void internalLogOutput(string TYPE, T...)(string format, T args) nothrow {
+    try {
+        writefln(TYPE ~ " " ~ format, args);
+    } catch(Throwable ex) {
+        // Oops, writefln threw, and we're nothrow.
+    }
 }
 
-void DEBUG(string format, string file = __FILE__, int line = __LINE__, T...)(T args) {
+void DEBUG(string format, string file = __FILE__, int line = __LINE__, T...)(T args) nothrow {
     internalLogOutput!"DEBUG"("%s:%s " ~ format, file, line, args);
 }
 
-void INFO(string format, string file = __FILE__, int line = __LINE__, T...)(T args) {
+void INFO(string format, string file = __FILE__, int line = __LINE__, T...)(T args) nothrow {
     internalLogOutput!"INFO"("%s:%s " ~ format, file, line, args);
 }
 
-void WARN(string format, string file = __FILE__, int line = __LINE__, T...)(T args) {
+void WARN(string format, string file = __FILE__, int line = __LINE__, T...)(T args) nothrow {
     internalLogOutput!"WARN"("%s:%s " ~ format, file, line, args);
 }
 
-void ERROR(string format, string file = __FILE__, int line = __LINE__, T...)(T args) {
+void ERROR(string format, string file = __FILE__, int line = __LINE__, T...)(T args) nothrow {
     internalLogOutput!"ERROR"("%s:%s " ~ format, file, line, args);
 }
 

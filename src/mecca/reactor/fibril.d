@@ -73,6 +73,7 @@ extern(C) private void _fibril_wrapper(void function(void*) fn /* RDI */, void* 
     import core.stdc.stdlib: abort;
     void writeErr(const(char[]) text) {
         import core.sys.posix.unistd: write;
+        // Write error directly to stderr
         write(2, text.ptr, text.length);
     }
 

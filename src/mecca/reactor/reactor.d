@@ -9,6 +9,7 @@ import mecca.reactor.fibril: Fibril;
 import mecca.lib.time;
 import mecca.lib.reflection;
 import mecca.lib.memory;
+import mecca.log;
 import core.memory: GC;
 import core.sys.posix.sys.mman: munmap, mprotect, PROT_NONE;
 
@@ -87,7 +88,7 @@ align(1):
 
     private void wrapper() nothrow {
         while (true) {
-            try{writefln("wrapper on %s flags=0x%0x", identity, _flags);} catch (Throwable){}
+            INFO!"wrapper on %s flags=0x%0x"(identity, _flags);
 
             assert (theReactor.thisFiber is &this, "this is wrong");
             assert (flag!"RUNNING");
@@ -216,7 +217,7 @@ struct Reactor {
     }
 
     private void switchToNext() {
-        writefln("SWITCH out of %s", thisFiber.identity);
+        DEBUG!"SWITCH out of %s"(thisFiber.identity);
 
         // in source fiber
         {
@@ -249,7 +250,7 @@ struct Reactor {
             // note that GC cannot happen here since we disabled it in the mainloop() --
             // otherwise this might have been race-prone
             prevFiber.updateStackDescriptor();
-            writefln("SWITCH into %s", thisFiber.identity);
+            DEBUG!"SWITCH into %s"(thisFiber.identity);
         }
     }
 
