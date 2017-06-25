@@ -4,4 +4,5 @@
 *.o
 *.a
 mecca-test-library
-
+mecca
+.*.swp
