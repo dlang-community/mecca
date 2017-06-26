@@ -101,7 +101,7 @@ align(1):
                 ex = ex2;
             }
 
-            try{writefln("wrapper finished on %s, ex=%s", identity, ex);} catch (Throwable){}
+            INFO!"wrapper finished on %s, ex=%s"(identity, ex);
 
             params.closure.clear();
             flag!"RUNNING" = false;
@@ -268,7 +268,7 @@ struct Reactor {
             switchToNext();
         }
         catch (Throwable ex2) {
-            try{writeln(ex2);}catch(Throwable){}
+            ERROR!"switchToNext failed with exception %s"(ex2);
             assert(false);
         }
     }
@@ -348,7 +348,7 @@ struct Reactor {
                 //    // when idle, sleep on epoll for 8ms
                 //    fetchEpollEventsIdle();
                 //}
-                writeln("idle");
+                DEBUG!"Reactor idle"();
                 import core.thread; Thread.sleep(1.seconds);
             }
             idleCycles += end.diff!"cycles"(start);
@@ -437,28 +437,3 @@ unittest {
     theReactor.spawnFiber(&fibFunc, "world");
     theReactor.mainloop();
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
