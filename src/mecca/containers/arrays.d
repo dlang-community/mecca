@@ -27,7 +27,6 @@ public:
     @property void length(size_t newLen) {
         assert (newLen <= N);
         static if (InitializeMembers) {
-            // If we're contracting, and the elements have a destructor, call it. Otherwise simply setting to init is enough
             while (_length > newLen) {
                 destroy(data[_length-1]);
                 _length--;

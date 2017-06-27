@@ -404,7 +404,8 @@ struct _LinkedQueue(T, string nextAttr, bool withLength) {
     }
 
     void append(T node) nothrow {
-        assert (getNextOf(node) is null && node !is head && node !is tail);
+        assert (getNextOf(node) is null, "Appending non-free node to list");
+        assert (node !is head && node !is tail, "Appending an invalid node to list");
 
         if (empty) {
             head = tail = node;

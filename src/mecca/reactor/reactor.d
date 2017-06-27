@@ -148,7 +148,7 @@ struct FiberHandle {
 struct Reactor {
     enum NUM_SPECIAL_FIBERS = 2;
     enum MAX_IDLE_CALLBACKS = 16;
-    enum ZERO_DURATION = dur!"seconds"(0);
+    enum ZERO_DURATION = Duration.zero;
 
     struct Options {
         uint     numFibers = 256;
@@ -175,8 +175,12 @@ struct Reactor {
     alias IdleCallbackDlg = void delegate(Duration);
     FixedArray!(IdleCallbackDlg, MAX_IDLE_CALLBACKS) idleCallbacks;
 
+    @property bool isOpen() const pure nothrow @nogc {
+        return _open;
+    }
+
     void setup() {
-        assert (!_open);
+        assert (!_open, "reactor.setup called twice");
         _open = true;
         assert (options.numFibers > NUM_SPECIAL_FIBERS);
 
@@ -213,11 +217,16 @@ struct Reactor {
         options.setToInit();
         allFibers.free();
         fiberStacks.free();
+
+        idleFiber = null;
+        mainFiber = null;
+        _open = false;
     }
 
     void registerIdleCallback(IdleCallbackDlg dg) {
         // You will notice our deliberate lack of function to unregister
         idleCallbacks ~= dg;
+        DEBUG!"%s idle callbacks registered"(idleCallbacks.length);
     }
 
     FiberHandle spawnFiber(T...)(T args) {
@@ -237,6 +246,8 @@ struct Reactor {
     }
 
     void start() {
+        INFO!"Starting reactor"();
+        assert( idleFiber !is null, "Reactor started without calling \"setup\" first" );
         mainloop();
     }
 
@@ -393,15 +404,18 @@ private:
                 //scope(exit) leaveCriticalSection();
                 end = TscTimePoint.now;
                 Duration sleepDuration = runTimedCallbacks();
+                DEBUG!"Got %s idle callbacks registered"(idleCallbacks.length);
                 if( idleCallbacks.length==1 ) {
+                    DEBUG!"idle callback called with duration %s"(sleepDuration);
                     idleCallbacks[0](sleepDuration);
-                } else {
+                } else if ( idleCallbacks.length>1 ) {
                     foreach(cb; idleCallbacks) {
                         cb(ZERO_DURATION);
                     }
+                } else {
+                    WARN!"Idle thread called with no callbacks, sleeping %s"(sleepDuration);
+                    import core.thread; Thread.sleep(sleepDuration);
                 }
-                DEBUG!"Reactor idle"();
-                import core.thread; Thread.sleep(1.seconds);
             }
             idleCycles += end.diff!"cycles"(start);
             switchToNext();
