@@ -147,6 +147,8 @@ struct FiberHandle {
 
 struct Reactor {
     enum NUM_SPECIAL_FIBERS = 2;
+    enum MAX_IDLE_CALLBACKS = 16;
+    enum ZERO_DURATION = dur!"seconds"(0);
 
     struct Options {
         uint     numFibers = 256;
@@ -170,7 +172,8 @@ struct Reactor {
     ReactorFiber* prevFiber;
     ReactorFiber* mainFiber;
     ReactorFiber* idleFiber;
-    FixedArray!(void delegate(), 16) idleCallbacks;
+    alias IdleCallbackDlg = void delegate(Duration);
+    FixedArray!(IdleCallbackDlg, MAX_IDLE_CALLBACKS) idleCallbacks;
 
     void setup() {
         assert (!_open);
@@ -212,11 +215,75 @@ struct Reactor {
         fiberStacks.free();
     }
 
-    @property private bool shouldRunTimedCallbacks() {
+    void registerIdleCallback(IdleCallbackDlg dg) {
+        // You will notice our deliberate lack of function to unregister
+        idleCallbacks ~= dg;
+    }
+
+    FiberHandle spawnFiber(T...)(T args) {
+        auto fib = _spawnFiber(false);
+        fib.params.closure.set(args);
+        return FiberHandle(fib);
+    }
+
+    @property bool isIdle() pure const nothrow @nogc {
+        return thisFiber is idleFiber;
+    }
+    @property bool isMain() pure const nothrow @nogc {
+        return thisFiber is mainFiber;
+    }
+    @property bool isSpecialFiber() const nothrow @nogc {
+        return thisFiber.flag!"SPECIAL";
+    }
+
+    void start() {
+        mainloop();
+    }
+
+    void stop() {
+        if (_running) {
+            _running = false;
+            if (thisFiber !is mainFiber) {
+                resumeSpecialFiber(mainFiber);
+            }
+        }
+    }
+
+    void enterCriticalSection() pure nothrow @nogc {
+        pragma(inline, true);
+        criticalSectionNesting++;
+    }
+
+    void leaveCriticalSection() pure nothrow @nogc {
+        pragma(inline, true);
+        assert (criticalSectionNesting > 0);
+        criticalSectionNesting--;
+    }
+    @property bool isInCriticalSection() const pure nothrow @nogc {
+        return criticalSectionNesting > 0;
+    }
+
+    @property auto criticalSection() {
+        pragma(inline, true);
+        struct CriticalSection {
+            @disable this(this);
+            ~this() {theReactor.leaveCriticalSection();}
+        }
+        enterCriticalSection();
+        return CriticalSection();
+    }
+
+    void yieldThisFiber() {
+        resumeFiber(thisFiber);
+        suspendThisFiber();
+    }
+
+private:
+    @property bool shouldRunTimedCallbacks() {
         return false;
     }
 
-    private void switchToNext() {
+    void switchToNext() {
         DEBUG!"SWITCH out of %s"(thisFiber.identity);
 
         // in source fiber
@@ -254,7 +321,7 @@ struct Reactor {
         }
     }
 
-    private void fiberTerminated(Throwable ex) nothrow {
+    void fiberTerminated(Throwable ex) nothrow {
         assert (!thisFiber.flag!"SPECIAL", "special fibers must never terminate");
         assert (ex is null);
 
@@ -273,13 +340,14 @@ struct Reactor {
         }
     }
 
-    package void suspendThisFiber(Timeout timeout = Timeout.infinite) {
+    void suspendThisFiber(Timeout timeout = Timeout.infinite) {
+        assert(timeout == Timeout.infinite, "Timers not yet properly implemented");
         //LOG("suspend");
         assert (!isInCriticalSection);
         switchToNext();
     }
 
-    private void resumeSpecialFiber(ReactorFiber* fib) {
+    void resumeSpecialFiber(ReactorFiber* fib) {
         assert (fib.flag!"SPECIAL");
         assert (fib.flag!"CALLBACK_SET");
         assert (!fib.flag!"SCHEDULED" || scheduledFibers.head is fib);
@@ -290,7 +358,7 @@ struct Reactor {
         }
     }
 
-    private void resumeFiber(ReactorFiber* fib) {
+    void resumeFiber(ReactorFiber* fib) {
         assert (!fib.flag!"SPECIAL");
         assert (fib.flag!"CALLBACK_SET");
 
@@ -306,7 +374,7 @@ struct Reactor {
         }
     }
 
-    private ReactorFiber* _spawnFiber(bool immediate) {
+    ReactorFiber* _spawnFiber(bool immediate) {
         auto fib = freeFibers.popHead();
         assert (!fib.flag!"CALLBACK_SET");
         fib.flag!"IMMEDIATE" = immediate;
@@ -315,23 +383,7 @@ struct Reactor {
         return fib;
     }
 
-    public FiberHandle spawnFiber(T...)(T args) {
-        auto fib = _spawnFiber(false);
-        fib.params.closure.set(args);
-        return FiberHandle(fib);
-    }
-
-    @property bool isIdle() pure const nothrow @nogc {
-        return thisFiber is idleFiber;
-    }
-    @property bool isMain() pure const nothrow @nogc {
-        return thisFiber is mainFiber;
-    }
-    @property bool isSpecialFiber() const nothrow @nogc {
-        return thisFiber.flag!"SPECIAL";
-    }
-
-    private void idleLoop() {
+    void idleLoop() {
         while (true) {
             TscTimePoint start, end;
             end = start = TscTimePoint.now;
@@ -340,14 +392,14 @@ struct Reactor {
                 //enterCriticalSection();
                 //scope(exit) leaveCriticalSection();
                 end = TscTimePoint.now;
-                runTimedCallbacks();
-                foreach(cb; idleCallbacks) {
-                    cb();
+                Duration sleepDuration = runTimedCallbacks();
+                if( idleCallbacks.length==1 ) {
+                    idleCallbacks[0](sleepDuration);
+                } else {
+                    foreach(cb; idleCallbacks) {
+                        cb(ZERO_DURATION);
+                    }
                 }
-                //if (!options.userlandPolling && nothingToDo) {
-                //    // when idle, sleep on epoll for 8ms
-                //    fetchEpollEventsIdle();
-                //}
                 DEBUG!"Reactor idle"();
                 import core.thread; Thread.sleep(1.seconds);
             }
@@ -356,7 +408,9 @@ struct Reactor {
         }
     }
 
-    void runTimedCallbacks() {
+    Duration runTimedCallbacks() {
+        // TODO implement
+        return dur!"seconds"(1);
     }
 
     void mainloop() {
@@ -375,43 +429,6 @@ struct Reactor {
             runTimedCallbacks();
             switchToNext();
         }
-    }
-
-    void stop() {
-        if (_running) {
-            _running = false;
-            if (thisFiber !is mainFiber) {
-                resumeSpecialFiber(mainFiber);
-            }
-        }
-    }
-
-    public void enterCriticalSection() pure nothrow @nogc {
-        pragma(inline, true);
-        criticalSectionNesting++;
-    }
-    public void leaveCriticalSection() pure nothrow @nogc {
-        pragma(inline, true);
-        assert (criticalSectionNesting > 0);
-        criticalSectionNesting--;
-    }
-    @property bool isInCriticalSection() const pure nothrow @nogc {
-        return criticalSectionNesting > 0;
-    }
-
-    @property public auto criticalSection() {
-        pragma(inline, true);
-        struct CriticalSection {
-            @disable this(this);
-            ~this() {theReactor.leaveCriticalSection();}
-        }
-        enterCriticalSection();
-        return CriticalSection();
-    }
-
-    void yieldThisFiber() {
-        resumeFiber(thisFiber);
-        suspendThisFiber();
     }
 }
 
@@ -435,5 +452,5 @@ unittest {
 
     theReactor.spawnFiber(&fibFunc, "hello");
     theReactor.spawnFiber(&fibFunc, "world");
-    theReactor.mainloop();
+    theReactor.start();
 }
