@@ -117,10 +117,10 @@ struct FiberHandle {
     uint identity = uint.max;
     uint incarnation = uint.max;
 
-    this(ReactorFiber* fib) {
+    this(ReactorFiber* fib) @nogc nothrow {
         opAssign(fib);
     }
-    auto ref opAssign(ReactorFiber* fib) {
+    auto ref opAssign(ReactorFiber* fib) @nogc nothrow {
         if (fib) {
             identity = fib.identity;
             incarnation = fib.incarnationCounter;
@@ -140,8 +140,6 @@ struct FiberHandle {
     @property bool isValid() const {
         return get() !is null;
     }
-
-    alias get this;
 }
 
 
@@ -243,6 +241,11 @@ struct Reactor {
     }
     @property bool isSpecialFiber() const nothrow @nogc {
         return thisFiber.flag!"SPECIAL";
+    }
+    @property FiberHandle runningFiberHandle() nothrow @nogc {
+        // XXX This assert may be incorrect, but it is easier to remove an assert than to add one
+        assert(!isSpecialFiber, "Should not blindly get fiber handle of special fibers");
+        return FiberHandle(thisFiber);
     }
 
     void start() {
@@ -351,7 +354,7 @@ private:
         }
     }
 
-    void suspendThisFiber(Timeout timeout = Timeout.infinite) {
+    package void suspendThisFiber(Timeout timeout = Timeout.infinite) {
         assert(timeout == Timeout.infinite, "Timers not yet properly implemented");
         //LOG("suspend");
         assert (!isInCriticalSection);
@@ -367,6 +370,10 @@ private:
             fib.flag!"SCHEDULED" = true;
             scheduledFibers.prepend(fib);
         }
+    }
+
+    package void resumeFiber(FiberHandle handle) {
+        resumeFiber(handle.get());
     }
 
     void resumeFiber(ReactorFiber* fib) {
