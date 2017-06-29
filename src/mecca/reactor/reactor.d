@@ -151,7 +151,6 @@ struct Reactor {
     struct Options {
         uint     numFibers = 256;
         size_t   fiberStackSize = 32*1024;
-        uint     maxFDs = 1024;
         Duration gcInterval = 30.seconds;
     }
 
@@ -216,8 +215,15 @@ struct Reactor {
         allFibers.free();
         fiberStacks.free();
 
-        idleFiber = null;
+        setToInit(freeFibers);
+        setToInit(scheduledFibers);
+
+        thisFiber = null;
+        prevFiber = null;
         mainFiber = null;
+        idleFiber = null;
+        idleCallbacks.length = 0;
+
         _open = false;
     }
 
