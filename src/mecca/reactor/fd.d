@@ -9,6 +9,7 @@ import std.traits;
 
 import unistd = core.sys.posix.unistd;
 import fcntl = core.sys.posix.fcntl;
+import socket = core.sys.posix.sys.socket : sockaddr, msghdr;
 
 import mecca.reactor.reactor;
 import mecca.containers.pools;
@@ -71,27 +72,40 @@ public:
         writeFd = FD(fds[1], true);
     }
 
-    auto opDispatch(string funcName, T...)(T args) {
-        return FDFunctionParser!funcName.proxyCall(this, args);
-    }
+    // We could use opDispatch here, and in fact, already had the code written and working. I (Shachar) then realized that opDispatch SFINAE
+    // behavior is disastrous when the user makes a mistake. With opDispatch, the following code:
+    // fd.read("buffer".ptr, 6);
+    // Results in an error:
+    // FD has no property read
+    // which is *really* confusing, whereas this way, it will say:
+    // Cannot convert argument 1 from immutable(char)* to void*
+    // Which tells you what you did wrong.
+    mixin(FDFunctionParser!(unistd, "write").genFunction);
+    mixin(FDFunctionParser!(unistd, "read").genFunction);
+    mixin(FDFunctionParser!(socket, "send").genFunction);
+    mixin(FDFunctionParser!(socket, "sendto").genFunction);
+    mixin(FDFunctionParser!(socket, "sendmsg").genFunction);
+    mixin(FDFunctionParser!(socket, "recv").genFunction);
+    mixin(FDFunctionParser!(socket, "recvfrom").genFunction);
+    mixin(FDFunctionParser!(socket, "recvmsg").genFunction);
 private:
     // CTFE helper
-    struct FDFunctionParser(string funcName) {
-        alias func = Alias!(__traits(getMember, unistd, funcName));
+    struct FDFunctionParser(alias modul, string funcName) {
+        // DMDBUG issue 17571
+        alias func = Alias!(__traits(getMember, modul, funcName));
         alias RetType = ReturnType!func;
         alias Params = Parameters!func;
         alias CompactParams = Params[1..$];
-        //alias ProxyParams = AliasSeq!(FD*, ParametersTuple[1..$]);
-        //pragma(msg, ProxyParams);
 
         @property static bool isFDHandler() {
             // FD handlers need to return a signed integer, so we can test for error using <0
             static if (!isIntegral!RetType || !isSigned!RetType) {
+                pragma(msg, funcName, " does not return a signed integer. Not an FD handler")
                 return false;
             }
 
             static if( !is( Params[0] == int ) ) {
-                // first argument is not a file descriptor
+                pragma(msg, funcName, " first argument is not a file descriptor. Not an FD handler")
                 return false;
             }
 
@@ -113,6 +127,41 @@ private:
                 } while( again );
 
                 return res;
+            }
+
+            static string genFunction() {
+                import std.string: format;
+
+                enum numArgs = CompactParams.length;
+                string argsDeclList() {
+                    string ret;
+
+                    foreach(i, arg; CompactParams) {
+                        if( i!=0 )
+                            ret ~= ", ";
+                        ret ~= "%s arg%s".format(arg.stringof, i);
+                    }
+
+                    return ret;
+                }
+
+                string argsList() {
+                    string ret;
+
+                    foreach(i, arg; CompactParams) {
+                        if( i!=0 )
+                            ret ~= ", ";
+                        ret ~= "arg%s".format(i);
+                    }
+
+                    return ret;
+                }
+
+                return q{
+                    %s %s(%s) {
+                        return %s.proxyCall(this, %s);
+                    }
+                }.format(RetType.stringof, funcName, argsDeclList(), typeof(this).stringof, argsList());
             }
         }
     }
