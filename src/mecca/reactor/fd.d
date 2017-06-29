@@ -63,41 +63,58 @@ public:
         }
     }
 
-    auto opDispatch(string funcName, T...)(T args) if( isIntegral!(ReturnType!( __traits(getMember, unistd, funcName) )) ) {
-        // TODO have T deduced from funcName rather than from the caller. Current way needlessly creates multiple instantiations of the same
-        // function.
-
-        // DMDBUG the following line does not compile: Error: basic type expected, not __traits
-        // alias func = __traits(getMember, unistd, funcName);
-        alias func = Alias!(__traits(getMember, unistd, funcName));
-        alias RetType = ReturnType!func;
-        /+
-        pragma(msg, funcName);
-        pragma(msg, RetType);
-        pragma(msg, Parameters!func);
-        pragma(msg, T);
-        +/
-        RetType res;
-        bool again;
-
-        do {
-            again = false;
-            res = func(this.fd, args);
-            if( res<0 && errno == EAGAIN ) {
-                again = true;
-                epoller.waitForEvent(ctx); // Makes sure that the epoll will wake us up when we can try again. May result in false wakeups
-            }
-        } while( again );
-
-        return res;
-    }
-
     static void pipe(out FD readFd, out FD writeFd) {
         int[2] fds;
         int res = pipe2(&fds, fcntl.O_NONBLOCK);
         errnoEnforce(res>=0, "Failed to create anonymous pipe");
         readFd = FD(fds[0], true);
         writeFd = FD(fds[1], true);
+    }
+
+    auto opDispatch(string funcName, T...)(T args) {
+        return FDFunctionParser!funcName.proxyCall(this, args);
+    }
+private:
+    // CTFE helper
+    struct FDFunctionParser(string funcName) {
+        alias func = Alias!(__traits(getMember, unistd, funcName));
+        alias RetType = ReturnType!func;
+        alias Params = Parameters!func;
+        alias CompactParams = Params[1..$];
+        //alias ProxyParams = AliasSeq!(FD*, ParametersTuple[1..$]);
+        //pragma(msg, ProxyParams);
+
+        @property static bool isFDHandler() {
+            // FD handlers need to return a signed integer, so we can test for error using <0
+            static if (!isIntegral!RetType || !isSigned!RetType) {
+                return false;
+            }
+
+            static if( !is( Params[0] == int ) ) {
+                // first argument is not a file descriptor
+                return false;
+            }
+
+            return true;
+        }
+
+        static if( isFDHandler() ) {
+            static RetType proxyCall(ref FD fd, CompactParams args) {
+                RetType res;
+                bool again;
+
+                do {
+                    again = false;
+                    res = func(fd.fd, args);
+                    if( res<0 && errno == EAGAIN ) {
+                        again = true;
+                        epoller.waitForEvent(fd.ctx); // Makes sure that the epoll will wake us up when we can try again. May result in false wakeups
+                    }
+                } while( again );
+
+                return res;
+            }
+        }
     }
 }
 
@@ -212,7 +229,7 @@ unittest {
 
         // Send 128MB over the pipe
         ssize_t res;
-        while((res = pipeRead.opDispatch!"read"(buffer.ptr, BUFF_SIZE))>0) {
+        while((res = pipeRead.read(buffer.ptr, BUFF_SIZE))>0) {
             DEBUG!"Received %s bytes"(res);
             assert(res==BUFF_SIZE, "Short read from pipe");
             assert(buffer[0] == ++lastNum, "Read incorrect value from buffer");
