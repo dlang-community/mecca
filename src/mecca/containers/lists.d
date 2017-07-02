@@ -486,23 +486,6 @@ struct _LinkedQueue(T, string nextAttr, bool withLength) {
     @property auto range() nothrow {
         return Range(head);
     }
-
-    static struct ConsumingRange {
-        _LinkedQueue* queue;
-
-        @property empty() const pure @safe @nogc nothrow {
-            return queue.empty;
-        }
-        @property T front() pure @safe @nogc nothrow {
-            return queue.head;
-        }
-        void popFront() nothrow {
-            queue.popHead();
-        }
-    }
-    @property auto consumingRange() nothrow {
-        return ConsumingRange(&this);
-    }
 }
 
 alias LinkedQueue(T, string nextAttr="_next") = _LinkedQueue!(T, nextAttr, false);
@@ -550,7 +533,7 @@ unittest {
     matchElements(queue.range, [9, 8, 7, 0, 1, 2, 3, 4, 5, 6]);
     assert (!queue.empty);
 
-    matchElements(queue.consumingRange, [9, 8, 7, 0, 1, 2, 3, 4, 5, 6]);
+    queue.removeAll();
     assert (queue.empty);
 
     LinkedQueue!(Node*) queue2;

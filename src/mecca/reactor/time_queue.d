@@ -53,14 +53,14 @@ struct CascadingTimeQueue(T, size_t numBins, size_t numLevels) {
         version (unittest) {
             stats[0]++;
         }
-        if (!reinsert(entry)) {
+        if (!_insert(entry)) {
             throw new TooFarAhead("tp=%s baseTime=%s poppedTime=%s (%.3fs in future) offset=%s resolutionCycles=%s".format(
                     entry.timePoint, baseTime, poppedTime, (entry.timePoint - baseTime).total!"msecs" / 1000.0,
                             offset, resolutionCycles));
         }
     }
 
-    private bool reinsert(T entry) {
+    private bool _insert(T entry) {
         if (entry.timePoint <= poppedTime) {
             bins[0][offset % numBins].append(entry);
             return true;
@@ -126,8 +126,9 @@ struct CascadingTimeQueue(T, size_t numBins, size_t numLevels) {
             enum magnitude = numBins ^^ level;
             assert (offset >= magnitude, "level=%s offset=%s mag=%s".format(level, offset, magnitude));
             auto binToClear = &bins[level][(offset / magnitude - 1) % numBins];
-            foreach(e; binToClear.consumingRange()) {
-                auto succ = reinsert(e);
+            while ( !binToClear.empty ) {
+                auto e = binToClear.popHead();
+                auto succ = _insert(e);
                 /+assert (succ && e._chain.owner !is null && e._chain.owner !is binToClear,
                     "reinstered succ=%s tp=%s level=%s baseTime=%s poppedTime=%s offset=%s resolutionCycles=%s".format(
                         succ, e.timePoint, level, baseTime, poppedTime, offset, resolutionCycles));+/
@@ -140,7 +141,7 @@ struct CascadingTimeQueue(T, size_t numBins, size_t numLevels) {
     }
 }
 
-/+unittest {
+unittest {
     import std.stdio;
     import std.algorithm: count, map;
     import std.array;
@@ -186,7 +187,7 @@ struct CascadingTimeQueue(T, size_t numBins, size_t numLevels) {
         }
         then = now;
     }
-    assert (entries.length == 0);
+    assert (entries.length == 0, "Entries not empty: %s".format(entries));
 
     auto e7 = insert(ctq.baseTime + resolution * (ctq.spanInBins - 1), "e7");
 
@@ -201,7 +202,7 @@ struct CascadingTimeQueue(T, size_t numBins, size_t numLevels) {
 
     auto e = ctq.pop(e7.timePoint + resolution);
     assert (e is e7, "%s".format(e));
-}+/
+}
 
 /+unittest {
     import std.stdio;
