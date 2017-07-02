@@ -211,6 +211,10 @@ struct Reactor {
     }
 
     void teardown() {
+        assert(_open, "reactor teardown called on non-open reactor");
+        assert(!_running, "reactor teardown called on still running reactor");
+        assert(criticalSectionNesting==0);
+
         options.setToInit();
         allFibers.free();
         fiberStacks.free();
@@ -223,6 +227,7 @@ struct Reactor {
         mainFiber = null;
         idleFiber = null;
         idleCallbacks.length = 0;
+        idleCycles = 0;
 
         _open = false;
     }
@@ -300,6 +305,7 @@ struct Reactor {
 
 private:
     @property bool shouldRunTimedCallbacks() {
+        // TODO timers
         return false;
     }
 
