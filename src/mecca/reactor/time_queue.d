@@ -204,7 +204,7 @@ unittest {
     assert (e is e7, "%s".format(e));
 }
 
-/+unittest {
+unittest {
     import std.stdio;
     import mecca.containers.pools;
     import std.algorithm: min;
@@ -227,9 +227,9 @@ unittest {
         return (hns / HECTONANO) * cyclesPerSecond + ((hns % HECTONANO) * cyclesPerSecond) / HECTONANO;
     }
 
-    void testCTQ(size_t numBins, size_t numLevels)(Duration resolutionDur, size_t numElems) {
-        FixedPool!Entry pool;
-        CascadingTimeQueue!(pool.Ptr, numBins, numLevels) ctq;
+    void testCTQ(size_t numBins, size_t numLevels, size_t numElems)(Duration resolutionDur) {
+        FixedPool!(Entry, numElems) pool;
+        CascadingTimeQueue!(Entry*, numBins, numLevels) ctq;
 
         TscTimePoint now = t0;
         long totalInserted = 0;
@@ -240,8 +240,7 @@ unittest {
         long before = toCycles(10.msecs);
         long ahead = toCycles(span/2);
 
-        pool.open(numElems);
-        scope(exit) pool.close();
+        pool.reset();
         ctq.open(toCycles(resolutionDur), t0);
 
         //uint seed = 3594633224; //1337;
@@ -267,7 +266,7 @@ unittest {
         }
 
         while (now < end) {
-            while (!pool.full()) {
+            while (pool.numAvailable > 0) {
                 auto e = pool.alloc();
                 e.timePoint = TscTimePoint(uniform(now.cycles - before, min(end.cycles, now.cycles + ahead), rand));
                 e.counter = totalInserted++;
@@ -291,16 +290,16 @@ unittest {
             assert (s > 0, "i=%s s=%s".format(i, s));
         }
 
-        assert (totalInserted - totalPopped == pool.used, "(1) pool.used=%s inserted=%s popped=%s".format(pool.used, totalInserted, totalPopped));
-        assert (totalInserted == totalPopped, "(2) pool.used=%s inserted=%s popped=%s".format(pool.used, totalInserted, totalPopped));
+        assert (totalInserted - totalPopped == pool.numInUse, "(1) pool.used=%s inserted=%s popped=%s".format(pool.numInUse, totalInserted, totalPopped));
+        assert (totalInserted == totalPopped, "(2) pool.used=%s inserted=%s popped=%s".format(pool.numInUse, totalInserted, totalPopped));
         assert (totalInserted > numElems * 2, "totalInserted=%s".format(totalInserted));
     }
 
     int numRuns = 0;
     foreach(numElems; [10_000 /+, 300, 1000, 4000, 5000+/]) {
         // spans 878s
-        testCTQ!(256, 3)(50.usecs, 10_000);
+        testCTQ!(256, 3, 10_000)(50.usecs);
         numRuns++;
     }
     assert (numRuns > 0);
-}+/
+}
