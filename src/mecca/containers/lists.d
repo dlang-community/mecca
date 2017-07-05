@@ -1,5 +1,7 @@
 module mecca.containers.lists;
 
+import std.traits;
+
 import mecca.lib.memory: prefetch;
 
 
@@ -16,10 +18,28 @@ struct _LinkedList(T, string nextAttr, string prevAttr, string ownerAttr, bool w
     }
     enum withOwner = ownerAttr.length > 0;
 
+    private enum MAY_PREFETCH = __traits(compiles, {T t; prefetch(t);});
+
+    static if(isPointer!T) pure nothrow @nogc {
+        private static bool isValid(const T t) {
+            return t !is null;
+        }
+
+        enum invalid = null;
+    } else {
+        private static bool isValid(const T t) {
+            return t.isValid;
+        }
+
+        enum invalid = T.invalid;
+    }
+
+    static assert (!isValid(invalid), "invalid is valid for type " ~ T.stringof);
+
     static T getNextOf(T node) nothrow {
         pragma(inline, true);
         T tmp = mixin("node." ~ nextAttr);
-        prefetch(tmp);
+        static if(MAY_PREFETCH) prefetch(tmp);
         return tmp;
     }
     static void setNextOf(T node, T val) nothrow {
@@ -30,7 +50,7 @@ struct _LinkedList(T, string nextAttr, string prevAttr, string ownerAttr, bool w
     static T getPrevOf(T node) nothrow {
         pragma(inline, true);
         T tmp = mixin("node." ~ prevAttr);
-        prefetch(tmp);
+        static if (MAY_PREFETCH) prefetch(tmp);
         return tmp;
     }
     static void setPrevOf(T node, T val) nothrow {
@@ -50,16 +70,16 @@ struct _LinkedList(T, string nextAttr, string prevAttr, string ownerAttr, bool w
     }
 
     @property bool empty() const pure nothrow {
-        static if (withLength) assert (head !is null || length == 0, "head is null but length != 0");
-        return head is null;
+        static if (withLength) assert (isValid(head) || length == 0, "head is null but length != 0");
+        return !isValid(head);
     }
     @property T tail() nothrow {
-        static if (withLength) assert (head !is null || length == 0, "head is null but length != 0");
-        return head is null ? null : getPrevOf(head);
+        static if (withLength) assert (isValid(head) || length == 0, "head is null but length != 0");
+        return isValid(head) ? getPrevOf(head) : invalid;
     }
 
     bool _insert(bool after)(T anchor, T node) nothrow {
-        assert (node !is null, "appending null");
+        assert (isValid(node), "appending null");
 
         static if (withOwner) {
             assert (anchor is null || getOwnerOf(anchor) is &this, "anchor does not belong to this list");
@@ -70,11 +90,11 @@ struct _LinkedList(T, string nextAttr, string prevAttr, string ownerAttr, bool w
             assert (owner is null, "owner already set");
             mixin("node." ~ ownerAttr ~ " = &this;");
         }
-        assert (getNextOf(node) is null, "next is linked");
-        assert (getPrevOf(node) is null, "prev is linked");
+        assert (!isValid(getNextOf(node)), "next is linked");
+        assert (!isValid(getPrevOf(node)), "prev is linked");
 
-        if (head is null) {
-            assert (anchor is null);
+        if (!isValid(head)) {
+            assert (!isValid(anchor));
             static if (withLength) assert (length == 0);
             head = node;
             setNextOf(node, node);
@@ -121,7 +141,7 @@ struct _LinkedList(T, string nextAttr, string prevAttr, string ownerAttr, bool w
     }
 
     bool remove(T node) nothrow {
-        assert (node);
+        assert (isValid(node));
         assert (!empty);
 
         static if (withOwner) {
@@ -136,9 +156,9 @@ struct _LinkedList(T, string nextAttr, string prevAttr, string ownerAttr, bool w
         if (getNextOf(head) is head) {
             // single element
             assert (node is head);
-            setNextOf(node, null);
-            setPrevOf(node, null);
-            head = null;
+            setNextOf(node, invalid);
+            setPrevOf(node, invalid);
+            head = invalid;
         }
         else {
             auto p = getPrevOf(node);
@@ -149,8 +169,8 @@ struct _LinkedList(T, string nextAttr, string prevAttr, string ownerAttr, bool w
                 head = n;
             }
         }
-        setNextOf(node, null);
-        setPrevOf(node, null);
+        setNextOf(node, invalid);
+        setPrevOf(node, invalid);
 
         static if (withLength) {
             assert (length > 0);
@@ -178,14 +198,14 @@ struct _LinkedList(T, string nextAttr, string prevAttr, string ownerAttr, bool w
 
     T popHead() nothrow {
         auto node = head;
-        if (node) {
+        if (isValid(node)) {
             remove(node);
         }
         return node;
     }
     T popTail() nothrow {
         auto node = tail;
-        if (node) {
+        if (isValid(node)) {
             remove(node);
         }
         return node;
@@ -208,7 +228,7 @@ struct _LinkedList(T, string nextAttr, string prevAttr, string ownerAttr, bool w
             }
 
             // For safety reasons, `second` is emptied (otherwise pop() from it would break this)
-            second.head = null;
+            second.head = invalid;
             static if (withLength) {
                 length += second.length;
                 second.length = 0;
@@ -217,12 +237,12 @@ struct _LinkedList(T, string nextAttr, string prevAttr, string ownerAttr, bool w
     }
 
     void removeAll() nothrow {
-        while (head) {
+        while (isValid(head)) {
             auto next = getNextOf(head);
-            setPrevOf(head, null);
-            setNextOf(head, null);
+            setPrevOf(head, invalid);
+            setNextOf(head, invalid);
             static if (withOwner) clearOwnerOf(head);
-            head = (next is head) ? null : next;
+            head = (next is head) ? invalid : next;
         }
         static if (withLength) length = 0;
     }
@@ -232,14 +252,14 @@ struct _LinkedList(T, string nextAttr, string prevAttr, string ownerAttr, bool w
         T front;
 
         @property bool empty() const pure nothrow @nogc {
-            return front is null;
+            return !isValid(front);
         }
         void popFront() nothrow {
-            assert (list);
-            assert (front);
+            assert (list !is null);
+            assert (isValid(front));
             front = getNextOf(front);
             if (front is list.head) {
-                front = null;
+                front = invalid;
             }
         }
     }
@@ -252,14 +272,14 @@ struct _LinkedList(T, string nextAttr, string prevAttr, string ownerAttr, bool w
         T front;
 
         @property bool empty() const pure nothrow @nogc {
-            return front is null;
+            return !isValid(front);
         }
         void popFront() nothrow {
             assert (list);
-            assert (front);
+            assert (isValid(front));
             front = getPrevOf(front);
             if (front is list.tail) {
-                front = null;
+                front = invalid;
             }
         }
     }
@@ -346,6 +366,7 @@ unittest {
     import std.stdio;
     import std.string;
 
+    // Linked list using abstracted _next and _prev
     struct Node {
         static Node[10] theNodes;
 
@@ -403,6 +424,75 @@ unittest {
     import std.stdio;
     import std.string;
 
+    // Linked list using abstracted pointer
+    struct Node {
+        static Node[10] theNodes;
+
+        static struct Ptr {
+            ubyte index = ubyte.max;
+
+            @property Node* node() nothrow @nogc {
+                if (index==ubyte.max)
+                    return null;
+
+                return &theNodes[index];
+            }
+
+            @property ref Ptr _prev() nothrow @nogc {
+                return node._prev;
+            }
+
+            @property ref Ptr _next() nothrow @nogc {
+                return node._next;
+            }
+
+            bool isValid() const pure nothrow @nogc {
+                return index != ubyte.max;
+            }
+
+            enum invalid = Ptr.init;
+        }
+
+        int value;
+        Ptr _next;
+        Ptr _prev;
+    }
+
+    foreach(int i, ref n; Node.theNodes) {
+        n.value = 100 + i;
+    }
+
+    LinkedList!(Node.Ptr) list;
+    assert (!list.head.isValid);
+
+    list.append(Node.Ptr(0));
+    assert (list.head.node.value == 100);
+
+    list.append(Node.Ptr(1));
+    list.append(Node.Ptr(2));
+    list.append(Node.Ptr(3));
+    list.append(Node.Ptr(4));
+    list.append(Node.Ptr(5));
+    list.append(Node.Ptr(6));
+    list.append(Node.Ptr(7));
+    list.append(Node.Ptr(8));
+    list.append(Node.Ptr(9));
+    assert (list.head.node.value == 100);
+
+    list.remove(Node.Ptr(5));
+    list.remove(Node.Ptr(6));
+
+    int[] arr;
+    foreach(n; list.range) {
+        arr ~= n.node.value;
+    }
+    assert(arr == [100, 101, 102, 103, 104, 107, 108, 109], "Incorrect result: %s".format(arr));
+}
+
+unittest {
+    import std.stdio;
+    import std.string;
+
     struct Node {
         int value;
         Node* _next;
@@ -438,7 +528,6 @@ unittest {
     assert (set.discard(&nodes[1]));
     assert (&nodes[1] !in set);
 }
-
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 //
