@@ -9,11 +9,12 @@ import mecca.lib.memory: prefetch;
 //
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
-struct _LinkedList(T, string nextAttr, string prevAttr, bool withLength) {
+struct _LinkedList(T, string nextAttr, string prevAttr, string ownerAttr, bool withLength) {
     T head;
     static if (withLength) {
         size_t length;
     }
+    enum withOwner = ownerAttr.length > 0;
 
     static T getNextOf(T node) nothrow {
         pragma(inline, true);
@@ -37,6 +38,17 @@ struct _LinkedList(T, string nextAttr, string prevAttr, bool withLength) {
         mixin("node." ~ prevAttr ~ " = val;");
     }
 
+    static if (withOwner) {
+        private static _LinkedList* getOwnerOf(T node) nothrow {
+            pragma(inline, true);
+            mixin("return cast(_LinkedList*)(node." ~ ownerAttr ~ ");");
+        }
+        private static void clearOwnerOf(T node) nothrow {
+            pragma(inline, true);
+            mixin("node." ~ ownerAttr ~ " = null;");
+        }
+    }
+
     @property bool empty() const pure nothrow {
         static if (withLength) assert (head !is null || length == 0, "head is null but length != 0");
         return head is null;
@@ -46,8 +58,18 @@ struct _LinkedList(T, string nextAttr, string prevAttr, bool withLength) {
         return head is null ? null : getPrevOf(head);
     }
 
-    void _insert(bool after)(T anchor, T node) nothrow {
+    bool _insert(bool after)(T anchor, T node) nothrow {
         assert (node !is null, "appending null");
+
+        static if (withOwner) {
+            assert (anchor is null || getOwnerOf(anchor) is &this, "anchor does not belong to this list");
+            auto owner = getOwnerOf(node);
+            if (owner is &this) {
+                return false;
+            }
+            assert (owner is null, "owner already set");
+            mixin("node." ~ ownerAttr ~ " = &this;");
+        }
         assert (getNextOf(node) is null, "next is linked");
         assert (getPrevOf(node) is null, "prev is linked");
 
@@ -81,25 +103,35 @@ struct _LinkedList(T, string nextAttr, string prevAttr, bool withLength) {
         }
 
         static if (withLength) length++;
+        return true;
     }
 
-    void insertAfter(T anchor, T node) nothrow {pragma(inline, true);
-        _insert!true(anchor, node);
+    bool insertAfter(T anchor, T node) nothrow {pragma(inline, true);
+        return _insert!true(anchor, node);
     }
-    void insertBefore(T anchor, T node) nothrow {pragma(inline, true);
-        _insert!false(anchor, node);
-    }
-
-    void append(T node) nothrow {pragma(inline, true);
-        insertAfter(tail, node);
-    }
-    void prepend(T node) nothrow {pragma(inline, true);
-        insertBefore(head, node);
+    bool insertBefore(T anchor, T node) nothrow {pragma(inline, true);
+        return _insert!false(anchor, node);
     }
 
-    void remove(T node) nothrow {
+    bool append(T node) nothrow {pragma(inline, true);
+        return insertAfter(tail, node);
+    }
+    bool prepend(T node) nothrow {pragma(inline, true);
+        return insertBefore(head, node);
+    }
+
+    bool remove(T node) nothrow {
         assert (node);
         assert (!empty);
+
+        static if (withOwner) {
+            auto owner = getOwnerOf(node);
+            if (owner is null) {
+                return false;
+            }
+            assert (owner is &this);
+            clearOwnerOf(node);
+        }
 
         if (getNextOf(head) is head) {
             // single element
@@ -124,6 +156,24 @@ struct _LinkedList(T, string nextAttr, string prevAttr, bool withLength) {
             assert (length > 0);
             length--;
         }
+        return true;
+    }
+
+    static if (withOwner) {
+        bool opBinaryRight(string op: "in")(T node) {
+            return getOwnerOf(node) is &this;
+        }
+
+        static bool discard(T node) {
+            if (auto owner = getOwnerOf(node)) {
+                return owner.remove(node);
+            }
+            else {
+                assert (getNextOf(node) is null, "next is linked");
+                assert (getPrevOf(node) is null, "prev is linked");
+                return false;
+            }
+        }
     }
 
     T popHead() nothrow {
@@ -141,26 +191,29 @@ struct _LinkedList(T, string nextAttr, string prevAttr, bool withLength) {
         return node;
     }
 
-    void splice(_LinkedList* second) nothrow {
-        assert (second !is &this);
-        if (second.empty) {
-            return;
-        }
-        if (empty) {
-            head = second.head;
-        }
-        else {
-            setNextOf(tail, second.head);
-            setPrevOf(second.head, tail);
-            setNextOf(second.tail, head);
-            setPrevOf(head, second.tail);
-        }
+    static if (!withOwner) {
+        void splice(_LinkedList* second) nothrow {
+            assert (second !is &this);
+            if (second.empty) {
+                return;
+            }
+            if (empty) {
+                head = second.head;
+            }
+            else {
+                setNextOf(tail, second.head);
+                setPrevOf(second.head, tail);
+                setNextOf(second.tail, head);
+                setPrevOf(head, second.tail);
+            }
 
-        static if (withLength) length += second.length;
-
-        // For safety reasons, `second` is emptied (otherwise pop() from it would break this)
-        second.head = null;
-        static if (withLength) second.length = 0;
+            // For safety reasons, `second` is emptied (otherwise pop() from it would break this)
+            second.head = null;
+            static if (withLength) {
+                length += second.length;
+                second.length = 0;
+            }
+        }
     }
 
     void removeAll() nothrow {
@@ -168,6 +221,7 @@ struct _LinkedList(T, string nextAttr, string prevAttr, bool withLength) {
             auto next = getNextOf(head);
             setPrevOf(head, null);
             setNextOf(head, null);
+            static if (withOwner) clearOwnerOf(head);
             head = (next is head) ? null : next;
         }
         static if (withLength) length = 0;
@@ -212,27 +266,13 @@ struct _LinkedList(T, string nextAttr, string prevAttr, bool withLength) {
     @property auto reverseRange() nothrow {
         return ReverseRange(&this, tail);
     }
-
-    static struct ConsumingRange {
-        _LinkedList* list;
-
-        @property bool empty() const pure nothrow @nogc {
-            return list.empty;
-        }
-        @property T front() pure nothrow @nogc {
-            return list.head;
-        }
-        void popFront() nothrow {
-            list.popHead();
-        }
-    }
-    @property auto consumingRange() nothrow {
-        return ConsumingRange(&this);
-    }
 }
 
-alias LinkedList(T, string nextAttr="_next", string prevAttr="_prev") = _LinkedList!(T, nextAttr, prevAttr, false);
-alias LinkedListWithLength(T, string nextAttr="_next", string prevAttr="_prev") = _LinkedList!(T, nextAttr, prevAttr, true);
+alias LinkedList(T, string nextAttr="_next", string prevAttr="_prev") = _LinkedList!(T, nextAttr, prevAttr, "", false);
+alias LinkedListWithLength(T, string nextAttr="_next", string prevAttr="_prev") = _LinkedList!(T, nextAttr, prevAttr, "", true);
+
+alias LinkedSet(T, string nextAttr="_next", string prevAttr="_prev", string ownerAttr="_owner") = _LinkedList!(T, nextAttr, prevAttr, ownerAttr, false);
+alias LinkedSetWithLength(T, string nextAttr="_next", string prevAttr="_prev", string ownerAttr="_owner") = _LinkedList!(T, nextAttr, prevAttr, ownerAttr, true);
 
 
 unittest {
@@ -300,14 +340,6 @@ unittest {
 
     list.removeAll();
     assert (list.empty);
-
-    list.append(&nodes[1]);
-    list.append(&nodes[2]);
-    list.append(&nodes[3]);
-
-    matchElements(list.consumingRange, [1, 2, 3]);
-    assert (list.empty);
-
 }
 
 unittest {
@@ -365,6 +397,46 @@ unittest {
         arr ~= n.value;
     }
     assert(arr == [100, 101, 102, 103, 104, 107, 108, 109]);
+}
+
+unittest {
+    import std.stdio;
+    import std.string;
+
+    struct Node {
+        int value;
+        Node* _next;
+        Node* _prev;
+        void* _owner;
+
+        @disable this(this);
+    }
+
+    Node[10] nodes;
+    foreach(int i, ref n; nodes) {
+        n.value = i;
+    }
+
+    LinkedSet!(Node*) set;
+    assert (set.empty);
+
+    assert(set.append(&nodes[1]));
+    assert(set.append(&nodes[2]));
+    assert(set.append(&nodes[3]));
+    assert(!set.append(&nodes[2]));
+
+    assert (&nodes[1] in set);
+    assert (&nodes[2] in set);
+    assert (&nodes[3] in set);
+    assert (&nodes[4] !in set);
+
+    assert (set.remove(&nodes[2]));
+    assert (&nodes[2] !in set);
+
+    assert (!set.remove(&nodes[2]));
+    assert (!set.discard(&nodes[2]));
+    assert (set.discard(&nodes[1]));
+    assert (&nodes[1] !in set);
 }
 
 
