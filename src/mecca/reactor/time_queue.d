@@ -2,6 +2,7 @@ module mecca.reactor.time_queue;
 
 import std.string;
 
+import mecca.log;
 import mecca.lib.time;
 import mecca.lib.reflection;
 import mecca.containers.lists;
@@ -21,7 +22,7 @@ struct CascadingTimeQueue(T, size_t numBins, size_t numLevels) {
     enum spanInBins = numBins*(numBins^^numLevels-1) / (numBins-1);
 
     TscTimePoint baseTime;
-    TscTimePoint poppedTime;
+    TscTimePoint poppedTime; // Marks the END of the bin currently pointed to by offset
     long resolutionCycles;
     S64Divisor resolutionDenom;
     size_t offset;
@@ -35,8 +36,8 @@ struct CascadingTimeQueue(T, size_t numBins, size_t numLevels) {
     }
     void open(long resolutionCycles, TscTimePoint startTime) {
         assert (resolutionCycles > 0);
-        this.baseTime = baseTime;
-        this.poppedTime = baseTime;
+        this.baseTime = startTime;
+        this.poppedTime = startTime;
         this.resolutionCycles = resolutionCycles;
         this.resolutionDenom = S64Divisor(resolutionCycles);
         this.offset = 0;
@@ -84,21 +85,36 @@ struct CascadingTimeQueue(T, size_t numBins, size_t numLevels) {
         LinkedList!T.discard(entry);
     }+/
 
-    @property long cyclesTillNextEntry() {
-        auto now = baseTime.cycles;
-        foreach(i; IOTA!numLevels) {
-            foreach(j; 0 .. numBins) {
-                enum magnitude = numBins ^^ i;
-                if (!bins[i][(offset / magnitude + j) % numBins].empty) {
-                    return now - baseTime.cycles;
-                }
-                now += resolutionCycles * magnitude;
+    Duration timeTillNextEntry(TscTimePoint now) {
+        ulong binsToGo = binsTillNextEntry();
+
+        if( binsToGo == ulong.max )
+            return Duration.max;
+
+        Duration delta = now - poppedTime;
+        Duration wait = TscTimePoint.toDuration(binsToGo * resolutionCycles) - delta;
+        if( wait<Duration.zero )
+            return Duration.zero;
+        return wait;
+    }
+
+    private ulong binsTillNextEntry() {
+        ulong binsToGo;
+        foreach(level; IOTA!numLevels) {
+            enum ResPerBin = numBins ^^ level; // Number of resolution units in a single level bin
+            foreach( bin; ((offset / ResPerBin) % numBins) .. numBins ) {
+                if( !bins[level][bin].empty )
+                    return binsToGo;
+
+                binsToGo += ResPerBin;
             }
         }
-        return -1;
+
+        return ulong.max;
     }
 
     T pop(TscTimePoint now) {
+        // now += resolutionCycles; // Adjust now to account for the fact that poppedTime points to the end of the bin
         while (now >= poppedTime) {
             auto e = bins[0][offset % numBins].popHead();
             if (e !is null) {
@@ -181,7 +197,7 @@ unittest {
         while ((e = ctq.pop(TscTimePoint(now))) !is null) {
             scope(failure) writefln("%s:%s (%s..%s, %s)", e.name, e.timePoint, then, now, ctq.baseTime);
             assert (e.timePoint.cycles/resolution <= now/resolution, "tp=%s then=%s now=%s".format(e.timePoint, then, now));
-            assert (e.timePoint.cycles/resolution >= then/resolution, "tp=%s then=%s now=%s".format(e.timePoint, then, now));
+            assert (e.timePoint.cycles/resolution >= then/resolution - 1, "tp=%s then=%s now=%s".format(e.timePoint, then, now));
             assert (e in entries);
             entries.remove(e);
         }
@@ -302,4 +318,74 @@ unittest {
         numRuns++;
     }
     assert (numRuns > 0);
+}
+
+unittest {
+    import mecca.log;
+    import std.string;
+
+    static struct Entry {
+        TscTimePoint timePoint;
+        string name;
+        Entry* _next;
+        Entry* _prev;
+    }
+
+    enum resolution = dur!"msecs"(1);
+    enum numBins = 16;
+    enum numLevels = 3;
+
+    TscTimePoint now = TscTimePoint.now;
+
+    CascadingTimeQueue!(Entry*, numBins, numLevels) ctq;
+    ctq.open(resolution, now);
+
+    Entry[6] entries;
+    enum L0Duration = resolution * numBins;
+    enum L1Duration = L0Duration * numBins;
+
+    entries[0] = Entry(now + resolution /2, "l0 b1");
+    entries[1] = Entry(now + resolution + 2, "l0 b2");
+    entries[2] = Entry(now + resolution * 10 + 3, "l0 b11");
+    entries[3] = Entry(now + L0Duration + resolution * 3 + 2, "l1 b0 l0 b4");
+    entries[4] = Entry(now + L0Duration*7 + resolution * 5 + 7, "l1 b6 l0 b6");
+    entries[5] = Entry(now + L1Duration + 14, "l2 b0 l0 b1");
+
+    INFO!"Entry 0 %s"(entries[0].timePoint - now);
+    INFO!"Entry 1 %s"(entries[1].timePoint - now);
+    INFO!"Entry 2 %s"(entries[2].timePoint - now);
+    INFO!"Entry 3 %s"(entries[3].timePoint - now);
+    INFO!"Entry 4 %s"(entries[4].timePoint - now);
+    INFO!"Entry 5 %s"(entries[5].timePoint - now);
+
+    // Insert out of order
+    ctq.insert(&entries[3]);
+    ctq.insert(&entries[1]);
+    ctq.insert(&entries[4]);
+    ctq.insert(&entries[5]);
+    ctq.insert(&entries[2]);
+    ctq.insert(&entries[0]);
+
+    uint nextIdx = 0;
+
+    assert(ctq.pop(now) is null, "First entry received too soon");
+
+    auto base = now;
+    while(nextIdx<entries.length) {
+        auto step = ctq.timeTillNextEntry(now);
+        now += step;
+        DEBUG!"Setting time forward by %s to %s"(step, now - base);
+        Entry* e = ctq.pop(now);
+
+        if( e !is null ) {
+            INFO!"Got entry %s from queue"(e.name);
+            assert( e.name == entries[nextIdx].name, "Pop returned incorrect entry, expected %s, got %s".format(entries[nextIdx].name,
+                        e.name) );
+            assert( e.timePoint>(now - dur!"msecs"(1)) && e.timePoint<=now,
+                    "Pop returned entry %s at an incorrect time. Current %s expected %s".format(e.name, now-base, e.timePoint-base) );
+            nextIdx++;
+        } else {
+            DEBUG!"Got empty entry from queue"();
+        }
+    }
 }
