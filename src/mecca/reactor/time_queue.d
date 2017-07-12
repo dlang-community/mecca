@@ -86,15 +86,24 @@ struct CascadingTimeQueue(T, size_t numBins, size_t numLevels) {
     }+/
 
     Duration timeTillNextEntry(TscTimePoint now) {
+        long cycles = cyclesTillNextEntry(now);
+
+        if( cycles==long.max )
+            return Duration.max;
+
+        return TscTimePoint.toDuration(cycles);
+    }
+
+    long cyclesTillNextEntry(TscTimePoint now) {
         ulong binsToGo = binsTillNextEntry();
 
         if( binsToGo == ulong.max )
-            return Duration.max;
+            return long.max;
 
-        Duration delta = now - poppedTime;
-        Duration wait = TscTimePoint.toDuration(binsToGo * resolutionCycles) - delta;
-        if( wait<Duration.zero )
-            return Duration.zero;
+        long delta = now.cycles - poppedTime.cycles;
+        long wait = binsToGo * resolutionCycles - delta;
+        if( wait<0 )
+            return 0;
         return wait;
     }
 
@@ -114,7 +123,6 @@ struct CascadingTimeQueue(T, size_t numBins, size_t numLevels) {
     }
 
     T pop(TscTimePoint now) {
-        // now += resolutionCycles; // Adjust now to account for the fact that poppedTime points to the end of the bin
         while (now >= poppedTime) {
             auto e = bins[0][offset % numBins].popHead();
             if (e !is null) {
@@ -331,6 +339,7 @@ unittest {
         Entry* _prev;
     }
 
+    // The actual resolution is going to be slightly different than this, but it should only be more accurate, never less.
     enum resolution = dur!"msecs"(1);
     enum numBins = 16;
     enum numLevels = 3;
@@ -344,19 +353,16 @@ unittest {
     enum L0Duration = resolution * numBins;
     enum L1Duration = L0Duration * numBins;
 
-    entries[0] = Entry(now + resolution /2, "l0 b1");
-    entries[1] = Entry(now + resolution + 2, "l0 b2");
-    entries[2] = Entry(now + resolution * 10 + 3, "l0 b11");
-    entries[3] = Entry(now + L0Duration + resolution * 3 + 2, "l1 b0 l0 b4");
-    entries[4] = Entry(now + L0Duration*7 + resolution * 5 + 7, "l1 b6 l0 b6");
-    entries[5] = Entry(now + L1Duration + 14, "l2 b0 l0 b1");
+    entries[0] = Entry(now + resolution /2, "e0 l0 b1");
+    entries[1] = Entry(now + resolution + 2, "e1 l0 b2");
+    entries[2] = Entry(now + resolution * 10 + 3, "e2 l0 b11");
+    entries[3] = Entry(now + L0Duration + resolution * 3 + 2, "e3 l1 b0 l0 b4");
+    entries[4] = Entry(now + L0Duration*7 + resolution * 5 + 7, "e4 l1 b6 l0 b6");
+    entries[5] = Entry(now + L1Duration + 14, "e5 l2 b0 l0 b1");
 
-    INFO!"Entry 0 %s"(entries[0].timePoint - now);
-    INFO!"Entry 1 %s"(entries[1].timePoint - now);
-    INFO!"Entry 2 %s"(entries[2].timePoint - now);
-    INFO!"Entry 3 %s"(entries[3].timePoint - now);
-    INFO!"Entry 4 %s"(entries[4].timePoint - now);
-    INFO!"Entry 5 %s"(entries[5].timePoint - now);
+    foreach( ref e; entries ) {
+        INFO!"Entry %s at %s"( e.name, e.timePoint - now );
+    }
 
     // Insert out of order
     ctq.insert(&entries[3]);
@@ -372,16 +378,16 @@ unittest {
 
     auto base = now;
     while(nextIdx<entries.length) {
-        auto step = ctq.timeTillNextEntry(now);
+        auto step = ctq.cyclesTillNextEntry(now);
         now += step;
-        DEBUG!"Setting time forward by %s to %s"(step, now - base);
+        DEBUG!"Setting time forward by %s to %s"(TscTimePoint.toDuration(step), now - base);
         Entry* e = ctq.pop(now);
 
         if( e !is null ) {
             INFO!"Got entry %s from queue"(e.name);
             assert( e.name == entries[nextIdx].name, "Pop returned incorrect entry, expected %s, got %s".format(entries[nextIdx].name,
                         e.name) );
-            assert( e.timePoint>(now - dur!"msecs"(1)) && e.timePoint<=now,
+            assert( e.timePoint>(now - resolution) && e.timePoint<=now,
                     "Pop returned entry %s at an incorrect time. Current %s expected %s".format(e.name, now-base, e.timePoint-base) );
             nextIdx++;
         } else {
