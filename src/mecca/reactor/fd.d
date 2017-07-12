@@ -237,12 +237,18 @@ public:
 
 private:
     void reactorIdle(Duration timeout) {
-        DEBUG!"Calling epoll_wait with a timeout of %s"(timeout);
+
+        int intTimeout;
+        if( timeout == Duration.max )
+            intTimeout = -1;
+        else
+            intTimeout = to!int(timeout.total!"msecs");
 
         epoll_event[NUM_BATCH_EVENTS] events;
-        if( timeout > Duration.zero && timeout < MIN_DURATION )
-            timeout = MIN_DURATION;
-        int res = epoll_wait(epollFd, events.ptr, NUM_BATCH_EVENTS, to!int(timeout.total!"msecs"));
+        if( timeout > Duration.zero && intTimeout == 0 )
+            intTimeout = 1;
+        DEBUG!"Calling epoll_wait with a timeout of %sms"(intTimeout);
+        int res = epoll_wait(epollFd, events.ptr, NUM_BATCH_EVENTS, intTimeout);
         errnoEnforce( res>=0, "epoll_wait failed" );
 
         foreach( ref event; events[0..res] ) {

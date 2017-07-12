@@ -5,11 +5,13 @@ import std.string;
 
 import mecca.containers.lists;
 import mecca.containers.arrays;
-import mecca.reactor.fibril: Fibril;
+import mecca.containers.pools;
 import mecca.lib.time;
 import mecca.lib.reflection;
 import mecca.lib.memory;
 import mecca.log;
+import mecca.reactor.time_queue;
+import mecca.reactor.fibril: Fibril;
 import core.memory: GC;
 import core.sys.posix.sys.mman: munmap, mprotect, PROT_NONE;
 
@@ -20,9 +22,9 @@ struct ReactorFiber {
     enum FLS_BLOCK_SIZE = 512;
 
     struct OnStackParams {
-        Closure               closure;
-        GCStackDescriptor     stackDescriptor;
-        ubyte[FLS_BLOCK_SIZE] flsBlock;
+        Closure                 fiberBody;
+        GCStackDescriptor       stackDescriptor;
+        ubyte[FLS_BLOCK_SIZE]   flsBlock;
     }
     enum Flags: ubyte {
         CALLBACK_SET   = 0x01,
@@ -35,12 +37,12 @@ struct ReactorFiber {
     }
 
 align(1):
-    Fibril         fibril;
-    OnStackParams* params;
-    ReactorFiber*  _next;
-    uint           incarnationCounter;
-    ubyte          _flags;
-    ubyte[3]       _reserved;
+    Fibril              fibril;
+    OnStackParams*      params;
+    ReactorFiber*       _next;
+    uint                incarnationCounter;
+    ubyte               _flags;
+    ubyte[3]            _reserved;
 
     static assert (this.sizeof == 32);  // keep it small and cache-line friendly
 
@@ -95,7 +97,7 @@ align(1):
             Throwable ex = null;
 
             try {
-                params.closure();
+                params.fiberBody();
             }
             catch (Throwable ex2) {
                 ex = ex2;
@@ -103,7 +105,7 @@ align(1):
 
             INFO!"wrapper finished on %s, ex=%s"(identity, ex);
 
-            params.closure.clear();
+            params.fiberBody.clear();
             flag!"RUNNING" = false;
             flag!"CALLBACK_SET" = false;
             incarnationCounter++;
@@ -144,14 +146,20 @@ struct FiberHandle {
 
 
 struct Reactor {
-    enum NUM_SPECIAL_FIBERS = 2;
+private:
     enum MAX_IDLE_CALLBACKS = 16;
+    enum TIMER_NUM_BINS = 256;
+    enum TIMER_NUM_LEVELS = 3;
+    enum MAX_TIMERS = 65536;
+
+    enum NUM_SPECIAL_FIBERS = 2;
     enum ZERO_DURATION = Duration.zero;
 
     struct Options {
         uint     numFibers = 256;
         size_t   fiberStackSize = 32*1024;
         Duration gcInterval = 30.seconds;
+        Duration timerGranularity = 1.msecs;
     }
 
     bool _open;
@@ -172,6 +180,18 @@ struct Reactor {
     alias IdleCallbackDlg = void delegate(Duration);
     FixedArray!(IdleCallbackDlg, MAX_IDLE_CALLBACKS) idleCallbacks;
 
+    struct TimedCallback {
+        TimedCallback* _next, _prev;
+        TscTimePoint timePoint;
+
+        Closure closure;
+    }
+
+    // TODO change to mmap pool or something
+    FixedPool!(TimedCallback, MAX_TIMERS) timedCallbacksPool;
+    CascadingTimeQueue!(TimedCallback*, TIMER_NUM_BINS, TIMER_NUM_LEVELS) timeQueue;
+
+public:
     @property bool isOpen() const pure nothrow @nogc {
         return _open;
     }
@@ -207,7 +227,10 @@ struct Reactor {
         idleFiber = &allFibers[1];
         idleFiber.flag!"SPECIAL" = true;
         idleFiber.flag!"CALLBACK_SET" = true;
-        idleFiber.params.closure.set(&idleLoop);
+        idleFiber.params.fiberBody.set(&idleLoop);
+
+        timedCallbacksPool.reset();
+        timeQueue.open(options.timerGranularity);
     }
 
     void teardown() {
@@ -240,7 +263,7 @@ struct Reactor {
 
     FiberHandle spawnFiber(T...)(T args) {
         auto fib = _spawnFiber(false);
-        fib.params.closure.set(args);
+        fib.params.fiberBody.set(args);
         return FiberHandle(fib);
     }
 
@@ -303,10 +326,43 @@ struct Reactor {
         suspendThisFiber();
     }
 
+    struct TimerHandle {
+    private:
+        TimedCallback* callback;
+    }
+
+    TimerHandle registerTimer(Closure closure, Timeout timeout) {
+        TimedCallback* callback = timedCallbacksPool.alloc();
+        callback.closure = closure;
+        callback.timePoint = timeout.expiry;
+
+        timeQueue.insert(callback);
+
+        return TimerHandle(callback);
+    }
+
+    void cancelTimer(TimerHandle handle) {
+        assert(false, "TODO implement");
+    }
+
+    void delay(Duration duration) {
+        delay(Timeout(duration));
+    }
+
+    void delay(Timeout until) {
+        assert(until != Timeout.init, "Delay argument uninitialized");
+        Closure closure;
+        closure.set(&resumeFiber, runningFiberHandle);
+
+        auto timerHandle = registerTimer(closure, until);
+        scope(failure) cancelTimer(timerHandle);
+
+        suspendThisFiber();
+    }
+
 private:
     @property bool shouldRunTimedCallbacks() {
-        // TODO timers
-        return false;
+        return timeQueue.cyclesTillNextEntry(TscTimePoint.now()) == 0;
     }
 
     void switchToNext() {
@@ -349,7 +405,7 @@ private:
 
     void fiberTerminated(Throwable ex) nothrow {
         assert (!thisFiber.flag!"SPECIAL", "special fibers must never terminate");
-        assert (ex is null);
+        assert (ex is null, ex.msg);
 
         freeFibers.prepend(thisFiber);
 
@@ -422,7 +478,15 @@ private:
                 //enterCriticalSection();
                 //scope(exit) leaveCriticalSection();
                 end = TscTimePoint.now;
-                Duration sleepDuration = runTimedCallbacks();
+                /*
+                   Since we've updated "end" before calling the timers, these timers won't count as idle time, unless....
+                   after running them the scheduledFibers list is still empty, in which case they do.
+                 */
+                if( runTimedCallbacks(end) )
+                    continue;
+
+                // We only reach here if runTimedCallbacks did nothing, in which case "end" is recent enough
+                Duration sleepDuration = timeQueue.timeTillNextEntry(end);
                 DEBUG!"Got %s idle callbacks registered"(idleCallbacks.length);
                 if( idleCallbacks.length==1 ) {
                     DEBUG!"idle callback called with duration %s"(sleepDuration);
@@ -441,9 +505,18 @@ private:
         }
     }
 
-    Duration runTimedCallbacks() {
-        // TODO implement
-        return dur!"seconds"(1);
+    bool runTimedCallbacks(TscTimePoint now = TscTimePoint.now) {
+        bool ret;
+
+        TimedCallback* callback;
+        while ((callback = timeQueue.pop(now)) !is null) {
+            callback.closure();
+            timedCallbacksPool.release(callback);
+
+            ret = true;
+        }
+
+        return ret;
     }
 
     void mainloop() {
@@ -486,4 +559,49 @@ unittest {
     theReactor.spawnFiber(&fibFunc, "hello");
     theReactor.spawnFiber(&fibFunc, "world");
     theReactor.start();
+}
+
+unittest {
+    // Test simple timeout
+    import std.stdio;
+    import mecca.reactor.fd;
+
+    theReactor.setup();
+    scope(exit) theReactor.teardown();
+    FD.openReactor();
+
+    uint counter;
+    TscTimePoint start;
+
+    void fiberFunc(Duration duration) {
+        INFO!"Fiber %s sleeping for %s"(theReactor.runningFiberHandle, duration);
+        theReactor.delay(duration);
+        auto now = TscTimePoint.now;
+        counter++;
+        INFO!"Fiber %s woke up after %s, overshooting by %s counter is %s"(theReactor.runningFiberHandle, now - start,
+                (now-start) - duration, counter);
+    }
+
+    void ender() {
+        INFO!"Fiber %s ender is sleeping for 250ms"(theReactor.runningFiberHandle);
+        theReactor.delay(dur!"msecs"(250));
+        INFO!"Fiber %s ender woke up"(theReactor.runningFiberHandle);
+
+        theReactor.stop();
+    }
+
+    theReactor.spawnFiber(&fiberFunc, dur!"msecs"(10));
+    theReactor.spawnFiber(&fiberFunc, dur!"msecs"(100));
+    theReactor.spawnFiber(&fiberFunc, dur!"msecs"(150));
+    theReactor.spawnFiber(&fiberFunc, dur!"msecs"(20));
+    theReactor.spawnFiber(&fiberFunc, dur!"msecs"(30));
+    theReactor.spawnFiber(&fiberFunc, dur!"msecs"(200));
+    theReactor.spawnFiber(&ender);
+
+    start = TscTimePoint.now;
+    theReactor.start();
+    auto end = TscTimePoint.now;
+    INFO!"UT finished in %s"(end - start);
+
+    assert(counter == 6, "Not all fibers finished");
 }
