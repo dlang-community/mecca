@@ -28,21 +28,24 @@ struct ReactorFiber {
     }
     enum Flags: ubyte {
         CALLBACK_SET   = 0x01,
-        SCHEDULED      = 0x02,
-        RUNNING        = 0x04,
-        SPECIAL        = 0x08,
-        IMMEDIATE      = 0x10,
-        //HAS_EXCEPTION  = 0x20,
-        //REQUEST_BT     = 0x40,
+        SPECIAL        = 0x02,
+        IMMEDIATE      = 0x04,
+        SCHEDULED      = 0x08,
+        //HAS_EXCEPTION  = 0x10,
+        //REQUEST_BT     = 0x20,
     }
 
+    enum State : ubyte {
+        None, Running, Sleeping, Done
+    }
 align(1):
     Fibril              fibril;
     OnStackParams*      params;
     ReactorFiber*       _next;
     uint                incarnationCounter;
     ubyte               _flags;
-    ubyte[3]            _reserved;
+    State               state;
+    ubyte[2]            _reserved;
 
     static assert (this.sizeof == 32);  // keep it small and cache-line friendly
 
@@ -93,7 +96,7 @@ align(1):
             INFO!"wrapper on %s flags=0x%0x"(identity, _flags);
 
             assert (theReactor.thisFiber is &this, "this is wrong");
-            assert (flag!"RUNNING");
+            assert (state == State.Running);
             Throwable ex = null;
 
             try {
@@ -106,8 +109,9 @@ align(1):
             INFO!"wrapper finished on %s, ex=%s"(identity, ex);
 
             params.fiberBody.clear();
-            flag!"RUNNING" = false;
             flag!"CALLBACK_SET" = false;
+            assert (state == State.Running);
+            state = State.Done;
             incarnationCounter++;
             theReactor.fiberTerminated(ex);
         }
@@ -223,6 +227,7 @@ public:
         mainFiber = &allFibers[0];
         mainFiber.flag!"SPECIAL" = true;
         mainFiber.flag!"CALLBACK_SET" = true;
+        mainFiber.state = ReactorFiber.State.Running;
 
         idleFiber = &allFibers[1];
         idleFiber.flag!"SPECIAL" = true;
@@ -383,13 +388,14 @@ private:
             assert (!scheduledFibers.empty, "scheduledList is empty");
 
             prevFiber = thisFiber;
-            prevFiber.flag!"RUNNING" = false;
+            assert (prevFiber.state == ReactorFiber.State.Running || prevFiber.state == ReactorFiber.State.Done);
+            prevFiber.state = ReactorFiber.State.Sleeping;
 
             thisFiber = scheduledFibers.popHead();
-            assert (thisFiber.flag!"SCHEDULED");
 
-            thisFiber.flag!"RUNNING" = true;
+            assert (thisFiber.flag!"SCHEDULED");
             thisFiber.flag!"SCHEDULED" = false;
+            thisFiber.state = ReactorFiber.State.Running;
 
             if (prevFiber !is thisFiber) {
                 // make the switch
@@ -468,6 +474,7 @@ private:
         assert (!fib.flag!"CALLBACK_SET");
         fib.flag!"IMMEDIATE" = immediate;
         fib.flag!"CALLBACK_SET" = true;
+        fib.state = ReactorFiber.State.Sleeping;
         resumeFiber(fib);
         return fib;
     }
@@ -509,6 +516,9 @@ private:
     }
 
     bool runTimedCallbacks(TscTimePoint now = TscTimePoint.now) {
+        // Timer callbacks are not allowed to sleep
+        auto criticalSectionContainer = criticalSection();
+
         bool ret;
 
         TimedCallback* callback;
