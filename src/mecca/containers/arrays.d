@@ -52,6 +52,8 @@ public:
     alias array this;
 }
 
+alias FixedString(size_t N) = FixedArray!(chat, N, false);
+
 unittest {
     FixedArray!(uint, 8) fa;
     assert (fa.length == 0);

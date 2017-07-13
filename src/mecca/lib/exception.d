@@ -1,6 +1,6 @@
 module mecca.lib.exception;
 
-import core.exception: AssertError, assertHandler;
+import core.exception: AssertError, RangeError, assertHandler;
 import core.runtime: Runtime, defaultTraceHandler;
 
 import mecca.log;
@@ -68,7 +68,7 @@ struct ExcBuf {
 
     ubyte[MAX_EXCEPTION_INSTANCE_SIZE] ex;
     ubyte[MAX_TRACEBACK_SIZE] ti;
-    char[MAX_EXCEPTION_MESSAGE_SIZE] msg;
+    char[MAX_EXCEPTION_MESSAGE_SIZE] msgBuf;
 
     Throwable get() @nogc nothrow {
         if (*(cast(void**)ex.ptr) is null) {
@@ -113,18 +113,7 @@ struct ExcBuf {
             }
         }
 
-        if (t.msg is null || t.msg.length == 0) {
-            tobj.msg = null;
-        }
-        else if (t.msg.length > msg.length) {
-            msg[] = t.msg[0 .. msg.length];
-            tobj.msg = cast(string)msg[];
-        }
-        else {
-            msg[0 .. t.msg.length] = t.msg[];
-            tobj.msg = cast(string)msg[0 .. t.msg.length];
-        }
-
+        setMsg(t.msg, t);
         return tobj;
     }
 
@@ -145,7 +134,7 @@ struct ExcBuf {
         // create the exception
         ex[0 .. __traits(classInstanceSize, T)] = cast(ubyte[])typeid(T).initializer[];
         auto t = cast(T)ex.ptr;
-        t.__ctor(args);
+        as!"@nogc"({t.__ctor(args);});
         t.file = file;
         t.line = line;
         t.info = null;
@@ -153,19 +142,26 @@ struct ExcBuf {
         if (setTraceback) {
             this.setTraceback(t);
         }
+        setMsg(t.msg, t);
+        return t;
+    }
 
-        if (t.msg is null || t.msg.length == 0) {
-            t.msg = null;
+    void setMsg(const(char)[] msg2, Throwable tobj = null) nothrow @nogc {
+        if (tobj is null) {
+            tobj = get();
+            assert (tobj);
         }
-        else if (t.msg.length > msg.length) {
-            msg[] = t.msg[0 .. msg.length];
-            t.msg = cast(string)msg[];
+        if (msg2 is null || msg2.length == 0) {
+            tobj.msg = null;
+        }
+        else if (msg2.length > msgBuf.length) {
+            msgBuf[] = msg2[0 .. msgBuf.length];
+            tobj.msg = cast(string)msgBuf[];
         }
         else {
-            msg[0 .. t.msg.length] = t.msg[];
-            t.msg = cast(string)msg[0 .. t.msg.length];
+            msgBuf[0 .. msg2.length] = msg2[];
+            tobj.msg = cast(string)msgBuf[0 .. msg2.length];
         }
-        return t;
     }
 
     static bool isGCException(Throwable ex) {
@@ -187,30 +183,54 @@ struct ExcBuf {
 /* thread local*/ static ExcBuf* _currExcBuf;
 /* thread local*/ static this() {_currExcBuf = &_tlsExcBuf;}
 
-T mkEx(T: Throwable = Exception, string file = __FILE__, size_t line = __LINE__, A...)(auto ref A args) @trusted @nogc {
+T mkEx(T: Throwable, string file = __FILE__, size_t line = __LINE__, A...)(auto ref A args) @trusted @nogc {
     pragma(inline, true); // Must inline because of __FILE__ as template parameter. https://github.com/ldc-developers/ldc/issues/1703
     return _currExcBuf.construct!T(file, line, true, args);
 }
-T mkExFmt(T: Throwable = Exception, string file = __FILE__, size_t line = __LINE__, A...)(string fmt, auto ref A args) @trusted @nogc {
+
+private __gshared char[4096] tmpBuf;
+
+T mkExFmt(T: Throwable, string file = __FILE__, size_t line = __LINE__, A...)(string fmt, auto ref A args) @trusted @nogc {
     pragma(inline, true); // Must inline because of __FILE__ as template parameter. https://github.com/ldc-developers/ldc/issues/1703
     import std.string: sformat;
 
-    __gshared char[4096] tmpBuf;
-    string msg = as!"nothrow @nogc"({return sformat(tmpBuf, fmt, args);});
-    return _currExcBuf.construct!T(file, line, true, msg);
+    string msg = as!"@nogc"({return cast(string)sformat(tmpBuf, fmt, args);});
+
+    static if (is(typeof(T.__ctor("", "", 0)))) {
+        return _currExcBuf.construct!T(file, line, true, msg);
+    }
+    else {
+        auto ex = _currExcBuf.construct!T(file, line, true, null);
+        _currExcBuf.setMsg(msg);
+        return ex;
+    }
 }
 Throwable setEx(Throwable ex, bool setTraceback = false) {
     return _currExcBuf.set(ex, setTraceback);
 }
 
+RangeError rangeError(K, string file=__FILE__, size_t line=__LINE__)(K key) {
+    pragma(inline, true); // Must inline because of __FILE__ as template parameter. https://github.com/ldc-developers/ldc/issues/1703
+    static if (is(typeof(sformat(null, "%s", key)))) {
+        return mkExFmt!(RangeError, file, line)("%s", key);
+    }
+    else {
+        return mkExFmt!(RangeError, file, line)(K.stringof);
+    }
+}
+
+void enforceFmt(T: Throwable = Exception, string file = __FILE__, size_t line = __LINE__, A...)(bool cond, string fmt, auto ref A args) {
+    pragma(inline, true); // Must inline because of __FILE__ as template parameter. https://github.com/ldc-developers/ldc/issues/1703
+    if (!cond) {
+        throw mkExFmt!(T, file, line)(fmt, args);
+    }
+}
+
+
 mixin template ExceptionBody() {
     this(string msg, string file = __FILE__, size_t line = __LINE__, Throwable next = null) @safe pure nothrow @nogc {
         super(msg, file, line, next);
     }
-    this(string msg, Throwable next, string file = __FILE__, size_t line = __LINE__) @safe pure nothrow @nogc {
-        super(msg, file, line, next);
-    }
-
     /+import mecca.lib.exception: ExcBuf;
     __gshared static ExcBuf* _singletonExBuf;
 

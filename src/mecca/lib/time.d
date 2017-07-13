@@ -22,7 +22,6 @@ else {
 }
 
 
-
 struct TscTimePoint {
     private enum HECTONANO = 10_000_000;
     enum min = TscTimePoint(long.min);
@@ -32,13 +31,32 @@ struct TscTimePoint {
     static shared immutable long cyclesPerSecond;
     static shared immutable long cyclesPerMsec;
     static shared immutable long cyclesPerUsec;
+    alias frequency = cyclesPerSecond;
+
     static shared immutable S64Divisor cyclesPerSecondDivisor;
     static shared immutable S64Divisor cyclesPerMsecDivisor;
     static shared immutable S64Divisor cyclesPerUsecDivisor;
+    /* thread local */ static ubyte refetchInterval;
+    /* thread local */ static ubyte fetchCounter;
+    /* thread local */ static TscTimePoint lastTsc;
+
     long cycles;
 
+    static TscTimePoint softNow() nothrow @nogc @safe {
+        if (fetchCounter < refetchInterval) {
+            fetchCounter++;
+            lastTsc.cycles++;
+            return lastTsc;
+        }
+        else {
+            return now();
+        }
+    }
     static TscTimePoint now() nothrow @nogc @safe {
-        return TscTimePoint(readTSC());
+        pragma(inline, true);
+        lastTsc.cycles = readTSC();
+        fetchCounter = 0;
+        return lastTsc;
     }
 
     shared static this() {
@@ -46,6 +64,15 @@ struct TscTimePoint {
         import core.sys.posix.time;
         import std.file: readText;
         import std.string;
+
+        // the main thread actually performs RDTSC 1 in 10 calls
+        refetchInterval = 10;
+
+        version (linux) {
+        }
+        else {
+            static assert (false, "a linux system is required");
+        }
 
         enforce(readText("/proc/cpuinfo").indexOf("constant_tsc") >= 0, "constant_tsc not supported");
 
@@ -70,6 +97,8 @@ struct TscTimePoint {
         cyclesPerSecondDivisor = S64Divisor(cyclesPerSecond);
         cyclesPerMsecDivisor = S64Divisor(cyclesPerMsec);
         cyclesPerUsecDivisor = S64Divisor(cyclesPerUsec);
+
+        now();
     }
 
     static auto fromNow(Duration dur) @nogc {
@@ -154,7 +183,7 @@ struct TscTimePoint {
             return (cycles - rhs.cycles);
         }
         else {
-            static assert (false);
+            static assert (false, units);
         }
     }
 
