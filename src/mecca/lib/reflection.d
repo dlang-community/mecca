@@ -242,6 +242,68 @@ unittest {
     }
 }
 
+FunctionAttribute toFuncAttrs(string attrs) {
+    import std.algorithm.iteration : splitter, fold, map;
+    return attrs.splitter(" ").map!(
+        (word){
+            if(word == "@nogc" || word == "nogc") return FunctionAttribute.nogc;
+            if(word == "nothrow") return FunctionAttribute.nothrow_;
+            if(word == "pure") return FunctionAttribute.pure_;
+            if(word == "@safe" || word == "safe") return FunctionAttribute.safe;
+            assert(false, word ~ " is not a valid attribute: must be @nogc, @safe, nothrow or pure");
+        }).fold!((a, b) => a|b)(FunctionAttribute.none);
+}
+
+/// Execute a given piece of code while casting it:
+auto ref as(string attrs, Func)(scope Func func) if (isFunctionPointer!Func || isDelegate!Func) {
+    pragma(inline, true);
+    return (cast(SetFunctionAttributes!(Func, functionLinkage!Func, functionAttributes!Func | toFuncAttrs(attrs)))func)();
+}
+
+unittest {
+    static ubyte[] f() @nogc {
+        //new ubyte[100];
+        return as!"@nogc"({return new ubyte[100];});
+    }
+    static void g() nothrow {
+        //throw new Exception("FUUU");
+        as!"nothrow"({throw new Exception("FUUU");});
+    }
+    /+static void h() pure {
+        static int x;
+        as!"pure"({x++;});
+    }+/
+    /+static void k() @safe {
+        int y;
+        void* x = &y;
+        //*(cast(int*)x) = 5;
+        as!"@safe"({*(cast(int*)x) = 5;});
+    }+/
+}
+
+template isVersion(string NAME) {
+    mixin("version ("~ NAME ~") {enum isVersion = true;} else {enum isVersion=false;}");
+}
+
+unittest {
+    static assert(isVersion!"unittest");
+    static assert(isVersion!"assert");
+    static assert(!isVersion!"slklfjsdkjfslk234r32c");
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
