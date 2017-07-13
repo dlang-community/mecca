@@ -264,7 +264,7 @@ unittest {
         long before = toCycles(10.msecs);
         long ahead = toCycles(span/2);
 
-        pool.reset();
+        pool.open();
         ctq.open(toCycles(resolutionDur), t0);
 
         //uint seed = 3594633224; //1337;

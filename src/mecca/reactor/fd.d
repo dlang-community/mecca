@@ -189,7 +189,7 @@ public:
         epollFd = epoll_create1(0);
         errnoEnforce( epollFd>=0, "Failed to create epoll fd" );
 
-        fdPool.reset();
+        fdPool.open();
 
         theReactor.registerIdleCallback(&reactorIdle);
     }

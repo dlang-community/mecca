@@ -150,7 +150,6 @@ private:
     enum MAX_IDLE_CALLBACKS = 16;
     enum TIMER_NUM_BINS = 256;
     enum TIMER_NUM_LEVELS = 3;
-    enum MAX_TIMERS = 65536;
 
     enum NUM_SPECIAL_FIBERS = 2;
     enum ZERO_DURATION = Duration.zero;
@@ -160,6 +159,7 @@ private:
         size_t   fiberStackSize = 32*1024;
         Duration gcInterval = 30.seconds;
         Duration timerGranularity = 1.msecs;
+        size_t   numTimers = 10000;
     }
 
     bool _open;
@@ -188,7 +188,7 @@ private:
     }
 
     // TODO change to mmap pool or something
-    FixedPool!(TimedCallback, MAX_TIMERS) timedCallbacksPool;
+    SimplePool!(TimedCallback) timedCallbacksPool;
     CascadingTimeQueue!(TimedCallback*, TIMER_NUM_BINS, TIMER_NUM_LEVELS) timeQueue;
 
 public:
@@ -229,7 +229,7 @@ public:
         idleFiber.flag!"CALLBACK_SET" = true;
         idleFiber.params.fiberBody.set(&idleLoop);
 
-        timedCallbacksPool.reset();
+        timedCallbacksPool.open(options.numTimers, true);
         timeQueue.open(options.timerGranularity);
     }
 
@@ -238,9 +238,12 @@ public:
         assert(!_running, "reactor teardown called on still running reactor");
         assert(criticalSectionNesting==0);
 
+        // XXX: go over all scheduled/pending fibers and throwInFiber(ReactorExit)
+
         options.setToInit();
         allFibers.free();
         fiberStacks.free();
+        timedCallbacksPool.close();
 
         setToInit(freeFibers);
         setToInit(scheduledFibers);
