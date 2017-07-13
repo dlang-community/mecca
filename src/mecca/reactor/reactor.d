@@ -17,6 +17,11 @@ import core.sys.posix.sys.mman: munmap, mprotect, PROT_NONE;
 
 import std.stdio;
 
+class ReactorTimeout : Exception {
+    this(string file = __FILE__, size_t line = __LINE__, Throwable next = null) @safe pure nothrow @nogc {
+        super("Reactor timed out on a timed suspend", file, line, next);
+    }
+}
 
 struct ReactorFiber {
     enum FLS_BLOCK_SIZE = 512;
@@ -38,6 +43,7 @@ struct ReactorFiber {
     enum State : ubyte {
         None, Running, Sleeping, Done
     }
+
 align(1):
     Fibril              fibril;
     OnStackParams*      params;
@@ -337,11 +343,16 @@ public:
     struct TimerHandle {
     private:
         TimedCallback* callback;
+
+    public:
+        bool isValid() const {
+            return callback !is null;
+        }
     }
 
-    TimerHandle registerTimer(Closure closure, Timeout timeout) {
+    TimerHandle registerTimer(alias F)(Timeout timeout, Parameters!F params) {
         TimedCallback* callback = timedCallbacksPool.alloc();
-        callback.closure = closure;
+        callback.closure.set(&F, params);
         callback.timePoint = timeout.expiry;
 
         timeQueue.insert(callback);
@@ -350,6 +361,8 @@ public:
     }
 
     void cancelTimer(TimerHandle handle) {
+        if( !handle.isValid )
+            return;
         assert(false, "TODO implement");
     }
 
@@ -359,10 +372,7 @@ public:
 
     void delay(Timeout until) {
         assert(until != Timeout.init, "Delay argument uninitialized");
-        Closure closure;
-        closure.set(&resumeFiber, runningFiberHandle);
-
-        auto timerHandle = registerTimer(closure, until);
+        auto timerHandle = registerTimer!resumeFiber(until, runningFiberHandle);
         scope(failure) cancelTimer(timerHandle);
 
         suspendThisFiber();
@@ -431,11 +441,49 @@ private:
         }
     }
 
-    package void suspendThisFiber(Timeout timeout = Timeout.infinite) {
-        assert(timeout == Timeout.infinite, "Timers not yet properly implemented");
-        //LOG("suspend");
+    package void suspendThisFiber(Timeout timeout) {
+        if (timeout == Timeout.infinite)
+            return suspendThisFiber();
+
         assert (!isInCriticalSection);
+
+        TimerHandle timeoutHandle;
+        scope(exit) cancelTimer( timeoutHandle );
+        bool timeoutExpired;
+
+        if (timeout == Timeout.elapsed) {
+            throw new ReactorTimeout();
+        }
+
+        static void resumer(FiberHandle fibHandle, TimerHandle* cookie, bool* timeoutExpired) {
+            *cookie = TimerHandle.init;
+            ReactorFiber* fib = fibHandle.get;
+            assert( fib !is null, "Fiber disappeared while suspended with timer" );
+
+            // Throw ReactorTimeout only if we're the ones who resumed the fiber. this prevents a race when
+            // someone else had already woken the fiber, but it just didn't get time to run while the timer expired.
+            // this probably indicates fibers hogging the CPU for too long (starving others)
+            *timeoutExpired = ! fib.flag!"SCHEDULED";
+
+            /+
+                    if (! *timeoutExpired)
+                        fib.WARN_AS!"#REACTOR fiber resumer invoked, but fiber already scheduled (starvation): %s scheduled, %s pending"(
+                                theReactor.scheduledFibers.length, theReactor.pendingFibers.length);
+            +/
+
+            theReactor.resumeFiber(fib);
+        }
+
+        timeoutHandle = registerTimer!resumer(timeout, runningFiberHandle, &timeoutHandle, &timeoutExpired);
         switchToNext();
+
+        if( timeoutExpired )
+            throw new ReactorTimeout();
+    }
+
+    package void suspendThisFiber() {
+         assert (!isInCriticalSection);
+         switchToNext();
     }
 
     void resumeSpecialFiber(ReactorFiber* fib) {
@@ -617,4 +665,31 @@ unittest {
     INFO!"UT finished in %s"(end - start);
 
     assert(counter == 6, "Not all fibers finished");
+}
+
+unittest {
+    // Test suspending timeout
+    import std.stdio;
+    import mecca.reactor.fd;
+
+    theReactor.setup();
+    scope(exit) theReactor.teardown();
+    FD.openReactor();
+
+    void fiberFunc() {
+        bool thrown;
+
+        try {
+            theReactor.suspendThisFiber( Timeout(dur!"msecs"(4)) );
+        } catch(ReactorTimeout ex) {
+            thrown = true;
+        }
+
+        assert(thrown);
+
+        theReactor.stop();
+    }
+
+    theReactor.spawnFiber(&fiberFunc);
+    theReactor.start();
 }
