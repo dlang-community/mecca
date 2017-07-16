@@ -200,6 +200,67 @@ void copyTo(T)(const ref T src, ref T dst) nothrow @nogc {
     (cast(ubyte*)&dst)[0 .. T.sizeof] = (cast(ubyte*)&src)[0 .. T.sizeof];
 }
 
+unittest {
+    struct S {
+        int x = 5;
+        int y = 7;
+        int* p;
+    }
+
+    {
+        S s = S(1,2,null);
+        setToInit(s);
+        assert(S.init == s);
+    }
+
+    {
+        int y;
+        S s = S(1,2,&y);
+        setToInit(&s);
+        assert(S.init == s);
+    }
+
+    {
+        S s = S(1,2,null);
+        auto p = &s;
+        setToInit(p);
+        assert(S.init == s);
+    }
+
+    {
+        // no initializer
+        int x = 5;
+        setToInit(x);
+        assert(x == 0);
+        setToInit(&x);
+        assert(x == 0);
+    }
+
+    {
+        // static array & no initializer
+        int[2] x = [1, 2];
+        setToInit(x);
+        import std.algorithm : equal;
+        assert(x[].equal([0,0]));
+        x = [3, 4];
+        setToInit(&x);
+        assert(x[].equal([0,0]));
+    }
+
+    {
+        // static array & initializer
+        S[2] x = [S(1,2), S(3,4)];
+        assert(x[0].x == 1 && x[0].y == 2);
+        assert(x[1].x == 3 && x[1].y == 4);
+        setToInit(x);
+        import std.algorithm : equal;
+        assert(x[].equal([S.init, S.init]));
+        x = [S(0,0),S(0,0)];
+        setToInit(&x);
+        assert(x[].equal([S.init, S.init]));
+    }
+}
+
 ubyte[] asBytes(T)(const ref T val) nothrow @nogc if (!isPointer!T) {
     pragma(inline, true);
     return (cast(ubyte*)&val)[0 .. T.sizeof];
@@ -224,17 +285,9 @@ unittest {
     assert (arr[0].a == 999 && arr[$-1].a == 999);
 }
 
-template IOTA(size_t N) {
-    template helper(size_t i) {
-        static if (i >= N) {
-            alias helper = AliasSeq!();
-        }
-        else {
-            alias helper = AliasSeq!(i, helper!(i+1));
-        }
-    }
-    alias IOTA = helper!0;
-}
+public import std.typecons: staticIota;
+
+alias IOTA(size_t end) = staticIota!(0, end);
 
 unittest {
     foreach(i; IOTA!10) {
@@ -291,10 +344,113 @@ unittest {
     static assert(!isVersion!"slklfjsdkjfslk234r32c");
 }
 
+template callableMembersOf(T) {
+    import std.typetuple: Filter;
+    template isCallableMember(string memberName) {
+        enum isCallableMember = isCallable!(__traits(getMember, T, memberName));
+    }
+    enum callableMembersOf = Filter!(isCallableMember, __traits(allMembers, T));
+}
 
+struct StructImplementation(I) {
+    mixin((){
+        string s;
+        foreach (name; callableMembersOf!I) {
+            s ~= "ReturnType!(__traits(getMember, I, \"" ~ name ~ "\")) delegate(ParameterTypeTuple!(__traits(getMember, I, \"" ~ name ~ "\")) args) " ~ name ~ ";\n";
+        }
+        return s;
+    }());
 
+    this(T)(ref T obj) {
+        opAssign(obj);
+    }
+    this(T)(T* obj) {
+        opAssign(obj);
+    }
 
+    ref auto opAssign(typeof(null) _) {
+        foreach(ref field; this.tupleof) {
+            field = null;
+        }
+        return this;
+    }
+    ref auto opAssign(const ref StructImplementation impl) {
+        this.tupleof = impl.tupleof;
+        return this;
+    }
+    ref auto opAssign(T)(T* obj) {
+        return obj ? opAssign(*obj) : opAssign(null);
+    }
+    ref auto opAssign(T)(ref T obj) {
+        foreach(name; callableMembersOf!I) {
+            __traits(getMember, this, name) = &__traits(getMember, obj, name);
+        }
+        return this;
+    }
 
+    @property bool isValid() {
+        // enough to check one member - all are assigned at the same time
+        return this.tupleof[0] !is null;
+    }
+}
+
+unittest {
+    interface Foo {
+        int func1(string a, double b);
+        void func2(int c);
+    }
+
+    struct MyStruct {
+        int func1(string a, double b) {
+            return cast(int)(a.length * b);
+        }
+        void func2(int c) {
+        }
+        void func2() {
+        }
+    }
+
+    StructImplementation!Foo simpl;
+    assert (!simpl.isValid);
+    MyStruct ms;
+    simpl = ms;
+    assert (simpl.isValid);
+
+    assert (simpl.func1("hello", 3.001) == 15);
+
+    simpl = null;
+    assert (!simpl.isValid);
+}
+
+alias ParentType(alias METHOD) = Alias!(__traits(parent, METHOD));
+
+auto methodCall(alias METHOD)(ParentType!METHOD* instance, ParameterTypeTuple!METHOD args) if(is(ParentType!METHOD == struct)) {
+    return __traits(getMember, instance, __traits(identifier, METHOD))(args);
+}
+auto methodCall(alias METHOD)(ParentType!METHOD instance, ParameterTypeTuple!METHOD args) if(!is(ParentType!METHOD == struct)) {
+    return __traits(getMember, instance, __traits(identifier, METHOD))(args);
+}
+
+unittest {
+    struct MyStruct {
+        int x;
+        int f() {
+            return x * 2;
+        }
+    }
+
+    auto ms = MyStruct(17);
+    assert (ms.f() == 34);
+    assert (methodCall!(MyStruct.f)(&ms) == 34);
+}
+
+template StaticRegex(string exp, string flags = "") {
+    import std.regex;
+    __gshared static Regex!char StaticRegex;
+    shared static this() {
+        StaticRegex = regex(exp, flags);
+    }
+}
 
 
 
