@@ -17,6 +17,8 @@ import core.sys.posix.sys.mman: munmap, mprotect, PROT_NONE;
 
 import std.stdio;
 
+alias TimerHandle = Reactor.TimerHandle;
+
 class ReactorTimeout : Exception {
     this(string file = __FILE__, size_t line = __LINE__, Throwable next = null) @safe pure nothrow @nogc {
         super("Reactor timed out on a timed suspend", file, line, next);
@@ -192,6 +194,7 @@ private:
 
     struct TimedCallback {
         TimedCallback* _next, _prev;
+        timeQueue.OwnerAttrType _owner;
         TscTimePoint timePoint;
 
         Closure closure;
@@ -199,7 +202,7 @@ private:
 
     // TODO change to mmap pool or something
     SimplePool!(TimedCallback) timedCallbacksPool;
-    CascadingTimeQueue!(TimedCallback*, TIMER_NUM_BINS, TIMER_NUM_LEVELS) timeQueue;
+    CascadingTimeQueue!(TimedCallback*, TIMER_NUM_BINS, TIMER_NUM_LEVELS, true) timeQueue;
 
 public:
     @property bool isOpen() const pure nothrow @nogc {
@@ -363,7 +366,7 @@ public:
     void cancelTimer(TimerHandle handle) {
         if( !handle.isValid )
             return;
-        assert(false, "TODO implement");
+        timeQueue.cancel(handle.callback);
     }
 
     void delay(Duration duration) {
@@ -686,6 +689,58 @@ unittest {
         }
 
         assert(thrown);
+
+        theReactor.stop();
+    }
+
+    theReactor.spawnFiber(&fiberFunc);
+    theReactor.start();
+}
+
+unittest {
+    // Test suspending timeout
+    import std.stdio;
+    import mecca.reactor.fd;
+
+    theReactor.setup();
+    scope(exit) theReactor.teardown();
+    FD.openReactor();
+
+    void fiberFunc() {
+        TimerHandle[8] handles;
+        Duration[8] timeouts = [
+            dur!"msecs"(2),
+            dur!"msecs"(200),
+            dur!"msecs"(6),
+            dur!"msecs"(120),
+            dur!"msecs"(37),
+            dur!"msecs"(40),
+            dur!"msecs"(133),
+            dur!"msecs"(8),
+        ];
+
+        ubyte a;
+
+        static void timer(ubyte* a, TimerHandle* handle, ubyte bit) {
+            (*a) |= 1<<bit;
+
+            (*handle) = TimerHandle.init;
+        }
+
+        foreach(ubyte i, duration; timeouts) {
+            handles[i] = theReactor.registerTimer!timer( Timeout(duration), &a, &handles[i], i );
+        }
+
+        theReactor.delay(dur!"msecs"(3));
+
+        // Cancel one expired timeout and one yet to happen
+        theReactor.cancelTimer(handles[0]);
+        theReactor.cancelTimer(handles[6]);
+
+        // Wait for all timers to run
+        theReactor.delay(dur!"msecs"(200));
+
+        assert(a == 0b1011_1111);
 
         theReactor.stop();
     }

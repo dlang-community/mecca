@@ -15,7 +15,8 @@ class TooFarAhead: Error {
     }
 }
 
-struct CascadingTimeQueue(T, size_t numBins, size_t numLevels) {
+struct CascadingTimeQueue(T, size_t numBins, size_t numLevels, bool hasOwner = false) {
+private:
     static assert ((numBins & (numBins - 1)) == 0);
     static assert (numLevels >= 1);
     static assert (numBins * numLevels < 256*8);
@@ -29,11 +30,23 @@ struct CascadingTimeQueue(T, size_t numBins, size_t numLevels) {
     version(unittest) {
         ulong[numLevels] stats;
     }
-    LinkedList!T[numBins][numLevels] bins;
+
+    static if( hasOwner )
+            alias ListType = LinkedSet!T;
+    else
+        alias ListType = LinkedList!T;
+
+    ListType[numBins][numLevels] bins;
+
+public:
+    static if( hasOwner ) {
+        alias OwnerAttrType = ListType*;
+    }
 
     void open(Duration resolution, TscTimePoint startTime = TscTimePoint.now) {
         open(TscTimePoint.toCycles(resolution), startTime);
     }
+
     void open(long resolutionCycles, TscTimePoint startTime) {
         assert (resolutionCycles > 0);
         this.baseTime = startTime;
@@ -61,29 +74,11 @@ struct CascadingTimeQueue(T, size_t numBins, size_t numLevels) {
         }
     }
 
-    private bool _insert(T entry) {
-        if (entry.timePoint <= poppedTime) {
-            bins[0][offset % numBins].append(entry);
-            return true;
-        }
-        else {
-            auto idx = (entry.timePoint.cycles - baseTime.cycles + resolutionCycles - 1) / resolutionDenom;
-            auto origIdx = idx;
-            foreach(i; IOTA!numLevels) {
-                if (idx < numBins) {
-                    enum magnitude = numBins ^^ i;
-                    bins[i][(offset / magnitude + idx) % numBins].append(entry);
-                    return true;
-                }
-                idx = idx / numBins - 1;
-            }
-            return false;
+    static if( hasOwner ) {
+        void cancel(T entry) {
+            ListType.discard(entry);
         }
     }
-
-    /+static void discard(T entry) {
-        LinkedList!T.discard(entry);
-    }+/
 
     Duration timeTillNextEntry(TscTimePoint now) {
         long cycles = cyclesTillNextEntry(now);
@@ -107,21 +102,6 @@ struct CascadingTimeQueue(T, size_t numBins, size_t numLevels) {
         return wait;
     }
 
-    private ulong binsTillNextEntry() {
-        ulong binsToGo;
-        foreach(level; IOTA!numLevels) {
-            enum ResPerBin = numBins ^^ level; // Number of resolution units in a single level bin
-            foreach( bin; ((offset / ResPerBin) % numBins) .. numBins ) {
-                if( !bins[level][bin].empty )
-                    return binsToGo;
-
-                binsToGo += ResPerBin;
-            }
-        }
-
-        return ulong.max;
-    }
-
     T pop(TscTimePoint now) {
         while (now >= poppedTime) {
             auto e = bins[0][offset % numBins].popHead();
@@ -142,7 +122,43 @@ struct CascadingTimeQueue(T, size_t numBins, size_t numLevels) {
         return T.init;
     }
 
-    private void cascadeNextLevel(size_t level)() {
+private:
+    bool _insert(T entry) {
+        if (entry.timePoint <= poppedTime) {
+            bins[0][offset % numBins].append(entry);
+            return true;
+        }
+        else {
+            auto idx = (entry.timePoint.cycles - baseTime.cycles + resolutionCycles - 1) / resolutionDenom;
+            auto origIdx = idx;
+            foreach(i; IOTA!numLevels) {
+                if (idx < numBins) {
+                    enum magnitude = numBins ^^ i;
+                    bins[i][(offset / magnitude + idx) % numBins].append(entry);
+                    return true;
+                }
+                idx = idx / numBins - 1;
+            }
+            return false;
+        }
+    }
+
+    private ulong binsTillNextEntry() {
+        ulong binsToGo;
+        foreach(level; IOTA!numLevels) {
+            enum ResPerBin = numBins ^^ level; // Number of resolution units in a single level bin
+            foreach( bin; ((offset / ResPerBin) % numBins) .. numBins ) {
+                if( !bins[level][bin].empty )
+                    return binsToGo;
+
+                binsToGo += ResPerBin;
+            }
+        }
+
+        return ulong.max;
+    }
+
+    void cascadeNextLevel(size_t level)() {
         static if (level < numLevels) {
             version (unittest) {
                 stats[level]++;
