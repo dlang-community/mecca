@@ -278,4 +278,109 @@ unittest {
 }
 
 
+struct SerialInteger(T) {
+    static assert (isUnsigned!T, "T must be an unsigned type");
+
+    alias Type = T;
+    enum min = T.min;
+    enum max = T.max;
+    enum T midpoint = (2 ^^ (8 * T.sizeof - 1));
+    T value;
+
+    this(T value) nothrow @nogc {
+        this.value = value;
+    }
+
+    U opCast(U)() nothrow @nogc if (isUnsigned!U) {
+        return this.value;
+    }
+
+    ref SerialInteger opAssign(SerialInteger rhs) nothrow @nogc {pragma(inline, true);
+        this.value = rhs.value;
+        return this;
+    }
+    ref SerialInteger opAssign(T rhs) nothrow @nogc {pragma(inline, true);
+        this.value = rhs;
+        return this;
+    }
+
+    ref SerialInteger opUnary(string op)() nothrow @nogc if (op == "++" || op == "--") {pragma(inline, true);
+        mixin(op ~ "value;");
+        return this;
+    }
+    SerialInteger opBinary(string op)(T rhs) const pure nothrow @nogc if (op == "+" || op == "-") {pragma(inline, true);
+        return SerialInteger(cast(T)mixin("value " ~ op ~ " rhs"));
+    }
+    SerialInteger opBinary(string op)(SerialInteger rhs) const pure nothrow @nogc if (op == "+" || op == "-") {pragma(inline, true);
+        return SerialInteger(cast(T)mixin("value " ~ op ~ " rhs.value"));
+    }
+
+    ref SerialInteger opOpAssign(string op)(T rhs) nothrow @nogc if (op == "+" || op == "-") {pragma(inline, true);
+        mixin("value " ~ op ~ "= rhs;");
+        return this;
+    }
+    ref SerialInteger opOpAssign(string op)(SerialInteger rhs) nothrow @nogc if (op == "+" || op == "-") {pragma(inline, true);
+        mixin("value " ~ op ~ "= rhs.value;");
+        return this;
+    }
+
+    bool opEquals(const T rhs) const pure nothrow @nogc {pragma(inline, true);
+        return value == rhs;
+    }
+    bool opEquals(const SerialInteger rhs) const pure nothrow @nogc {pragma(inline, true);
+        return value == rhs.value;
+    }
+
+    int opCmp(const SerialInteger rhs) const pure nothrow @nogc {pragma(inline, true);
+        return opCmp(rhs.value);
+    }
+    int opCmp(const T rhs) const {pragma(inline, true);
+        pragma(inline, true);
+        // see https://en.wikipedia.org/wiki/Serial_number_arithmetic
+        // note that if the two numbers are on the circumference, then both (a < b) and (b < a) are true
+        // but it's too expensive to assert on it
+        static if (is(T == ubyte)) {
+            return cast(byte)(value - rhs);
+        }
+        else static if (is(T == ushort)) {
+            return cast(short)(value - rhs);
+        }
+        else static if (is(T == uint)) {
+            return cast(int)(value - rhs);
+        }
+        else {
+            static assert (false, "not implemented");
+        }
+    }
+
+    static assert (this.sizeof == T.sizeof);
+}
+
+alias Serial8  = SerialInteger!ubyte;
+alias Serial16 = SerialInteger!ushort;
+alias Serial32 = SerialInteger!uint;
+
+unittest {
+    auto a = Serial16(2);
+    a = 7;
+    assert(a < 100);
+    assert(Serial16(65530) < 100);
+    assert(100 > Serial16(65530));
+    assert(a == 7);
+    a++;
+    a += 7;
+    assert(a == 15);
+    assert(a < 100);
+    assert(a > 10);
+    assert(Serial16(0) > Serial16(65534));
+
+    // subtraction
+    a = Serial16(2);
+    assert( (a - cast(ushort)(-1)).value == 3 );
+    assert( (a - cast(ushort)(-1)).value == cast(ushort)(a.value + 1) );
+
+    assert( (a - 5).value == 65533 );
+    assert( cast(short)((a - 5).value) == cast(short)-3 );
+}
+
 
