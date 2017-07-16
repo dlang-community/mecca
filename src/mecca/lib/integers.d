@@ -7,13 +7,47 @@ import std.string;
 import std.algorithm: among;
 
 version(LDC) {
-    public import llvm.intrinsic: bswap = llvm_bswap;
-    ubyte bswap(ubyte x) @nogc {return x;}
+    ubyte bswap(ubyte x) pure @nogc {
+        pragma(inline, true);
+        return x;
+    }
+    ushort bswap(ushort x) pure @nogc {
+        pragma(inline, true);
+        if (__ctfe) {
+            return cast(ushort)((x << 8) | (x >> 8));
+        }
+        else {
+            import ldc.intrinsics: llvm_bswap;
+            return llvm_bswap(x);
+        }
+    }
+    uint bswap(uint x) pure @nogc {
+        pragma(inline, true);
+        if (__ctfe) {
+            import core.bitop: bswap;
+            return bswap(x);
+        }
+        else {
+            import ldc.intrinsics: llvm_bswap;
+            return llvm_bswap(x);
+        }
+    }
+    ulong bswap(ulong x) pure @nogc {
+        pragma(inline, true);
+        if (__ctfe) {
+            import core.bitop: bswap;
+            return bswap(x);
+        }
+        else {
+            import ldc.intrinsics: llvm_bswap;
+            return llvm_bswap(x);
+        }
+    }
 }
 else {
     public import core.bitop: bswap;
-    ubyte bswap(ubyte x) @nogc {return x;}
-    ushort bswap(ushort x) @nogc {return cast(ushort)((x << 8) | (x >> 8));}
+    ubyte bswap(ubyte x) pure @nogc {return x;}
+    ushort bswap(ushort x) pure @nogc {return cast(ushort)((x << 8) | (x >> 8));}
 }
 
 unittest {
@@ -34,7 +68,8 @@ else {
 }
 enum networkOrder = 'B';
 
-private U toEndianity(char E1, char E2, U)(U val) if (isIntegral!U && (E1 == 'L' || E1 == 'B') && (E2 == 'L' || E2 == 'B')) {
+private U toEndianity(char E1, char E2, U)(U val) pure @nogc
+        if (isIntegral!U && (E1 == 'L' || E1 == 'B') && (E2 == 'L' || E2 == 'B')) {
     pragma(inline, true);
     static if (E1 == E2) {
         return val;
@@ -43,13 +78,9 @@ private U toEndianity(char E1, char E2, U)(U val) if (isIntegral!U && (E1 == 'L'
         return bswap(val);
     }
 }
-private U toHostOrder(char E, U)(U val) {
-    pragma(inline, true);
-    return toEndianity!(E, hostOrder, U)(val);
-}
 private U endianOp(char E1, string op, char E2, U)(U lhs, U rhs) {
     pragma(inline, true);
-    return cast(U)(mixin("toHostOrder!E1(lhs)" ~ op ~ "toHostOrder!E2(rhs)"));
+    return cast(U)(mixin("toEndianity!(E1, hostOrder)(lhs)" ~ op ~ "toEndianity!(E2, hostOrder)(rhs)"));
 }
 
 
@@ -74,6 +105,10 @@ struct Integer(T, char E) {
         pragma(inline, true);
         opAssign!(U, E2)(val);
     }
+    @property T inHostOrder() const pure @nogc {
+        pragma(inline, true);
+        return toEndianity!(E, hostOrder, T)(value);
+    }
 
     U opCast(U)() {
         static if (is(U == bool)) {
@@ -82,8 +117,11 @@ struct Integer(T, char E) {
         static if (isIntegral!U) {
             return cast(U)value;
         }
-        else if (is(U == Integer!(S, E2), S, char E2)) {
-            return U(toEndianity!(E, E2)(cast(S)value), true);
+        else if (isInstanceOf!(Integer, U)) {
+            return U(cast(S)toHostOrder);
+        }
+        else {
+            static assert (false, U);
         }
     }
 
@@ -98,25 +136,30 @@ struct Integer(T, char E) {
     }
 
     bool opEquals(T rhs) {
-        return toHostOrder!E(value) == rhs;
+        pragma(inline, true);
+        return inHostOrder == rhs;
     }
     bool opEquals(U, char E2)(Integer!(U, E2) rhs) const if (signed == rhs.signed) {
-        return toHostOrder!E(value) == toHostOrder!E2(rhs.value);
+        pragma(inline, true);
+        return inHostOrder == rhs.inHostOrder;
     }
 
     long opCmp(T rhs) {
-        return toHostOrder!E(cast(long)value) - (cast(long)rhs);
+        pragma(inline, true);
+        return inHostOrder < rhs ? -1 : 1;
     }
     long opCmp(U, char E2)(Integer!(U, E2) rhs) const if (signed == rhs.signed) {
-        return toHostOrder!E(cast(long)value) - toHostOrder!E2(cast(long)rhs.value);
+        pragma(inline, true);
+        return inHostOrder < rhs.inHostOrder ? -1 : 1;
     }
 
     auto ref opUnary(string op: "++")() {
+        pragma(inline, true);
         static if (E == hostOrder) {
             ++value;
         }
         else {
-            value = toEndianity!(hostOrder, E)(endianOp!(E, "+", hostOrder)(value, cast(T)1));
+            opAssign(endianOp!(E, "+", hostOrder)(value, cast(T)1));
         }
         return this;
     }
@@ -125,28 +168,34 @@ struct Integer(T, char E) {
             --value;
         }
         else {
-            value = toEndianity!(hostOrder, E)(endianOp!(E, "-", hostOrder)(value, cast(T)1));
+            opAssign(endianOp!(E, "+", hostOrder)(value, cast(T)1));
         }
         return this;
     }
 
     static if (signed) {
         auto opUnary(string op)() const if (op == "+" || op == "-") {
-            return Integer(mixin(op ~ "toHostOrder!E(value)"));
+            pragma(inline, true);
+            return Integer(mixin(op ~ "inHostOrder"));
         }
+
         private alias binOps = AliasSeq!("+", "-", "*", "/", "%", "^");
     }
     else {
         auto opUnary(string op)() const if (op == "~") {
-            return Integer(mixin(op ~ "toHostOrder!E(value)"));
+            pragma(inline, true);
+            return Integer(mixin(op ~ "inHostOrder"));
         }
+
         private alias binOps = AliasSeq!("+", "-", "*", "/", "%", "^", "&", "|", "^", "<<", ">>", ">>>");
     }
 
     auto opBinary(string op)(T rhs) const if (op.among(binOps)) {
+        pragma(inline, true);
         return Integer(endianOp!(E, op, hostOrder)(value, rhs));
     }
     auto opBinary(string op, U, char E2)(Integer!(U, E2) rhs) const if (signed == rhs.signed && op.among(binOps)) {
+        pragma(inline, true);
         static if (U.sizeof <= T.sizeof) {
             return Integer(endianOp!(E, op, E2)(value, rhs.value));
         }
@@ -156,7 +205,7 @@ struct Integer(T, char E) {
     }
 
     string toString() const {
-        return ("%s#" ~ name).format(value);
+        return "%s#%s".format(value, name);
     }
 }
 
