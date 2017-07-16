@@ -7,10 +7,10 @@ private enum NR_gettid = 186;
 
 extern(C) nothrow @system @nogc {
     int syscall(int number, ...);
-}
 
-int gettid() {
-    return syscall(NR_gettid);
+    int gettid() {
+        return syscall(NR_gettid);
+    }
 }
 
 unittest {
@@ -45,6 +45,32 @@ unittest {
     assert(crc32c(crc, v) == 0x8e5d3bf9);
 }
 +/
+
+
+mixin template hookSyscall(alias F, int nr, alias preFunc) {
+    import std.traits: Parameters;
+    enum name = __traits(identifier, F);
+    mixin("extern(C) pragma(mangle, \"" ~ name ~ "\") @system int " ~ name ~ "(Parameters!F args) {
+            preFunc(args);
+            return syscall(nr, args);
+        }"
+    );
+}
+
+version (unittest) {
+    __gshared bool hitPreFunc = false;
+
+    static import core.sys.posix.unistd;
+    mixin hookSyscall!(core.sys.posix.unistd.close, 3, (int fd){hitPreFunc = true;});
+
+    unittest {
+        import std.stdio;
+        auto f = File("/tmp/test", "w");
+        f.close();
+        assert (hitPreFunc);
+    }
+}
+
 
 
 
