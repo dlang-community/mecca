@@ -6,9 +6,11 @@ import std.string;
 import mecca.containers.lists;
 import mecca.containers.arrays;
 import mecca.containers.pools;
+import mecca.lib.exception;
 import mecca.lib.time;
 import mecca.lib.reflection;
 import mecca.lib.memory;
+import mecca.lib.typedid;
 import mecca.log;
 import mecca.reactor.time_queue;
 import mecca.reactor.fibril: Fibril;
@@ -25,7 +27,9 @@ class ReactorTimeout : Exception {
     }
 }
 
-struct ReactorFiber {
+align(1) struct ReactorFiber {
+    alias FiberId = TypedIdentifier!("FiberId", ushort);
+
     enum FLS_BLOCK_SIZE = 512;
 
     struct OnStackParams {
@@ -49,13 +53,47 @@ struct ReactorFiber {
 align(1):
     Fibril              fibril;
     OnStackParams*      params;
-    ReactorFiber*       _next;
+    FiberId             _nextId;
+    FiberId             _prevId;
     uint                incarnationCounter;
     ubyte               _flags;
     State               state;
-    ubyte[2]            _reserved;
+    ubyte[6]            _reserved;
 
+    // We define this struct align(1) for the sole purpose of making the following static assert verify what it's supposed to
     static assert (this.sizeof == 32);  // keep it small and cache-line friendly
+
+    // LinkedQueue access through property
+    @property ReactorFiber* _next() nothrow @nogc {
+        return to!(ReactorFiber*)(_nextId);
+    }
+
+    @property void _next(FiberId newNext) nothrow @safe @nogc {
+        _nextId = newNext;
+    }
+
+    @property void _next(ReactorFiber* newNext) nothrow @nogc {
+        _nextId = to!FiberId(newNext);
+    }
+
+    package ReactorFiber* to(T : ReactorFiber*)(FiberId fid) nothrow @nogc {
+        if (!fid.isValid)
+            return null;
+
+        ASSERT!"Reactor is not open"( theReactor.isOpen );
+        return &theReactor.allFibers[fid.value];
+    }
+
+    package FiberId to(T : FiberId)(ReactorFiber* rfp) const nothrow @nogc {
+        if (rfp is null)
+            return FiberId.invalid;
+
+        ASSERT!"Reactor is not open"( theReactor.isOpen );
+        auto idx = rfp - theReactor.allFibers.arr.ptr;
+        DBG_ASSERT!"Reactor fiber pointer not pointing to fibers pool: base %s ptr %s idx %s"(idx>0 && idx<theReactor.allFibers.arr.length,
+                &theReactor.allFibers.arr[0], rfp, idx);
+        return FiberId( cast(ushort)idx );
+    }
 
     void setup(void[] stackArea) nothrow @nogc {
         fibril.set(stackArea[0 .. $ - OnStackParams.sizeof], &wrapper);

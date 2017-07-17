@@ -8,7 +8,7 @@ import mecca.lib.reflection: as;
    is part of the function's template.
  */
 
-private void internalLogOutput(string TYPE, T...)(string format, T args) nothrow @nogc {
+private void internalLogOutput(string TYPE, T...)(string format, scope lazy T args) nothrow {
     as!"nothrow @nogc"({writefln(TYPE ~ " " ~ format, args);});
 }
 
@@ -24,7 +24,7 @@ void WARN(string format, string file = __FILE__, int line = __LINE__, T...)(T ar
     internalLogOutput!"WARN"("%s:%s " ~ format, file, line, args);
 }
 
-void ERROR(string format, string file = __FILE__, int line = __LINE__, T...)(T args) nothrow @nogc {
+void ERROR(string format, string file = __FILE__, int line = __LINE__, T...)(scope lazy T args) nothrow {
     internalLogOutput!"ERROR"("%s:%s " ~ format, file, line, args);
 }
 

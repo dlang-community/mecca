@@ -306,12 +306,17 @@ void ABORT(string msg, string file = __FILE__, size_t line = __LINE__) nothrow @
     DIE(msg, file, line, true);
 }
 
-void ASSERT(string fmt, string file = __FILE__, size_t line = __LINE__, T...)(bool cond, scope lazy T args) {
+void ASSERT(string fmt, string file = __FILE__, size_t line = __LINE__, T...)(bool cond, scope lazy T args) @system @nogc {
     pragma(inline, true);
     if (cond) {
         return;
     }
-    DIE(fmt, file, line);
+
+    scope f = () nothrow {
+        ERROR!(fmt, file, line)(args);
+    };
+    as!"@nogc pure"(f);
+    DIE("Assertion failure", file, line);
 }
 
 version(assert) {
