@@ -20,6 +20,8 @@ import core.sys.posix.sys.mman: munmap, mprotect, PROT_NONE;
 import std.stdio;
 
 alias TimerHandle = Reactor.TimerHandle;
+alias FiberId = TypedIdentifier!("FiberId", ushort);
+alias FiberIncarnation = TypedIdentifier!("FiberIncarnation", ushort);
 
 class ReactorTimeout : Exception {
     this(string file = __FILE__, size_t line = __LINE__, Throwable next = null) @safe pure nothrow @nogc {
@@ -28,8 +30,6 @@ class ReactorTimeout : Exception {
 }
 
 align(1) struct ReactorFiber {
-    alias FiberId = TypedIdentifier!("FiberId", ushort);
-
     enum FLS_BLOCK_SIZE = 512;
 
     struct OnStackParams {
@@ -55,10 +55,10 @@ align(1):
     OnStackParams*      params;
     FiberId             _nextId;
     FiberId             _prevId;
-    uint                incarnationCounter;
+    FiberIncarnation    incarnationCounter;
     ubyte               _flags;
     State               state;
-    ubyte[6]            _reserved;
+    ubyte[8]            _reserved;
 
     // We define this struct align(1) for the sole purpose of making the following static assert verify what it's supposed to
     static assert (this.sizeof == 32);  // keep it small and cache-line friendly
@@ -74,25 +74,6 @@ align(1):
 
     @property void _next(ReactorFiber* newNext) nothrow @nogc {
         _nextId = to!FiberId(newNext);
-    }
-
-    package ReactorFiber* to(T : ReactorFiber*)(FiberId fid) nothrow @nogc {
-        if (!fid.isValid)
-            return null;
-
-        ASSERT!"Reactor is not open"( theReactor.isOpen );
-        return &theReactor.allFibers[fid.value];
-    }
-
-    package FiberId to(T : FiberId)(ReactorFiber* rfp) const nothrow @nogc {
-        if (rfp is null)
-            return FiberId.invalid;
-
-        ASSERT!"Reactor is not open"( theReactor.isOpen );
-        auto idx = rfp - theReactor.allFibers.arr.ptr;
-        DBG_ASSERT!"Reactor fiber pointer not pointing to fibers pool: base %s ptr %s idx %s"(idx>0 && idx<theReactor.allFibers.arr.length,
-                &theReactor.allFibers.arr[0], rfp, idx);
-        return FiberId( cast(ushort)idx );
     }
 
     void setup(void[] stackArea) nothrow @nogc {
@@ -117,8 +98,8 @@ align(1):
         }
     }
 
-    @property uint identity() const nothrow @nogc {
-        return cast(uint)(&this - theReactor.allFibers.ptr);
+    @property FiberId identity() const nothrow @nogc {
+        return to!FiberId(&this);
     }
 
     @property bool flag(string NAME)() const pure nothrow @nogc {
@@ -166,8 +147,8 @@ align(1):
 
 
 struct FiberHandle {
-    uint identity = uint.max;
-    uint incarnation = uint.max;
+    FiberId identity;
+    FiberIncarnation incarnation;
 
     this(ReactorFiber* fib) @nogc nothrow {
         opAssign(fib);
@@ -178,15 +159,15 @@ struct FiberHandle {
             incarnation = fib.incarnationCounter;
         }
         else {
-            identity = uint.max;
+            identity = FiberId.invalid;
         }
         return this;
     }
     @property ReactorFiber* get() const {
-        if (identity == uint.max || theReactor.allFibers[identity].incarnationCounter != incarnation) {
+        if (!identity.isValid || theReactor.allFibers[identity.value].incarnationCounter != incarnation) {
             return null;
         }
-        return &theReactor.allFibers[identity];
+        return &theReactor.allFibers[identity.value];
     }
 
     @property bool isValid() const {
@@ -640,6 +621,25 @@ private:
     }
 }
 
+// Expose the conversion to/from ReactorFiber only to the reactor package
+package ReactorFiber* to(T : ReactorFiber*)(FiberId fid) nothrow @trusted @nogc {
+    if (!fid.isValid)
+        return null;
+
+    ASSERT!"Reactor is not open"( theReactor.isOpen );
+    return &theReactor.allFibers[fid.value];
+}
+
+package FiberId to(T : FiberId)(const ReactorFiber* rfp) nothrow @trusted @nogc {
+    if (rfp is null)
+        return FiberId.invalid;
+
+    ASSERT!"Reactor is not open"( theReactor.isOpen );
+    auto idx = rfp - theReactor.allFibers.arr.ptr;
+    DBG_ASSERT!"Reactor fiber pointer not pointing to fibers pool: base %s ptr %s idx %s"(idx>=0 && idx<theReactor.allFibers.arr.length,
+            &theReactor.allFibers.arr[0], rfp, idx);
+    return FiberId( cast(ushort)idx );
+}
 
 __gshared Reactor theReactor;
 
