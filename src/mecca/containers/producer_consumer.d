@@ -1,7 +1,7 @@
 module mecca.containers.producer_consumer;
 
 import core.atomic;
-import core.thread;
+import core.thread: thread_isMainThread;
 import std.string;
 
 
@@ -43,14 +43,17 @@ struct _OneToManyQueue(T, size_t _capacity, bool singleConsumerMultiProducers) {
     }
 
     /// Must only be called from the main thread.
-    void addProducer() {
+    void addProducers(size_t num) {
         assert (thread_isMainThread());
-        assert (_effectiveCapacity > 0, "Too many producers. capacity: %s".format(capacity));
+        assert (_effectiveCapacity >= num, "Too many producers. capacity: %s".format(capacity));
         static if (multiConsumersSingleProducer) {
             assert (_effectiveCapacity == capacity - 1, "Only a single producer can register");
         }
 
-        atomicOp!"-="(_effectiveCapacity, 1);
+        atomicOp!"-="(_effectiveCapacity, num);
+    }
+    void addProducer() {
+        addProducers(1);
     }
 
     /// Must only be called from the main thread.
@@ -202,6 +205,7 @@ alias MCSPQueue(T, size_t capacity) = _OneToManyQueue!(T, capacity, false);
 unittest {
     import std.stdio;
     import core.exception;
+    import core.thread;
 
     // start by creating a single thread with many producers
     SCMPQueue!(void*, 4) q;
@@ -387,42 +391,35 @@ struct DuplexQueue(T, size_t capacity) {
     MCSPQueue!(T, capacity) inputs;
     SCMPQueue!(T, capacity) outputs;
 
-    void reset() {
+    void open(size_t numWorkers) {
         inputs.reset();
         inputs.addProducer();
         outputs.reset();
+        outputs.addProducers(numWorkers);
     }
 
     //
     // submit
     //
-    bool pushInput(T ptr) {
+    bool submitRequest(T ptr) {
         pragma(inline, true);
         //assert (thread_isMainThread());
         return inputs.push(ptr);
     }
-    bool popOutput(out T ptr) {
+    bool pullResult(out T ptr) {
         pragma(inline, true);
         //assert (thread_isMainThread());
         return outputs.pop(ptr);
-    }
-    void addWorker() {
-        pragma(inline, true);
-        outputs.addProducer();
-    }
-    void removeWorker() {
-        pragma(inline, true);
-        outputs.removeProducer();
     }
 
     //
     // worker-thread APIs
     //
-    bool popInput(out T ptr) {
+    bool pullRequest(out T ptr) {
         pragma(inline, true);
         return inputs.pop(ptr);
     }
-    bool pushOutput(T ptr) {
+    bool submitResult(T ptr) {
         pragma(inline, true);
         return outputs.push(ptr);
     }
@@ -430,9 +427,9 @@ struct DuplexQueue(T, size_t capacity) {
 
 unittest {
     import std.stdio;
+    import core.thread;
 
     DuplexQueue!(void*, 512) dq;
-    dq.reset();
     enum void* POISON = cast(void*)0x7fff_ffff_ffff_ffffUL;
 
     enum ulong numElems = 200_000;
@@ -447,14 +444,14 @@ unittest {
         void run() {
             while (true) {
                 void* p;
-                if (dq.popInput(p)) {
+                if (dq.pullRequest(p)) {
                     //writeln("RI ", cast(ulong)p);
 
                     if (p is POISON) {
                         break;
                     }
 
-                    while (!dq.pushOutput(p)) {}
+                    while (!dq.submitResult(p)) {}
                     //writeln("WO ", cast(ulong)p);
                 }
             }
@@ -462,15 +459,16 @@ unittest {
     }
 
     Worker[17] workers;
+    dq.open(workers.length);
+
     foreach(ref worker; workers) {
         worker = new Worker();
-        dq.addWorker();
         worker.start();
     }
 
     void fetchReplies() {
         void* p;
-        while (dq.popOutput(p)) {
+        while (dq.pullResult(p)) {
             //writeln("RO ", cast(ulong)p);
             assert (p !is POISON);
             outputsSum += cast(ulong)p;
@@ -478,7 +476,7 @@ unittest {
     }
 
     for (ulong i = 1; i <= numElems;) {
-        if (dq.pushInput(cast(void*)i)) {
+        if (dq.submitRequest(cast(void*)i)) {
             //writeln("WI ", i);
             inputsSum += i;
             i++;
@@ -487,7 +485,7 @@ unittest {
     }
 
     for (int numPosions = 0; numPosions < workers.length;) {
-        if (dq.pushInput(POISON)) {
+        if (dq.submitRequest(POISON)) {
             //writeln("poisoning ", numPosions);
             numPosions++;
         }
