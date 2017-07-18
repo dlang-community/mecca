@@ -8,7 +8,7 @@ import mecca.lib.reflection: as;
 
 
 private extern(C) nothrow @nogc {
-    int backtrace(void** buffer, int size) ;
+    int backtrace(void** buffer, int size);
 
     pragma(mangle, "_D4core7runtime19defaultTraceHandlerFPvZ16DefaultTraceInfo6__ctorMFZC4core7runtime19defaultTraceHandlerFPvZ16DefaultTraceInfo")
         void defaultTraceInfoCtor(Object);
@@ -282,6 +282,8 @@ private void assertHandler2(string file, size_t line, string msg) nothrow @nogc 
     DIE(msg, file, line);
 }
 
+void function(string msg, string file, size_t line) blowUpHandler;
+
 void DIE(string msg, string file = __FILE__, size_t line = __LINE__, bool doAbort=false) nothrow @nogc {
     import core.sys.posix.unistd: write, _exit;
     import core.stdc.stdlib: abort;
@@ -327,7 +329,7 @@ version(assert) {
     alias DBG_ASSERT = ASSERT;
 }
 else {
-    void DBG_ASSERT(string fmt, string file = __FILE__, size_t line = __LINE__, T...)(bool cond, scope lazy T args) {
+    void DBG_ASSERT(string fmt, string file = __FILE__, size_t line = __LINE__, T...)(scope lazy bool cond, scope lazy T args) @nogc {
         pragma(inline, true);
     }
 }
