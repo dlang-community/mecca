@@ -726,7 +726,7 @@ unittest {
             return nextIdx == ubyte.max ? null : &theNodes[nextIdx];
         }
         @property void _next(Node* n) nothrow @safe @nogc {
-            nextIdx = n is null ? ubyte.max : cast(ubyte)(n - theNodes.ptr);
+            nextIdx = n is null ? ubyte.max : cast(ubyte)(n - &theNodes[0]);
         }
     }
 

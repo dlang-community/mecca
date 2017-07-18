@@ -56,7 +56,7 @@ public:
         _wrapper = 0;
         argsBuf[] = 0;
     }
-    void set(void delegate() dg) pure nothrow @safe @nogc {
+    void set(void delegate() dg) pure nothrow @trusted @nogc {
         _funcptr = dg.funcptr;
         _wrapper = 1;
         _dg = dg;
