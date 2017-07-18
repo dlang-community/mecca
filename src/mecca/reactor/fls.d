@@ -6,11 +6,11 @@ enum FLS_AREA_SIZE = 512;
 package struct FLSArea {
     private __gshared static const FLSArea flsAreaInit;
     private __gshared static int _flsOffset = 0;
-    package __gshared static FLSArea* thisFls;
+    package /* thread local */ static FLSArea* thisFls;
 
     ubyte[FLS_AREA_SIZE] data;
 
-    private static int addVariable(T)(T initVal) {
+    private static int alloc(T)(T initVal) {
         int offset = _flsOffset;
         _flsOffset += T.sizeof;
         assert (_flsOffset <= data.sizeof);
@@ -30,7 +30,7 @@ template FiberLocal(T, string NAME, T initVal=T.init) {
 
     shared static this() {
         assert (offset == -1);
-        offset = FLSArea.addVariable(initVal);
+        offset = FLSArea.alloc!T(initVal);
     }
 
     @property ref T FiberLocal() {
