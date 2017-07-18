@@ -3,6 +3,7 @@ module mecca.containers.lists;
 import std.traits;
 
 import mecca.lib.memory: prefetch;
+import mecca.lib.exception;
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -90,8 +91,8 @@ struct _LinkedList(T, string nextAttr, string prevAttr, string ownerAttr, bool w
             assert (owner is null, "owner already set");
             mixin("node." ~ ownerAttr ~ " = &this;");
         }
-        assert (!isValid(getNextOf(node)), "next is linked");
-        assert (!isValid(getPrevOf(node)), "prev is linked");
+        ASSERT!"next is linked"(!isValid(getNextOf(node)));
+        ASSERT!"prev is linked"(!isValid(getPrevOf(node)));
 
         if (!isValid(head)) {
             assert (!isValid(anchor));
@@ -752,7 +753,3 @@ unittest {
     queue.removeAll();
     assert (queue.empty);
 }
-
-
-
-

@@ -51,14 +51,14 @@ align(1) struct ReactorFiber {
     }
 
 align(1):
-    Fibril              fibril;
-    OnStackParams*      params;
-    FiberId             _nextId;
-    FiberId             _prevId;
-    FiberIncarnation    incarnationCounter;
-    ubyte               _flags;
-    State               state;
-    ubyte[8]            _reserved;
+    Fibril                      fibril;
+    OnStackParams*              params;
+    FiberId                     _nextId;
+    FiberId                     _prevId;
+    FiberIncarnation            incarnationCounter;
+    ubyte                       _flags;
+    State                       state;
+    LinkedSet!(ReactorFiber*)*  _owner;
 
     // We define this struct align(1) for the sole purpose of making the following static assert verify what it's supposed to
     static assert (this.sizeof == 32);  // keep it small and cache-line friendly
@@ -74,6 +74,18 @@ align(1):
 
     @property void _next(ReactorFiber* newNext) nothrow @nogc {
         _nextId = to!FiberId(newNext);
+    }
+
+    @property ReactorFiber* _prev() nothrow @nogc {
+        return to!(ReactorFiber*)(_prevId);
+    }
+
+    @property void _prev(FiberId newPrev) nothrow @safe @nogc {
+        _prevId = newPrev;
+    }
+
+    @property void _prev(ReactorFiber* newPrev) nothrow @nogc {
+        _prevId = to!FiberId(newPrev);
     }
 
     void setup(void[] stackArea) nothrow @nogc {
@@ -163,7 +175,7 @@ struct FiberHandle {
         }
         return this;
     }
-    @property ReactorFiber* get() const {
+    package @property ReactorFiber* get() const {
         if (!identity.isValid || theReactor.allFibers[identity.value].incarnationCounter != incarnation) {
             return null;
         }
@@ -528,6 +540,10 @@ private:
         assert (fib.flag!"CALLBACK_SET");
 
         if (!fib.flag!"SCHEDULED") {
+            if (fib._owner !is null) {
+                // Whatever this fiber was waiting to do, it is no longer what it needs to be doing
+                fib._owner.remove(fib);
+            }
             fib.flag!"SCHEDULED" = true;
             if (fib.flag!"IMMEDIATE") {
                 fib.flag!"IMMEDIATE" = false;
@@ -545,6 +561,9 @@ private:
         fib.flag!"IMMEDIATE" = immediate;
         fib.flag!"CALLBACK_SET" = true;
         fib.state = ReactorFiber.State.Sleeping;
+        fib._prevId = FiberId.invalid;
+        fib._nextId = FiberId.invalid;
+        fib._owner = null;
         resumeFiber(fib);
         return fib;
     }
