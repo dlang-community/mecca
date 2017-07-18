@@ -3,6 +3,7 @@ module mecca.reactor.time_queue;
 import std.string;
 
 import mecca.log;
+import mecca.lib.exception;
 import mecca.lib.time;
 import mecca.lib.reflection;
 import mecca.containers.lists;
@@ -63,14 +64,14 @@ public:
         return TscTimePoint.toDuration(resolutionCycles * spanInBins);
     }
 
-    void insert(T entry) {
+    void insert(T entry) @safe @nogc {
         version (unittest) {
             stats[0]++;
         }
         if (!_insert(entry)) {
-            throw new TooFarAhead("tp=%s baseTime=%s poppedTime=%s (%.3fs in future) offset=%s resolutionCycles=%s".format(
+            throw mkExFmt!TooFarAhead("tp=%s baseTime=%s poppedTime=%s (%.3fs in future) offset=%s resolutionCycles=%s",
                     entry.timePoint, baseTime, poppedTime, (entry.timePoint - baseTime).total!"msecs" / 1000.0,
-                            offset, resolutionCycles));
+                            offset, resolutionCycles);
         }
     }
 

@@ -51,19 +51,19 @@ public:
         _wrapper = 0;
         argsBuf[] = 0;
     }
-    void set(void function() fn) pure @nogc nothrow {
+    void set(void function() fn) pure nothrow @safe @nogc {
         _funcptr = fn;
         _wrapper = 0;
         argsBuf[] = 0;
     }
-    void set(void delegate() dg) pure @nogc nothrow {
+    void set(void delegate() dg) pure nothrow @safe @nogc {
         _funcptr = dg.funcptr;
         _wrapper = 1;
         _dg = dg;
         argsBuf[dg.sizeof .. $] = 0;
     }
 
-    void set(T...)(void function(T) fn, T args) pure @nogc nothrow {
+    void set(T...)(void function(T) fn, T args) pure nothrow @trusted @nogc {
         struct Typed {T args;}
         static assert (Typed.sizeof <= argsBuf.sizeof);
         static void wrapper(_Closure* c) {
@@ -76,7 +76,7 @@ public:
         argsBuf[Typed.sizeof .. $] = 0;
     }
 
-    void set(T...)(void delegate(T) dg, T args) pure @nogc nothrow {
+    void set(T...)(void delegate(T) dg, T args) pure nothrow @trusted @nogc {
         struct Typed {void delegate(T) dg; T args;}
         static assert (Typed.sizeof <= argsBuf.sizeof);
         static void wrapper(_Closure* c) {

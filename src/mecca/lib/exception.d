@@ -183,6 +183,10 @@ struct ExcBuf {
 /* thread local*/ static ExcBuf* _currExcBuf;
 /* thread local*/ static this() {_currExcBuf = &_tlsExcBuf;}
 
+void switchCurrExcBuf(ExcBuf* newCurrentExcBuf) nothrow @safe @nogc {
+    _currExcBuf = newCurrentExcBuf;
+}
+
 T mkEx(T: Throwable, string file = __FILE__, size_t line = __LINE__, A...)(auto ref A args) @trusted @nogc {
     pragma(inline, true); // Must inline because of __FILE__ as template parameter. https://github.com/ldc-developers/ldc/issues/1703
     return _currExcBuf.construct!T(file, line, true, args);
@@ -306,7 +310,7 @@ void ABORT(string msg, string file = __FILE__, size_t line = __LINE__) nothrow @
     DIE(msg, file, line, true);
 }
 
-void ASSERT(string fmt, string file = __FILE__, size_t line = __LINE__, T...)(bool cond, scope lazy T args) @system @nogc {
+void ASSERT(string fmt, string file = __FILE__, size_t line = __LINE__, T...)(bool cond, scope lazy T args) @trusted @nogc {
     pragma(inline, true);
     if (cond) {
         return;

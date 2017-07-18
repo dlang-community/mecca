@@ -221,7 +221,7 @@ struct SimplePool(T) {
         elements.free();
     }
 
-    T* alloc() nothrow @nogc {
+    T* alloc() nothrow @trusted @nogc {
         assert (!closed);
         if (used >= elements.length) {
             static const PoolDepleted poolDepeleted = new PoolDepleted(typeof(this).stringof);

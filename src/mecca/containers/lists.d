@@ -544,7 +544,7 @@ struct _LinkedQueue(T, string nextAttr, bool withLength) {
         size_t length;
     }
 
-    static T getNextOf(T node) nothrow {
+    static T getNextOf(T node) nothrow @safe @nogc {
         pragma(inline, true);
         T tmp = mixin("node." ~ nextAttr);
         prefetch(tmp);
@@ -578,7 +578,7 @@ struct _LinkedQueue(T, string nextAttr, bool withLength) {
         }
         static if (withLength) length++;
     }
-    void prepend(T node) nothrow {
+    void prepend(T node) nothrow @safe @nogc {
         assert (getNextOf(node) is null && node !is head && node !is tail);
 
         if (empty) {
@@ -722,10 +722,10 @@ unittest {
         int value;
         ubyte nextIdx = ubyte.max;
 
-        @property Node* _next() nothrow {
+        @property Node* _next() const nothrow @safe @nogc {
             return nextIdx == ubyte.max ? null : &theNodes[nextIdx];
         }
-        @property void _next(Node* n) nothrow {
+        @property void _next(Node* n) nothrow @safe @nogc {
             nextIdx = n is null ? ubyte.max : cast(ubyte)(n - theNodes.ptr);
         }
     }

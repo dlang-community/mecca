@@ -36,6 +36,7 @@ align(1) struct ReactorFiber {
         Closure                 fiberBody;
         GCStackDescriptor       stackDescriptor;
         ubyte[FLS_BLOCK_SIZE]   flsBlock;
+        ExcBuf                  currExcBuf;
     }
     enum Flags: ubyte {
         CALLBACK_SET   = 0x01,
@@ -64,7 +65,7 @@ align(1):
     static assert (this.sizeof == 32);  // keep it small and cache-line friendly
 
     // LinkedQueue access through property
-    @property ReactorFiber* _next() nothrow @nogc {
+    @property ReactorFiber* _next() const nothrow @safe @nogc {
         return to!(ReactorFiber*)(_nextId);
     }
 
@@ -72,11 +73,11 @@ align(1):
         _nextId = newNext;
     }
 
-    @property void _next(ReactorFiber* newNext) nothrow @nogc {
+    @property void _next(ReactorFiber* newNext) nothrow @safe @nogc {
         _nextId = to!FiberId(newNext);
     }
 
-    @property ReactorFiber* _prev() nothrow @nogc {
+    @property ReactorFiber* _prev() const nothrow @safe @nogc {
         return to!(ReactorFiber*)(_prevId);
     }
 
@@ -84,7 +85,7 @@ align(1):
         _prevId = newPrev;
     }
 
-    @property void _prev(ReactorFiber* newPrev) nothrow @nogc {
+    @property void _prev(ReactorFiber* newPrev) nothrow @safe @nogc {
         _prevId = to!FiberId(newPrev);
     }
 
@@ -110,7 +111,7 @@ align(1):
         }
     }
 
-    @property FiberId identity() const nothrow @nogc {
+    @property FiberId identity() const nothrow @safe @nogc {
         return to!FiberId(&this);
     }
 
@@ -126,11 +127,12 @@ align(1):
         }
     }
 
-    private void updateStackDescriptor() nothrow @nogc {
+private:
+    void updateStackDescriptor() nothrow @nogc {
         params.stackDescriptor.tstack = fibril.rsp;
     }
 
-    private void wrapper() nothrow {
+    void wrapper() nothrow {
         while (true) {
             INFO!"wrapper on %s flags=0x%0x"(identity, _flags);
 
@@ -155,6 +157,10 @@ align(1):
             theReactor.fiberTerminated(ex);
         }
     }
+
+    void switchInto() nothrow @safe @nogc {
+        switchCurrExcBuf( &params.currExcBuf );
+    }
 }
 
 
@@ -162,10 +168,10 @@ struct FiberHandle {
     FiberId identity;
     FiberIncarnation incarnation;
 
-    this(ReactorFiber* fib) @nogc nothrow {
+    this(ReactorFiber* fib) nothrow @safe @nogc {
         opAssign(fib);
     }
-    auto ref opAssign(ReactorFiber* fib) @nogc nothrow {
+    auto ref opAssign(ReactorFiber* fib) nothrow @safe @nogc {
         if (fib) {
             identity = fib.identity;
             incarnation = fib.incarnationCounter;
@@ -175,14 +181,14 @@ struct FiberHandle {
         }
         return this;
     }
-    package @property ReactorFiber* get() const {
+    package @property ReactorFiber* get() const nothrow @trusted @nogc {
         if (!identity.isValid || theReactor.allFibers[identity.value].incarnationCounter != incarnation) {
             return null;
         }
         return &theReactor.allFibers[identity.value];
     }
 
-    @property bool isValid() const {
+    @property bool isValid() const nothrow @safe @nogc {
         return get() !is null;
     }
 }
@@ -355,7 +361,7 @@ public:
         assert (criticalSectionNesting > 0);
         criticalSectionNesting--;
     }
-    @property bool isInCriticalSection() const pure nothrow @nogc {
+    @property bool isInCriticalSection() const pure nothrow @safe @nogc {
         return criticalSectionNesting > 0;
     }
 
@@ -379,12 +385,12 @@ public:
         TimedCallback* callback;
 
     public:
-        bool isValid() const {
+        bool isValid() const @safe @nogc {
             return callback !is null;
         }
     }
 
-    TimerHandle registerTimer(alias F)(Timeout timeout, Parameters!F params) {
+    TimerHandle registerTimer(alias F)(Timeout timeout, Parameters!F params) nothrow @safe @nogc {
         TimedCallback* callback = timedCallbacksPool.alloc();
         callback.closure.set(&F, params);
         callback.timePoint = timeout.expiry;
@@ -394,7 +400,7 @@ public:
         return TimerHandle(callback);
     }
 
-    void cancelTimer(TimerHandle handle) {
+    void cancelTimer(TimerHandle handle) @safe @nogc {
         if( !handle.isValid )
             return;
         timeQueue.cancel(handle.callback);
@@ -413,11 +419,11 @@ public:
     }
 
 private:
-    @property bool shouldRunTimedCallbacks() {
+    @property bool shouldRunTimedCallbacks() nothrow @safe @nogc {
         return timeQueue.cyclesTillNextEntry(TscTimePoint.now()) == 0;
     }
 
-    void switchToNext() {
+    void switchToNext() nothrow @trusted @nogc {
         DEBUG!"SWITCH out of %s"(thisFiber.identity);
 
         // in source fiber
@@ -444,6 +450,7 @@ private:
             if (prevFiber !is thisFiber) {
                 // make the switch
                 prevFiber.fibril.switchTo(thisFiber.fibril);
+                thisFiber.switchInto();
             }
         }
 
@@ -475,7 +482,7 @@ private:
         }
     }
 
-    package void suspendThisFiber(Timeout timeout) {
+    package void suspendThisFiber(Timeout timeout) @trusted @nogc {
         if (timeout == Timeout.infinite)
             return suspendThisFiber();
 
@@ -486,10 +493,10 @@ private:
         bool timeoutExpired;
 
         if (timeout == Timeout.elapsed) {
-            throw new ReactorTimeout();
+            throw mkEx!ReactorTimeout;
         }
 
-        static void resumer(FiberHandle fibHandle, TimerHandle* cookie, bool* timeoutExpired) {
+        static void resumer(FiberHandle fibHandle, TimerHandle* cookie, bool* timeoutExpired) nothrow @trusted @nogc{
             *cookie = TimerHandle.init;
             ReactorFiber* fib = fibHandle.get;
             assert( fib !is null, "Fiber disappeared while suspended with timer" );
@@ -512,15 +519,15 @@ private:
         switchToNext();
 
         if( timeoutExpired )
-            throw new ReactorTimeout();
+            throw mkEx!ReactorTimeout();
     }
 
-    package void suspendThisFiber() {
+    package void suspendThisFiber() @safe @nogc {
          assert (!isInCriticalSection);
          switchToNext();
     }
 
-    void resumeSpecialFiber(ReactorFiber* fib) {
+    void resumeSpecialFiber(ReactorFiber* fib) nothrow @safe @nogc {
         assert (fib.flag!"SPECIAL");
         assert (fib.flag!"CALLBACK_SET");
         assert (!fib.flag!"SCHEDULED" || scheduledFibers.head is fib);
@@ -531,11 +538,11 @@ private:
         }
     }
 
-    package void resumeFiber(FiberHandle handle) {
+    package void resumeFiber(FiberHandle handle) nothrow @safe @nogc {
         resumeFiber(handle.get());
     }
 
-    void resumeFiber(ReactorFiber* fib) {
+    void resumeFiber(ReactorFiber* fib) nothrow @safe @nogc {
         assert (!fib.flag!"SPECIAL");
         assert (fib.flag!"CALLBACK_SET");
 
