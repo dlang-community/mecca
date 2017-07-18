@@ -50,9 +50,18 @@ public:
     }
 
     alias array this;
+
+    void safeSetPrefix(const(T)[] arr2) {
+        _length = cast(L)(arr2.length <= N ? arr2.length : N);
+        data[0 .. _length] = cast(T[])arr2;
+    }
+    void safeSetSuffix(const(T)[] arr2) {
+        _length = cast(L)(arr2.length <= N ? arr2.length : N);
+        data[0 .. _length] = cast(T[])arr2[$ - _length .. $];
+    }
 }
 
-alias FixedString(size_t N) = FixedArray!(chat, N, false);
+alias FixedString(size_t N) = FixedArray!(char, N, false);
 
 unittest {
     FixedArray!(uint, 8) fa;
