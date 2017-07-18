@@ -1,4 +1,4 @@
-module mecca.containers.producer_consumer;
+module mecca.containers.otm_queue;
 
 import core.atomic;
 import core.thread: thread_isMainThread;
@@ -95,15 +95,15 @@ struct _OneToManyQueue(T, size_t _capacity, bool singleConsumerMultiProducers) {
         }
     }
 
-    version(unittest) void sanity() {
+    version(unittest) void sanity() nothrow @nogc {
         static if (singleConsumerMultiProducers) {
             const ridx = atomicLoad!(MemoryOrder.raw)(readIndex);
             const widx = atomicLoad!(MemoryOrder.raw)(writeIndex);
-            assert(ridx <= widx, "writeIndex %d < readIndex %d".format(ridx, widx));
+            assert(ridx <= widx); //, "writeIndex %d < readIndex %d".format(ridx, widx));
         }
     }
 
-    bool pop(out T ptr) {
+    bool pop(out T ptr) nothrow @nogc {
         version (unittest) {
             sanity();
             scope(exit) sanity();
@@ -156,7 +156,7 @@ struct _OneToManyQueue(T, size_t _capacity, bool singleConsumerMultiProducers) {
         return true;
     }
 
-    bool push(T ptr) {
+    bool push(T ptr) nothrow @nogc {
         assert (cast(ulong)ptr >> 63 == 0, "MSB of ptr must be clear");
         assert (_effectiveCapacity < capacity - 1, "No producers have registered");
 
@@ -171,9 +171,9 @@ struct _OneToManyQueue(T, size_t _capacity, bool singleConsumerMultiProducers) {
         static if (singleConsumerMultiProducers) {
             const widx = atomicOp!"+="(writeIndex, 1) - 1;
             const phase = phaseOf(widx);
-            assert(atomicLoad!(MemoryOrder.acq)(arr[widx % capacity]) >> 63 != phase,
-                   "Phase is already correct for new produce. widx %s arr[%d].phase = %d".format(
-                          widx, widx % capacity, phase));
+            assert(atomicLoad!(MemoryOrder.acq)(arr[widx % capacity]) >> 63 != phase);
+                   //"Phase is already correct for new produce. widx %s arr[%d].phase = %d".format(
+                   //       widx, widx % capacity, phase));
 
             const value = (ulong(phase) << 63) | cast(ulong)ptr;
             atomicStore!(MemoryOrder.rel)(arr[widx % capacity], value);
@@ -401,12 +401,12 @@ struct DuplexQueue(T, size_t capacity) {
     //
     // submit
     //
-    bool submitRequest(T ptr) {
+    bool submitRequest(T ptr) nothrow @nogc {
         pragma(inline, true);
         //assert (thread_isMainThread());
         return inputs.push(ptr);
     }
-    bool pullResult(out T ptr) {
+    bool pullResult(out T ptr) nothrow @nogc {
         pragma(inline, true);
         //assert (thread_isMainThread());
         return outputs.pop(ptr);
@@ -415,11 +415,11 @@ struct DuplexQueue(T, size_t capacity) {
     //
     // worker-thread APIs
     //
-    bool pullRequest(out T ptr) {
+    bool pullRequest(out T ptr) nothrow @nogc {
         pragma(inline, true);
         return inputs.pop(ptr);
     }
-    bool submitResult(T ptr) {
+    bool submitResult(T ptr) nothrow @nogc {
         pragma(inline, true);
         return outputs.push(ptr);
     }
