@@ -3,17 +3,15 @@ module mecca.lib.typedid;
 import std.traits;
 import std.conv;
 
-struct TypedIdentifier(string Name, T=int, T Invalid = T.max, T Init=Invalid) if (isIntegral!T) {
+
+struct TypedIdentifier(string _name, T, T _invalid = T.max, T _init=_invalid, bool algebraic=false) if (isIntegral!T) {
 private:
-    T _value = Init;
+    T _value = _init;
 
 public:
     alias UnderlyingType = T;
-
-    enum TypedIdentifier min = T.min;
-    enum TypedIdentifier max = T.max;
-    enum TypedIdentifier invalid = TypedIdentifier(Invalid);
-    enum name = Name;
+    enum TypedIdentifier invalid = TypedIdentifier(_invalid);
+    enum name = _name;
 
     this(T value) @safe pure nothrow @nogc {
         this._value = value;
@@ -23,64 +21,66 @@ public:
     @property T value() const pure nothrow @safe @nogc {
         return _value;
     }
-
-    @property bool isValid()  const pure nothrow @safe @nogc {
-        return this !is invalid;
+    @property bool isValid() const pure nothrow @safe @nogc {
+        return _value != _invalid;
     }
-
     ref TypedIdentifier opAssign(T val) nothrow @safe @nogc {
         _value = val;
-
         return this;
     }
 
     // Default opEquals does the right thing
-    int opCmp(in TypedIdentifier rhs) const pure nothrow @safe @nogc {
-        return value > rhs.value ? 1 : (value < rhs.value ? -1 : 0);
-    }
 
-    // Pointer like semantics:
-    // Can add integer to TypedIdentifier to get TypedIdentifier
-    ref TypedIdentifier opOpAssign(string op)(in T rhs) nothrow @safe @nogc if (op == "+" || op == "-") {
-        mixin("_value "~op~"= rhs;");
+    static if (algebraic) {
+        enum TypedIdentifier min = T.min;
+        enum TypedIdentifier max = T.max;
 
-        return this;
-    }
+        int opCmp(in TypedIdentifier rhs) const pure nothrow @safe @nogc {
+            return value > rhs.value ? 1 : (value < rhs.value ? -1 : 0);
+        }
 
-    TypedIdentifier opBinary(string op)(in T rhs) const pure nothrow @safe @nogc if (op == "+" || op == "-") {
-        TypedIdentifier res = this;
-        //return mixin("res "~op~"= rhs;");
-        res += rhs;
+        // Pointer like semantics:
+        // Can add integer to TypedIdentifier to get TypedIdentifier
+        ref TypedIdentifier opOpAssign(string op)(in T rhs) nothrow @safe @nogc if (op == "+" || op == "-") {
+            mixin("_value "~op~"= rhs;");
+            return this;
+        }
 
-        return res;
-    }
+        TypedIdentifier opBinary(string op)(in T rhs) const pure nothrow @safe @nogc if (op == "+" || op == "-") {
+            TypedIdentifier res = this;
+            //return mixin("res "~op~"= rhs;");
+            res += rhs;
+            return res;
+        }
 
-    ref TypedIdentifier opUnary(string op)() nothrow @safe @nogc if (op == "++" || op == "--") {
-        if (isValid)
-            mixin("_value" ~ op ~ ";");
+        ref TypedIdentifier opUnary(string op)() nothrow @safe @nogc if (op == "++" || op == "--") {
+            if (isValid)
+                mixin("_value" ~ op ~ ";");
 
-        return this;
-    }
+            return this;
+        }
 
-    // Can subtract two TypedIdentifier to get an integer
-    T opBinary(string op : "-")(in TypedIdentifier rhs) const pure nothrow @safe @nogc {
-        return value - rhs.value;
+        // Can subtract two TypedIdentifier to get an integer
+        T opBinary(string op : "-")(in TypedIdentifier rhs) const pure nothrow @safe @nogc {
+            return value - rhs.value;
+        }
     }
 
     // toString is not @nogc
     string toString() const pure nothrow @safe {
-        if (isValid) {
-            return Name ~ "<" ~ to!string(value) ~ ">";
-        } else {
-            return Name ~ "<INVALID>";
-        }
+        return name ~ "<" ~ (isValid ? to!string(_value) : "INVALID") ~ ">";
     }
+
+    static assert (this.sizeof == T.sizeof);
 }
+
+alias AlgebraicTypedIdentifier(string name, T, T invalid = T.max, T init = invalid) = TypedIdentifier!(name, T, invalid, init, true);
+
 
 unittest {
     import std.string;
 
-    alias UtId = TypedIdentifier!("UtId", ushort);
+    alias UtId = AlgebraicTypedIdentifier!("UtId", ushort);
 
     auto val = UtId(12);
     auto inv = UtId(65535);
