@@ -184,7 +184,6 @@ struct ExcBuf {
 /* thread local*/ static this() {switchCurrExcBuf(null);}
 
 void switchCurrExcBuf(ExcBuf* newCurrentExcBuf) nothrow @safe @nogc {
-    INFO!"currExcBuf from %s to %s"(_currExcBuf, newCurrentExcBuf);
     if (newCurrentExcBuf !is null)
         _currExcBuf = newCurrentExcBuf;
     else

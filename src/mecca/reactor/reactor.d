@@ -594,9 +594,8 @@ private:
 
                 // We only reach here if runTimedCallbacks did nothing, in which case "end" is recent enough
                 Duration sleepDuration = timeQueue.timeTillNextEntry(end);
-                //DEBUG!"Got %s idle callbacks registered"(idleCallbacks.length);
                 if( idleCallbacks.length==1 ) {
-                    DEBUG!"idle callback called with duration %s"(sleepDuration);
+                    //DEBUG!"idle callback called with duration %s"(sleepDuration);
                     idleCallbacks[0](sleepDuration);
                 } else if ( idleCallbacks.length>1 ) {
                     foreach(cb; idleCallbacks) {
