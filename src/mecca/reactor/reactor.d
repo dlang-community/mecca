@@ -22,7 +22,7 @@ import std.stdio;
 
 alias TimerHandle = Reactor.TimerHandle;
 alias FiberId = TypedIdentifier!("FiberId", ushort);
-alias FiberIncarnation = TypedIdentifier!("FiberIncarnation", ushort);
+alias FiberIncarnation = ushort;
 
 class ReactorTimeout : Exception {
     this(string file = __FILE__, size_t line = __LINE__, Throwable next = null) @safe pure nothrow @nogc {
