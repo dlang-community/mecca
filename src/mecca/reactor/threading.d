@@ -5,15 +5,17 @@ import core.thread;
 import core.sys.posix.signal;
 import std.exception;
 
-import mecca.lib.lowlevel: gettid, Signal;
+import mecca.platform.linux: gettid, Signal;
 import mecca.lib.reflection;
 import mecca.lib.exception;
 import mecca.lib.time;
+import mecca.lib.typedid: TypedIdentifier;
 
 import mecca.containers.otm_queue: DuplexQueue;
 import mecca.containers.arrays: FixedString;
 import mecca.containers.pools: FixedPool;
 
+import mecca.log;
 import mecca.reactor.reactor: theReactor, FiberHandle;
 
 
@@ -66,6 +68,7 @@ class WorkerThread: Thread {
             dg();
         }
         catch (Throwable ex) {
+            try{import std.stdio; writeln(ex);} catch(Throwable){}
             ASSERT!"WorkerThread threw %s(%s)"(false, typeid(ex).name, ex.msg);
             assert(false);
         }
@@ -75,6 +78,8 @@ class WorkerThread: Thread {
 class DeferredTaskFailed: Exception {
     mixin ExceptionBody;
 }
+
+alias DeferredTaskCookie = TypedIdentifier!("DeferredTaskCookie", ulong);
 
 struct DeferredTask {
     Closure closure;
@@ -93,6 +98,10 @@ struct DeferredTask {
         }
     }
 
+    @property DeferredTaskCookie cookie() const pure @nogc nothrow {
+        return DeferredTaskCookie(timeAdded.cycles);
+    }
+
     void set(alias F)(Parameters!F args) {
         alias R = ReturnType!F;
         static if (is(R == void)) {
@@ -100,22 +109,24 @@ struct DeferredTask {
         }
         else {
             static assert (R.sizeof <= result.sizeof);
-            static void wrapper(R* res, Parameters!F args) {
-                *res = F(args);
+            static void wrapper(void* res, Parameters!F args) {
+                *cast(R*)res = F(args);
             }
-            //closure.set!wrapper(cast(R*)result.ptr, args);
+            closure.setF!wrapper(result.ptr, args);
         }
     }
 
     void execute() {
         // called on worker thread
         if (!fibHandle.isValid()) {
+            DEBUG!"#THD no fiber is waiting for %s"(cookie);
             return;
         }
 
         scope(exit) timeFinished = TscTimePoint.now;
         hasException = false;
         try {
+            DEBUG!"#THD running %s in thread"(cookie);
             closure();
         }
         catch (Throwable ex) {
@@ -132,19 +143,17 @@ struct DeferredTask {
     }
 }
 
+private extern(C) nothrow @system @nogc {
+    import core.sys.posix.pthread: pthread_mutex_t;
+
+    // these are not marked as @nogc in some versions of phobos
+    int pthread_mutex_lock(pthread_mutex_t*);
+    int pthread_mutex_unlock(pthread_mutex_t*);
+}
+
 private struct PthreadMutex {
-    import core.sys.posix.pthread;
     pthread_mutex_t mtx;
 
-    void open() nothrow @nogc {
-        pthread_mutexattr_t attr = void;
-        ASSERT!"pthread_mutexattr_init"(pthread_mutexattr_init(&attr) == 0);
-        ASSERT!"pthread_mutexattr_settype"(pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_NORMAL) == 0); // PTHREAD_MUTEX_RECURSIVE
-        ASSERT!"pthread_mutex_init"(pthread_mutex_init(&mtx, &attr) == 0);
-    }
-    void close() nothrow @nogc {
-        ASSERT!"pthread_mutex_destroy"(pthread_mutex_destroy(&mtx) == 0);
-    }
     void lock() nothrow @nogc {
         ASSERT!"pthread_mutex_lock"(pthread_mutex_lock(&mtx) == 0);
     }
@@ -153,29 +162,36 @@ private struct PthreadMutex {
     }
 }
 
-struct ThreadPool(size_t numTasks) {
+struct ThreadPool(ushort numTasks) {
     enum MAX_FETCH_STREAK = 32;
 
 private:
+    alias PoolType = FixedPool!(DeferredTask, numTasks);
+    alias IdxType = PoolType.IdxType;
+    enum IdxType POISON = IdxType.max >> 1;
+    static assert (numTasks < POISON);
+
     bool active;
     bool threadExited;
     shared long numActiveThreads;
     PthreadMutex pollerThreadMutex;
     Duration pollingInterval;
     WorkerThread[] threads;
-    DuplexQueue!(DeferredTask*, numTasks) queue;
-    FixedPool!(DeferredTask, numTasks) tasksPool;
+    PoolType tasksPool;
+    DuplexQueue!(IdxType, numTasks) queue;
 
 public:
     void open(uint numThreads, size_t stackSize = 0, Duration threadPollingInterval = 10.msecs,
               Duration reactorPollingInterval = 500.usecs) {
-        pollerThreadMutex.open();
-        this.pollingInterval = pollingInterval;
-        threads.length = numThreads;
+        pollerThreadMutex = PthreadMutex.init;
+        pollingInterval = threadPollingInterval;
         numActiveThreads = 0;
         active = true;
         threadExited = false;
         tasksPool.open();
+        queue.open(numThreads);
+        threads.length = numThreads;
+
         foreach(ref thd; threads) {
             thd = new WorkerThread(&threadFunc, stackSize);
             thd.start();
@@ -190,12 +206,11 @@ public:
         //theReactor.cancelCall(timerCookie);
         active = false;
         foreach(i; 0 .. threads.length) {
-            queue.submitRequest(null);
+            queue.submitRequest(POISON);
         }
         foreach(thd; threads) {
             thd.join();
         }
-        pollerThreadMutex.close();
         tasksPool.close();
     }
 
@@ -206,9 +221,9 @@ public:
         scope(exit) pollerThreadMutex.unlock();
 
         while (active) {
-            DeferredTask* task;
-            if (queue.pullRequest(task)) {
-                return task;
+            IdxType idx;
+            if (queue.pullRequest(idx)) {
+                return idx == POISON ? null : tasksPool.fromIndex(idx);
             }
             else {
                 Thread.sleep(pollingInterval);
@@ -232,7 +247,7 @@ public:
             }
 
             task.execute();
-            auto added = queue.submitResult(task);
+            auto added = queue.submitResult(tasksPool.indexOf(task));
             ASSERT!"submitResult failed"(added);
         }
     }
@@ -240,12 +255,11 @@ public:
     private void completionCallback() nothrow {
         assert (!threadExited);
         foreach(_; 0 .. MAX_FETCH_STREAK) {
-            DeferredTask* task;
-            if (!queue.pullResult(task)) {
+            IdxType idx;
+            if (!queue.pullResult(idx)) {
                 break;
             }
-            assert (task);
-
+            DeferredTask* task = tasksPool.fromIndex(idx);
             task.runFinalizer(); // call finalizer, if the user provided one
 
             if (task.fibHandle.isValid) {
@@ -264,7 +278,7 @@ public:
         task.fibHandle = theReactor.runningFiberHandle;
         task.timeAdded = TscTimePoint.softNow();
         task.set!F(args);
-        auto added = queue.submitRequest(task);
+        auto added = queue.submitRequest(tasksPool.indexOf(task));
         ASSERT!"submitRequest"(added);
 
         //
@@ -315,19 +329,21 @@ public:
     }
 }
 
-/+
+
 unittest {
-    ThreadPool!64 thdPool;
+    ThreadPool!1024 thdPool;
+    import mecca.reactor.reactor: testWithReactor;
 
     static int sleeper(Duration dur) {
         Thread.sleep(dur);
         return 17;
     }
 
-    //testWithReactor({
-    thdPool.open(10);
-    auto res = thdPool.deferToThread!sleeper(10.msecs);
-    assert (res == 17);
-    //});
+    testWithReactor({
+        thdPool.open(10);
+        auto res = thdPool.deferToThread!sleeper(10.msecs);
+        assert (res == 17);
+    });
 }
-+/
+
+
