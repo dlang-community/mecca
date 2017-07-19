@@ -14,6 +14,7 @@ import mecca.lib.typedid;
 import mecca.log;
 import mecca.reactor.time_queue;
 import mecca.reactor.fibril: Fibril;
+import mecca.reactor.fls;
 import core.memory: GC;
 import core.sys.posix.sys.mman: munmap, mprotect, PROT_NONE;
 
@@ -30,12 +31,10 @@ class ReactorTimeout : Exception {
 }
 
 align(1) struct ReactorFiber {
-    enum FLS_BLOCK_SIZE = 512;
-
     struct OnStackParams {
         Closure                 fiberBody;
         GCStackDescriptor       stackDescriptor;
-        ubyte[FLS_BLOCK_SIZE]   flsBlock;
+        FLSArea                 flsBlock;
         ExcBuf                  currExcBuf;
     }
     enum Flags: ubyte {
@@ -160,6 +159,11 @@ private:
 
     void switchInto() nothrow @safe @nogc {
         switchCurrExcBuf( &params.currExcBuf );
+        if (!flag!"SPECIAL") {
+            params.flsBlock.switchTo();
+        } else {
+            FLSArea.switchToNone();
+        }
     }
 }
 
@@ -572,6 +576,7 @@ private:
         fib._prevId = FiberId.invalid;
         fib._nextId = FiberId.invalid;
         fib._owner = null;
+        fib.params.flsBlock.reset();
         resumeFiber(fib);
         return fib;
     }
