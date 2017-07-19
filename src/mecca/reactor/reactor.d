@@ -290,6 +290,7 @@ public:
         assert(criticalSectionNesting==0);
 
         // XXX: go over all scheduled/pending fibers and throwInFiber(ReactorExit)
+        switchCurrExcBuf(null);
 
         options.setToInit();
         allFibers.free();
@@ -424,7 +425,7 @@ private:
     }
 
     void switchToNext() nothrow @trusted @nogc {
-        DEBUG!"SWITCH out of %s"(thisFiber.identity);
+        //DEBUG!"SWITCH out of %s"(thisFiber.identity);
 
         // in source fiber
         {
@@ -459,7 +460,7 @@ private:
             // note that GC cannot happen here since we disabled it in the mainloop() --
             // otherwise this might have been race-prone
             prevFiber.updateStackDescriptor();
-            DEBUG!"SWITCH into %s"(thisFiber.identity);
+            //DEBUG!"SWITCH into %s"(thisFiber.identity);
         }
     }
 
@@ -593,7 +594,7 @@ private:
 
                 // We only reach here if runTimedCallbacks did nothing, in which case "end" is recent enough
                 Duration sleepDuration = timeQueue.timeTillNextEntry(end);
-                DEBUG!"Got %s idle callbacks registered"(idleCallbacks.length);
+                //DEBUG!"Got %s idle callbacks registered"(idleCallbacks.length);
                 if( idleCallbacks.length==1 ) {
                     DEBUG!"idle callback called with duration %s"(sleepDuration);
                     idleCallbacks[0](sleepDuration);

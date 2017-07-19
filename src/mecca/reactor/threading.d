@@ -315,6 +315,7 @@ public:
     }
 }
 
+/+
 unittest {
     ThreadPool!64 thdPool;
 
@@ -329,6 +330,4 @@ unittest {
     assert (res == 17);
     //});
 }
-
-
-
++/

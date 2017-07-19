@@ -124,7 +124,7 @@ public:
     }
 
 private:
-    bool _insert(T entry) {
+    bool _insert(T entry) nothrow @safe @nogc {
         if (entry.timePoint <= poppedTime) {
             bins[0][offset % numBins].append(entry);
             return true;

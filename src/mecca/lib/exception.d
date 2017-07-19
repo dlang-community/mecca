@@ -181,10 +181,14 @@ struct ExcBuf {
 
 /* thread local*/ static ExcBuf _tlsExcBuf;
 /* thread local*/ static ExcBuf* _currExcBuf;
-/* thread local*/ static this() {_currExcBuf = &_tlsExcBuf;}
+/* thread local*/ static this() {switchCurrExcBuf(null);}
 
 void switchCurrExcBuf(ExcBuf* newCurrentExcBuf) nothrow @safe @nogc {
-    _currExcBuf = newCurrentExcBuf;
+    INFO!"currExcBuf from %s to %s"(_currExcBuf, newCurrentExcBuf);
+    if (newCurrentExcBuf !is null)
+        _currExcBuf = newCurrentExcBuf;
+    else
+        _currExcBuf = &_tlsExcBuf;
 }
 
 T mkEx(T: Throwable, string file = __FILE__, size_t line = __LINE__, A...)(auto ref A args) @trusted @nogc {

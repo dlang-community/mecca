@@ -12,19 +12,19 @@ private void internalLogOutput(string TYPE, T...)(string format, scope lazy T ar
     as!"nothrow @nogc"({writefln(TYPE ~ " " ~ format, args);});
 }
 
-void DEBUG(string format, string file = __FILE__, int line = __LINE__, T...)(T args) nothrow @nogc {
+void DEBUG(string format, string file = __FILE__, int line = __LINE__, T...)(T args) nothrow @trusted @nogc {
     internalLogOutput!"DEBUG"("%s:%s " ~ format, file, line, args);
 }
 
-void INFO(string format, string file = __FILE__, int line = __LINE__, T...)(T args) nothrow @nogc {
+void INFO(string format, string file = __FILE__, int line = __LINE__, T...)(T args) nothrow @trusted @nogc {
     internalLogOutput!"INFO"("%s:%s " ~ format, file, line, args);
 }
 
-void WARN(string format, string file = __FILE__, int line = __LINE__, T...)(T args) nothrow @nogc {
+void WARN(string format, string file = __FILE__, int line = __LINE__, T...)(T args) nothrow @trusted @nogc {
     internalLogOutput!"WARN"("%s:%s " ~ format, file, line, args);
 }
 
-void ERROR(string format, string file = __FILE__, int line = __LINE__, T...)(scope lazy T args) nothrow {
+void ERROR(string format, string file = __FILE__, int line = __LINE__, T...)(scope lazy T args) nothrow @trusted {
     internalLogOutput!"ERROR"("%s:%s " ~ format, file, line, args);
 }
 
