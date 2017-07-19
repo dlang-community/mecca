@@ -135,7 +135,12 @@ private:
             foreach(i; IOTA!numLevels) {
                 if (idx < numBins) {
                     enum magnitude = numBins ^^ i;
-                    bins[i][(offset / magnitude + idx) % numBins].append(entry);
+                    static if( i>0 ) {
+                        size_t effectiveOffset = offset / magnitude;
+                    } else {
+                        enum effectiveOffset = 0;
+                    }
+                    bins[i][(effectiveOffset + idx) % numBins].append(entry);
                     return true;
                 }
                 idx = idx / numBins - 1;

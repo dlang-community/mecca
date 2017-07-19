@@ -322,16 +322,16 @@ public:
         return FiberHandle(fib);
     }
 
-    @property bool isIdle() pure const nothrow @nogc {
+    @property bool isIdle() pure const nothrow @safe @nogc {
         return thisFiber is idleFiber;
     }
-    @property bool isMain() pure const nothrow @nogc {
+    @property bool isMain() pure const nothrow @safe @nogc {
         return thisFiber is mainFiber;
     }
-    @property bool isSpecialFiber() const nothrow @nogc {
+    @property bool isSpecialFiber() const nothrow @safe @nogc {
         return thisFiber.flag!"SPECIAL";
     }
-    @property FiberHandle runningFiberHandle() nothrow @nogc {
+    @property FiberHandle runningFiberHandle() nothrow @safe @nogc {
         // XXX This assert may be incorrect, but it is easier to remove an assert than to add one
         assert(!isSpecialFiber, "Should not blindly get fiber handle of special fibers");
         return FiberHandle(thisFiber);
