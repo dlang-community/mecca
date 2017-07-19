@@ -171,13 +171,16 @@ unittest {
     assert (!x.hasValue);
     assert(x.toString == "(null)");
 
-    foreach(i, expected; ["no string today", "foo 18"]) {
-        auto res = x.caseOf!(
-            (int y) => "foo %s".format(y),
-            "no string today");
-        assert (res == expected);
-        x = 18;
-    }
+    auto res = x.caseOf!(
+        (int y) => "foo %s".format(y),
+        "no string today");
+    assert (res == "no string today");
+
+    x = 18;
+    res = x.caseOf!(
+        (int y) => "foo %s".format(y),
+        "no string today");
+    assert (res == "foo 18");
 }
 
 

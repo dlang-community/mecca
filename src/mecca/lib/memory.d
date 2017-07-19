@@ -125,8 +125,7 @@ unittest {
 
 
 // Adapted from https://github.com/D-Programming-Language/druntime/blob/master/src/gc/stats.d
-struct GCStats
-{
+struct GCStats {
     size_t poolSizeBytes;   // total size of pool (in bytes)
     size_t usedSizeBytes;   // bytes allocated
     size_t freeBlocks;      // number of blocks marked FREE

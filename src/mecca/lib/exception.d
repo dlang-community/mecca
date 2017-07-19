@@ -181,7 +181,7 @@ struct ExcBuf {
 
 /* thread local*/ static ExcBuf _tlsExcBuf;
 /* thread local*/ static ExcBuf* _currExcBuf;
-/* thread local*/ static this() {switchCurrExcBuf(null);}
+/* thread local*/ static this() {_currExcBuf = &_tlsExcBuf;}
 
 void switchCurrExcBuf(ExcBuf* newCurrentExcBuf) nothrow @safe @nogc {
     if (newCurrentExcBuf !is null)
