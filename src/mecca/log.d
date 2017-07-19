@@ -11,7 +11,7 @@ import mecca.lib.reflection: as;
 import mecca.lib.console;
 
 enum string[string] LogColors = [
-        "DEBUG" : ConsoleCode!(Console.GreenFg),
+        "DEBUG" : ConsoleGreenFg,
         "INFO" : ConsoleCode!(Console.BoldOn, Console.GreenFg),
         "WARN" : ConsoleCode!(Console.BoldOn, Console.YellowFg),
         "ERROR" : ConsoleCode!(Console.BoldOn, Console.RedFg),
@@ -19,7 +19,7 @@ enum string[string] LogColors = [
 
 private void internalLogOutput(string TYPE, T...)(string format, scope lazy T args) nothrow {
     enum Color = LogColors[TYPE];
-    as!"nothrow @nogc"({writefln(Color ~ TYPE ~ " " ~ format ~ ConsoleCode!(Console.Reset), args);});
+    as!"nothrow @nogc"({writefln(Color ~ TYPE ~ " " ~ format ~ ConsoleReset, args);});
 }
 
 void DEBUG(string format, string file = __FILE__, int line = __LINE__, T...)(T args) nothrow @trusted @nogc {

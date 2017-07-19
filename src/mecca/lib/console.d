@@ -32,6 +32,36 @@ enum Console : string {
     DefaultBg = "49",
 };
 
+enum ConsoleReset = ConsoleCode!(Console.Reset);
+enum ConsoleBoldOn = ConsoleCode!(Console.BoldOn);
+enum ConsoleBolOff = ConsoleCode!(Console.BolOff);
+enum ConsoleItalicsOn = ConsoleCode!(Console.ItalicsOn);
+enum ConsoleItalicsOff = ConsoleCode!(Console.ItalicsOff);
+enum ConsoleUnderlineOn = ConsoleCode!(Console.UnderlineOn);
+enum ConsoleUnderlineOff = ConsoleCode!(Console.UnderlineOff);
+enum ConsoleInverseOn = ConsoleCode!(Console.InverseOn);
+enum ConsoleInverseOff = ConsoleCode!(Console.InverseOff);
+enum ConsoleStrikethroughOn = ConsoleCode!(Console.StrikethroughOn);
+enum ConsoleStrikethroughOff = ConsoleCode!(Console.StrikethroughOff);
+enum ConsoleBlackFg = ConsoleCode!(Console.BlackFg);
+enum ConsoleRedFg = ConsoleCode!(Console.RedFg);
+enum ConsoleGreenFg = ConsoleCode!(Console.GreenFg);
+enum ConsoleYellowFg = ConsoleCode!(Console.YellowFg);
+enum ConsoleBlueFg = ConsoleCode!(Console.BlueFg);
+enum ConsoleMagentaFg = ConsoleCode!(Console.MagentaFg);
+enum ConsoleCyanFg = ConsoleCode!(Console.CyanFg);
+enum ConsoleWhiteFg = ConsoleCode!(Console.WhiteFg);
+enum ConsoleDefaultFg = ConsoleCode!(Console.DefaultFg);
+enum ConsoleBlackBg = ConsoleCode!(Console.BlackBg);
+enum ConsoleRedBg = ConsoleCode!(Console.RedBg);
+enum ConsoleGreenBg = ConsoleCode!(Console.GreenBg);
+enum ConsoleYellowBg = ConsoleCode!(Console.YellowBg);
+enum ConsoleBlueBg = ConsoleCode!(Console.BlueBg);
+enum ConsoleMagentaBg = ConsoleCode!(Console.MagentaBg);
+enum ConsoleCyanBg = ConsoleCode!(Console.CyanBg);
+enum ConsoleWhiteBg = ConsoleCode!(Console.WhiteBg);
+enum ConsoleDefaultBg = ConsoleCode!(Console.DefaultBg);
+
 private enum string Esc = "\x1b[", Sep = ";", End = "m";
 
 template ConsoleCode(T...) {

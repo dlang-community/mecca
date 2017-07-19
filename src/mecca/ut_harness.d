@@ -9,6 +9,7 @@ import std.path: absolutePath, buildNormalizedPath;
 import core.sys.posix.unistd: isatty;
 import core.runtime: Runtime;
 
+import mecca.lib.console;
 
 shared static this() {
     Runtime.moduleUnitTester = (){return true;};
@@ -20,7 +21,8 @@ int main(string[] argv) {
     void notify(string[] text...) {
         auto t = Clock.currTime();
         if (tty) {
-            writef("\x1b[1;30m%02d:%02d:%02d.%03d\x1b[0m ", t.hour, t.minute, t.second, t.fracSecs.total!"msecs");
+            writef(ConsoleCode!(Console.BlackFg,Console.BoldOn) ~ "%02d:%02d:%02d.%03d" ~ ConsoleReset ~ " ", t.hour, t.minute, t.second,
+                    t.fracSecs.total!"msecs");
         }
         else {
             writef("[%02d:%02d:%02d.%03d] ", t.hour, t.minute, t.second, t.fracSecs.total!"msecs");
@@ -31,7 +33,7 @@ int main(string[] argv) {
                     writef("\x1b[%sm", part);
                 }
                 else {
-                    writef("%s\x1b[0m", part);
+                    writef("%s" ~ ConsoleReset, part);
                 }
             }
             else {
