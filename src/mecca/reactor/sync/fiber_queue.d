@@ -8,12 +8,12 @@ import mecca.reactor.reactor;
 
 struct FiberQueue {
 private:
-    LinkedSet!(ReactorFiber*) list;
+    LinkedSet!(ReactorFiber*) waitingList;
 
 public:
     void suspend(Timeout timeout = Timeout.infinite) @trusted @nogc {
         auto ourHandle = theReactor.runningFiberHandle;
-        bool inserted = list.append(ourHandle.get);
+        bool inserted = waitingList.append(ourHandle.get);
         DBG_ASSERT!"Fiber %s added to same queue twice"(inserted, ourHandle);
 
         theReactor.suspendThisFiber(timeout);
@@ -21,11 +21,11 @@ public:
         DBG_ASSERT!"Fiber handle for %s became invalid while it slept"(ourHandle.isValid, ourHandle);
         // There are some (perverse) use cases where after wakeup the fiber queue is no longer valid. As such, make sure not to rely on any
         // member, which is why we disable:
-        // ASSERT!"Fiber %s woken up but not removed from FiberQueue"(ourHandle.get !in list, ourHandle);
+        // ASSERT!"Fiber %s woken up but not removed from FiberQueue"(ourHandle.get !in waitingList, ourHandle);
     }
 
     FiberHandle resumeOne() nothrow @trusted @nogc {
-        ReactorFiber* wakeupFiber = list.popHead;
+        ReactorFiber* wakeupFiber = waitingList.popHead;
 
         if (wakeupFiber is null)
             return FiberHandle.init;
@@ -37,7 +37,7 @@ public:
     }
 
     @property bool empty() const pure nothrow @nogc @safe {
-        return list.empty;
+        return waitingList.empty;
     }
 }
 
