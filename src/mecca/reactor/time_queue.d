@@ -33,7 +33,7 @@ private:
     }
 
     static if( hasOwner )
-            alias ListType = LinkedSet!T;
+            alias ListType = LinkedListWithOwner!T;
     else
         alias ListType = LinkedList!T;
 

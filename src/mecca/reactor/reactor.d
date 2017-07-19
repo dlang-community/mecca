@@ -52,14 +52,14 @@ align(1) struct ReactorFiber {
     }
 
 align(1):
-    Fibril                      fibril;
-    OnStackParams*              params;
-    FiberId                     _nextId;
-    FiberId                     _prevId;
-    FiberIncarnation            incarnationCounter;
-    ubyte                       _flags;
-    State                       state;
-    LinkedSet!(ReactorFiber*)*  _owner;
+    Fibril                                      fibril;
+    OnStackParams*                              params;
+    FiberId                                     _nextId;
+    FiberId                                     _prevId;
+    FiberIncarnation                            incarnationCounter;
+    ubyte                                       _flags;
+    State                                       state;
+    LinkedListWithOwner!(ReactorFiber*)*        _owner;
 
     // We define this struct align(1) for the sole purpose of making the following static assert verify what it's supposed to
     static assert (this.sizeof == 32);  // keep it small and cache-line friendly

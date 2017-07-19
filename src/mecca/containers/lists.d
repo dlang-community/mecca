@@ -292,8 +292,8 @@ struct _LinkedList(T, string nextAttr, string prevAttr, string ownerAttr, bool w
 alias LinkedList(T, string nextAttr="_next", string prevAttr="_prev") = _LinkedList!(T, nextAttr, prevAttr, "", false);
 alias LinkedListWithLength(T, string nextAttr="_next", string prevAttr="_prev") = _LinkedList!(T, nextAttr, prevAttr, "", true);
 
-alias LinkedSet(T, string nextAttr="_next", string prevAttr="_prev", string ownerAttr="_owner") = _LinkedList!(T, nextAttr, prevAttr, ownerAttr, false);
-alias LinkedSetWithLength(T, string nextAttr="_next", string prevAttr="_prev", string ownerAttr="_owner") = _LinkedList!(T, nextAttr, prevAttr, ownerAttr, true);
+alias LinkedListWithOwner(T, string nextAttr="_next", string prevAttr="_prev", string ownerAttr="_owner") = _LinkedList!(T, nextAttr, prevAttr, ownerAttr, false);
+alias LinkedListWithLengthAndOwner(T, string nextAttr="_next", string prevAttr="_prev", string ownerAttr="_owner") = _LinkedList!(T, nextAttr, prevAttr, ownerAttr, true);
 
 
 unittest {
@@ -508,7 +508,7 @@ unittest {
         n.value = i;
     }
 
-    LinkedSet!(Node*) set;
+    LinkedListWithOwner!(Node*) set;
     assert (set.empty);
 
     assert(set.append(&nodes[1]));

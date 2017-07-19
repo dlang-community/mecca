@@ -8,7 +8,7 @@ import mecca.reactor.reactor;
 
 struct FiberQueue {
 private:
-    LinkedSet!(ReactorFiber*) waitingList;
+    LinkedListWithOwner!(ReactorFiber*) waitingList;
 
 public:
     void suspend(Timeout timeout = Timeout.infinite) @trusted @nogc {
