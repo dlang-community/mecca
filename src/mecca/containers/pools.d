@@ -53,7 +53,7 @@ struct FixedPool(T, size_t N) {
             ubyte[T._poolElementAlignment - (sz % T._poolElementAlignment)] padding;
         }
 
-        @property T* value() {
+        @property T* value() pure @trusted nothrow @nogc {
             return cast(T*)data.ptr;
         }
     }
@@ -108,15 +108,26 @@ struct FixedPool(T, size_t N) {
         return e.value;
     }
 
-    void release(ref T* obj) nothrow @nogc {
+    IdxType indexOf(T* obj) const pure @trusted nothrow @nogc {
         assert (isInited);
         assert (used > 0);
+        auto e = cast(Elem*)((cast(void*)obj) - Elem.data.offsetof);
+        assert (e >= elems.ptr && e < elems.ptr + N);
+        return cast(IdxType)(e - elems.ptr);
+    }
+    T* fromIndex(IdxType idx) pure @safe nothrow @nogc {pragma(inline, true);
+        assert (isInited);
+        assert (used > 0);
+        return elems[idx].value;
+    }
+
+    void release(ref T* obj) nothrow @nogc {
+        auto idx = indexOf(obj);
         static if (__traits(hasMember, T, "_poolElementFini")) {
             obj._poolElementFini();
         }
-        auto e = cast(Elem*)((cast(void*)obj) - Elem.data.offsetof);
-        e.nextIdx = freeIdx;
-        freeIdx = cast(IdxType)(e - elems.ptr);
+        elems[idx].nextIdx = freeIdx;
+        freeIdx = idx;
         used--;
         obj = null;
     }
