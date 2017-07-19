@@ -2,24 +2,7 @@ module mecca.lib.time;
 
 public import std.datetime;
 import mecca.lib.divide: S64Divisor;
-
-version(LDC) {
-    public import ldc.intrinsics: readTSC = llvm_readcyclecounter;
-}
-else version (D_InlineAsm_X86_64) {
-    ulong readTSC() nothrow @nogc @trusted {
-        asm nothrow @nogc @trusted {
-            naked;
-            rdtsc;         // EDX(hi):EAX(lo)
-            shl RDX, 32;
-            or RAX, RDX;   // RAX |= (RDX << 32)
-            ret;
-        }
-    }
-}
-else {
-    static assert (false, "RDTSC not supported on platform");
-}
+public import mecca.platform.x86: readTSC;
 
 
 struct TscTimePoint {
