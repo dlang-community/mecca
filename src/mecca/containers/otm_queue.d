@@ -3,6 +3,7 @@ module mecca.containers.otm_queue;
 import core.atomic;
 import core.thread: thread_isMainThread;
 import std.string;
+import std.stdint: intptr_t;
 
 
 /******************************************************************************************************
@@ -18,20 +19,34 @@ import std.string;
  * moved to another core.
  ******************************************************************************************************/
 
-struct _OneToManyQueue(T, size_t _capacity, bool singleConsumerMultiProducers) {
-    static assert (is(T == U*, U));
-    static assert (T.sizeof == (void*).sizeof);
-    static assert ((void*).sizeof == ulong.sizeof);
+align(8) struct _OneToManyQueue(T, size_t _capacity, bool singleConsumerMultiProducers) {
     static assert (_capacity > 1);
     static assert ((_capacity & (_capacity-1)) == 0);
 
+    static if (T.sizeof == 1) {
+        alias U = ubyte;
+    }
+    else static if (T.sizeof == 2) {
+        alias U = ushort;
+    }
+    else static if (T.sizeof == 4) {
+        alias U = uint;
+    }
+    else static if (T.sizeof == 8) {
+        alias U = ulong;
+    }
+    else {
+        static assert (false, T);
+    }
+
+    enum dataBits = (U.sizeof * 8) - 1;
     enum capacity = _capacity;
     enum multiConsumersSingleProducer = !singleConsumerMultiProducers;
 
     private shared ulong readIndex;
     private shared ulong writeIndex;
     private shared ulong _effectiveCapacity;
-    private shared ulong[capacity] arr;
+    align(8) private shared U[capacity] arr;
 
     /// Must only be called from the main thread.
     void reset() {
@@ -77,7 +92,6 @@ struct _OneToManyQueue(T, size_t _capacity, bool singleConsumerMultiProducers) {
         // practice, even if theoritically a bit unsound in terms of the memory model.
         const ridx = atomicLoad!(MemoryOrder.raw)(readIndex);
         const widx = atomicLoad!(MemoryOrder.raw)(writeIndex);
-
         return atomicLoad!(MemoryOrder.raw)(_effectiveCapacity) <= (widx - ridx);
     }
 
@@ -85,13 +99,13 @@ struct _OneToManyQueue(T, size_t _capacity, bool singleConsumerMultiProducers) {
         return _effectiveCapacity;
     }
 
-    static private ubyte phaseOf(ulong idx) pure nothrow @safe {
+    static private U phaseOf(ulong idx) pure nothrow @safe {
         pragma(inline, true);
         static if (singleConsumerMultiProducers) {
-            return (~(idx / capacity)) & 1;
+            return cast(U)((~(idx / capacity)) & 1);
         }
         else {
-            return (idx / capacity) & 1;
+            return cast(U)((idx / capacity) & 1);
         }
     }
 
@@ -99,11 +113,11 @@ struct _OneToManyQueue(T, size_t _capacity, bool singleConsumerMultiProducers) {
         static if (singleConsumerMultiProducers) {
             const ridx = atomicLoad!(MemoryOrder.raw)(readIndex);
             const widx = atomicLoad!(MemoryOrder.raw)(writeIndex);
-            assert(ridx <= widx); //, "writeIndex %d < readIndex %d".format(ridx, widx));
+            assert(ridx <= widx);
         }
     }
 
-    bool pop(out T ptr) nothrow @nogc {
+    bool pop(out T val) nothrow @nogc {
         version (unittest) {
             sanity();
             scope(exit) sanity();
@@ -123,11 +137,11 @@ struct _OneToManyQueue(T, size_t _capacity, bool singleConsumerMultiProducers) {
             if (widx == ridx) {
                 return false;
             }
-            if (atomicLoad!(MemoryOrder.acq)(arr[ridx % capacity]) >> 63 != phaseOf(ridx)) {
+            if ((atomicLoad!(MemoryOrder.acq)(arr[ridx % capacity]) & 1) != phaseOf(ridx)) {
                 return false;
             }
 
-            ptr = cast(T)((arr[ridx % capacity] << 1) >> 1);
+            val = cast(T)(arr[ridx % capacity] >> 1);
             atomicStore!(MemoryOrder.raw)(readIndex, ridx + 1);
         }
         else {
@@ -146,19 +160,19 @@ struct _OneToManyQueue(T, size_t _capacity, bool singleConsumerMultiProducers) {
                 return false;
             }
 
-            ptr = cast(T)((arr[ridx % capacity] << 1) >> 1);
+            val = cast(T)(arr[ridx % capacity] >> 1);
 
             // We have read the data, so toggle the phase to allow the producer to write to this slot
             // when it arrives at it the next time around.
-            const nextPhase = ulong(1 - phaseOf(ridx)) << 63;
-            atomicStore!(MemoryOrder.rel)(arr[ridx % capacity], nextPhase);
+            atomicStore!(MemoryOrder.rel)(arr[ridx % capacity], cast(U)(1 - phaseOf(ridx)));
         }
         return true;
     }
 
-    bool push(T ptr) nothrow @nogc {
-        assert (cast(ulong)ptr >> 63 == 0, "MSB of ptr must be clear");
+    bool push(T val) nothrow @nogc {
+        assert (cast(U)val >> dataBits == 0, "MSB of val must be clear");
         assert (_effectiveCapacity < capacity - 1, "No producers have registered");
+        U val2 = cast(U)((cast(U)val) << 1);
 
         version (unittest) {
             sanity();
@@ -171,12 +185,10 @@ struct _OneToManyQueue(T, size_t _capacity, bool singleConsumerMultiProducers) {
         static if (singleConsumerMultiProducers) {
             const widx = atomicOp!"+="(writeIndex, 1) - 1;
             const phase = phaseOf(widx);
-            assert(atomicLoad!(MemoryOrder.acq)(arr[widx % capacity]) >> 63 != phase);
-                   //"Phase is already correct for new produce. widx %s arr[%d].phase = %d".format(
-                   //       widx, widx % capacity, phase));
+            assert((atomicLoad!(MemoryOrder.acq)(arr[widx % capacity]) & 1) != phase,
+                   "Phase is already correct for new produce");
 
-            const value = (ulong(phase) << 63) | cast(ulong)ptr;
-            atomicStore!(MemoryOrder.rel)(arr[widx % capacity], value);
+            atomicStore!(MemoryOrder.rel)(arr[widx % capacity], cast(U)(val2 | phase));
         }
         else {
             // We are the only one modifying the producer pointer, no synchronization needed.
@@ -184,13 +196,12 @@ struct _OneToManyQueue(T, size_t _capacity, bool singleConsumerMultiProducers) {
             const phase = phaseOf(widx);
 
             // Make sure that the phase is back to "produce" mode.
-            if (atomicLoad!(MemoryOrder.acq)(arr[widx % capacity]) >> 63 != phase) {
+            if ((atomicLoad!(MemoryOrder.acq)(arr[widx % capacity]) & 1) != phase) {
                 // We have wrapped and the consumers have not read the data yet.
                 return false;
             }
 
-            const value = (ulong(phase) << 63) | cast(ulong)ptr;
-            atomicStore!(MemoryOrder.raw)(arr[widx % capacity], value);
+            atomicStore!(MemoryOrder.raw)(arr[widx % capacity], cast(U)(val2 | phase));
             atomicStore!(MemoryOrder.rel)(writeIndex, widx + 1);
         }
         return true;
@@ -401,27 +412,25 @@ struct DuplexQueue(T, size_t capacity) {
     //
     // submit
     //
-    bool submitRequest(T ptr) nothrow @nogc {
+    bool submitRequest(T val) nothrow @nogc {
         pragma(inline, true);
-        //assert (thread_isMainThread());
-        return inputs.push(ptr);
+        return inputs.push(val);
     }
-    bool pullResult(out T ptr) nothrow @nogc {
+    bool pullResult(out T val) nothrow @nogc {
         pragma(inline, true);
-        //assert (thread_isMainThread());
-        return outputs.pop(ptr);
+        return outputs.pop(val);
     }
 
     //
     // worker-thread APIs
     //
-    bool pullRequest(out T ptr) nothrow @nogc {
+    bool pullRequest(out T val) nothrow @nogc {
         pragma(inline, true);
-        return inputs.pop(ptr);
+        return inputs.pop(val);
     }
-    bool submitResult(T ptr) nothrow @nogc {
+    bool submitResult(T val) nothrow @nogc {
         pragma(inline, true);
-        return outputs.push(ptr);
+        return outputs.push(val);
     }
 }
 
@@ -506,4 +515,113 @@ unittest {
     assert (outputsSum == inputsSum, "out %s != inp %s".format(outputsSum, inputsSum));
     //writeln("done2");
 }
+
+unittest {
+    import std.stdio;
+    import core.thread;
+    import std.datetime;
+
+    DuplexQueue!(ushort, 256) dq;
+    enum ushort POISON = 32767;
+
+    class Worker: Thread {
+        static shared int idCounter;
+        int id;
+        this() {
+            this.id = atomicOp!"+="(idCounter, 1);
+            super(&thdfunc);
+        }
+        void thdfunc() {
+            ushort req;
+            while (true) {
+                if (dq.pullRequest(req)) {
+                    if (req == POISON) {
+                        //writefln("[%s] ate POISON", id);
+                        break;
+                    }
+                    //writefln("[%s] fetched %s", id, req);
+                    Thread.sleep(10.usecs);
+                    while (!dq.submitResult(req)) {
+                        Thread.sleep(10.usecs);
+                    }
+                }
+            }
+        }
+    }
+
+    Worker[17] workers;
+    dq.open(workers.length);
+    foreach(ref thd; workers) {
+        thd = new Worker();
+        thd.start();
+    }
+
+    ulong totalRequests;
+    ulong totalResults;
+    ulong numRequests;
+    ulong numResults;
+
+    enum streak = 50;
+    enum iters = 50_000;
+    ushort counter = 9783;
+
+    while (numRequests < iters) {
+        foreach(j; 0 .. streak) {
+            ushort req = counter % 16384;
+            counter++;
+            if (!dq.submitRequest(req)) {
+                break;
+            }
+            //writefln("pushed %s", req);
+            totalRequests += req;
+            numRequests++;
+        }
+        foreach(_; 0 .. streak) {
+            ushort res;
+            if (!dq.pullResult(res)) {
+                break;
+            }
+            //writefln("pulled %s", res);
+            totalResults += res;
+            numResults++;
+        }
+    }
+
+    void fetchAll(int attempts, Duration delay=100.usecs) {
+        foreach(_; 0 .. attempts) {
+            Thread.sleep(delay);
+            ushort res;
+            while (dq.pullResult(res)) {
+                totalResults += res;
+                numResults++;
+            }
+        }
+    }
+    fetchAll(10);
+
+    foreach(_; workers) {
+        //writeln("POISON");
+        while (!dq.submitRequest(POISON)) {
+            Thread.sleep(10.usecs);
+        }
+    }
+    fetchAll(10);
+
+    foreach(thd; workers) {
+        thd.join();
+    }
+    fetchAll(1);
+
+    assert (totalRequests == totalResults && numRequests == numResults,
+        "%s=%s %s=%s".format(totalRequests, totalResults, numRequests, numResults));
+}
+
+
+
+
+
+
+
+
+
 
