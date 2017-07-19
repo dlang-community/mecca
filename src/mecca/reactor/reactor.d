@@ -674,6 +674,24 @@ package FiberId to(T : FiberId)(const ReactorFiber* rfp) nothrow @trusted @nogc 
 
 __gshared Reactor theReactor;
 
+version (unittest) {
+    void testWithReactor(void delegate() dg) {
+        theReactor.setup();
+        scope(exit) theReactor.teardown();
+        bool succ = false;
+
+        void wrapper() {
+            scope(exit) theReactor.stop();
+            scope(success) succ = true;
+            dg();
+        }
+
+        theReactor.spawnFiber(dg);
+        theReactor.mainloop();
+        assert (succ);
+    }
+}
+
 
 unittest {
     import std.stdio;
