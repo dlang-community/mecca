@@ -8,8 +8,18 @@ import mecca.lib.reflection: as;
    is part of the function's template.
  */
 
+import mecca.lib.console;
+
+enum string[string] LogColors = [
+        "DEBUG" : ConsoleCode!(Console.GreenFg),
+        "INFO" : ConsoleCode!(Console.BoldOn, Console.GreenFg),
+        "WARN" : ConsoleCode!(Console.BoldOn, Console.YellowFg),
+        "ERROR" : ConsoleCode!(Console.BoldOn, Console.RedFg),
+];
+
 private void internalLogOutput(string TYPE, T...)(string format, scope lazy T args) nothrow {
-    as!"nothrow @nogc"({writefln(TYPE ~ " " ~ format, args);});
+    enum Color = LogColors[TYPE];
+    as!"nothrow @nogc"({writefln(Color ~ TYPE ~ " " ~ format ~ ConsoleCode!(Console.Reset), args);});
 }
 
 void DEBUG(string format, string file = __FILE__, int line = __LINE__, T...)(T args) nothrow @trusted @nogc {
