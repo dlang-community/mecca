@@ -49,4 +49,35 @@ unittest {
 }
 +/
 
+version (LDC) {
+    import ldc.intrinsics;
+
+    void prefetch(const void* p) pure nothrow @trusted @nogc {
+        pragma(inline, true);
+        llvm_prefetch(cast(void*)p, 0 /*read*/, 3 /*very local*/, 1 /*data*/);
+    }
+}
+else version (D_InlineAsm_X86_64) {
+    void prefetch(const void* p /* RDI */) pure nothrow @trusted @nogc {
+        pragma(inline, true);
+        asm pure nothrow @trusted @nogc {
+            naked;
+            prefetcht0 [RDI];
+            ret;
+        }
+    }
+}
+else {
+    static assert (false, "prefetch not supported");
+}
+
+unittest {
+    // prefetching will not segfault
+    prefetch(null);
+
+    ulong[1000] x = void;
+    prefetch(&x[800]);
+}
+
+
 
