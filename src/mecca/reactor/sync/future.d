@@ -1,0 +1,100 @@
+module mecca.reactor.sync.future;
+
+import mecca.reactor.reactor;
+import mecca.log;
+
+
+private void throwInFiber(ref Reactor reactor, FiberHandle fib, Throwable x) @nogc {
+    // XXX waiting for shachar to implement
+}
+
+
+struct Future(T) {
+    FiberHandle fibHandle;
+    static if (!is(T == void)) {
+        T* value;
+    }
+
+    T wait() @nogc {
+        assert (!fibHandle.isValid);
+        static if (!is(T == void)) {
+            T onStackValue;
+            value = &onStackValue;
+        }
+        scope(exit) fibHandle = null;
+        fibHandle = theReactor.runningFiberHandle;
+        theReactor.suspendThisFiber();
+        static if (!is(T == void)) {
+            return *value;
+        }
+    }
+
+    static if (is(T == void)) {
+        void set() @nogc {
+            if (fibHandle.isValid) {
+                theReactor.resumeFiber(fibHandle);
+                fibHandle = null;
+            }
+        }
+    }
+    else {
+        void set(T value) @nogc {
+            if (fibHandle.isValid) {
+                *this.value = value;
+                theReactor.resumeFiber(fibHandle);
+                fibHandle = null;
+            }
+        }
+    }
+
+    void raise(Throwable ex) @nogc {
+        if (fibHandle.isValid) {
+            theReactor.throwInFiber(fibHandle, ex);
+            fibHandle = null;
+        }
+    }
+}
+
+unittest {
+    import mecca.lib.time;
+
+    testWithReactor({
+        Future!int fut;
+
+        theReactor.spawnFiber({
+            theReactor.sleep(10.msecs);
+            fut.set(188);
+        });
+
+        auto val = fut.wait();
+        assert (val == 188);
+
+        class MyException: Exception {
+            this(){
+                super("fooo");
+            }
+        }
+
+        theReactor.spawnFiber({
+            theReactor.sleep(10.msecs);
+            fut.raise(new MyException());
+        });
+
+        /+bool caught = false;
+        try {
+            auto val = fut.wait();
+        }
+        catch (MyException) {
+            caught = true;
+        }
+        assert (caught);+/
+    });
+}
+
+
+
+
+
+
+
+
