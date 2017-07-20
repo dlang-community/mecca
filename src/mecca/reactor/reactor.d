@@ -437,21 +437,22 @@ public:
     }
 
     bool throwInFiber(FiberHandle fHandle, Throwable ex) nothrow @safe @nogc {
-        ReactorFiber* fib = fHandle.get();
-        if( fib is null ) {
-            WARN!"Failed to throw exception in fiber %s which is no longer valid"(fHandle);
-            return false;
-        }
+        ExcBuf* fiberEx = prepThrowInFiber(fHandle, false);
 
-        if( fib.flag!"HAS_EXCEPTION" ) {
-            ERROR!"Tried to throw exception in fiber %s which already has an exception pending"(fHandle);
+        if( fiberEx is null )
             return false;
-        }
 
-        fib.params.currExcBuf.set(ex);
-        fib.flag!"HAS_EXCEPTION" = true;
-        fib.flag!"EXCEPTION_BT" = false;
+        fiberEx.set(ex);
         return true;
+    }
+
+    bool throwInFiber(T : Throwable, string file = __FILE__, size_t line = __LINE__, A...)(FiberHandle fHandle, auto ref A args) nothrow @safe @nogc {
+        ExcBuf* fiberEx = prepThrowInFiber(fHandle, true);
+
+        if( fiberEx is null )
+            return false;
+
+        fiberEx.construct!T(file, line, false, args);
     }
 
 private:
@@ -664,6 +665,24 @@ private:
         }
 
         return ret;
+    }
+
+    ExcBuf* prepThrowInFiber(FiberHandle fHandle, bool updateBT) nothrow @safe @nogc {
+        ReactorFiber* fib = fHandle.get();
+        ASSERT!"Cannot throw in the reactor's own fibers"( !fib.flag!"SPECIAL" );
+        if( fib is null ) {
+            WARN!"Failed to throw exception in fiber %s which is no longer valid"(fHandle);
+            return null;
+        }
+
+        if( fib.flag!"HAS_EXCEPTION" ) {
+            ERROR!"Tried to throw exception in fiber %s which already has an exception pending"(fHandle);
+            return null;
+        }
+
+        fib.flag!"HAS_EXCEPTION" = true;
+        fib.flag!"EXCEPTION_BT" = updateBT;
+        return &fib.params.currExcBuf;
     }
 
     void mainloop() {
