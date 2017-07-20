@@ -114,10 +114,10 @@ align(1):
         return to!FiberId(&this);
     }
 
-    @property bool flag(string NAME)() const pure nothrow @nogc {
+    @property bool flag(string NAME)() const pure nothrow @safe @nogc {
         return (_flags & __traits(getMember, Flags, NAME)) != 0;
     }
-    @property void flag(string NAME)(bool value) pure nothrow @nogc {
+    @property void flag(string NAME)(bool value) pure nothrow @safe @nogc {
         if (value) {
             _flags |= __traits(getMember, Flags, NAME);
         }
