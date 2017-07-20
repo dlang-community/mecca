@@ -44,6 +44,8 @@ struct DefaultTraceInfoABI {
     void*    _vtbl;
     void*    _monitor;
     void*    _interface;  // introduced in DMD 2.071
+    // make sure the ABI matches
+    static assert ({static interface I {} static class C: I {} return __traits(classInstanceSize, C);}() == (void*[3]).sizeof);
 
     int      numframes;
     void*[0] callstack;
