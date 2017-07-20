@@ -329,7 +329,7 @@ public:
     }
 }
 
-
+/+
 unittest {
     ThreadPool!1024 thdPool;
     import mecca.reactor.reactor: testWithReactor;
@@ -345,5 +345,5 @@ unittest {
         assert (res == 17);
     });
 }
-
++/
 
