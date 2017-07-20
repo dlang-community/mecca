@@ -73,7 +73,7 @@ unittest {
     enum NumWaiters = 30;
 
     void framework() {
-        theReactor.delay(dur!"msecs"(70));
+        theReactor.sleep(dur!"msecs"(70));
 
         FiberHandle handle;
         while( !fq.empty ) {

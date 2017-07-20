@@ -411,12 +411,12 @@ public:
         timeQueue.cancel(handle.callback);
     }
 
-    void delay(Duration duration) {
-        delay(Timeout(duration));
+    void sleep(Duration duration) {
+        sleep(Timeout(duration));
     }
 
-    void delay(Timeout until) {
-        assert(until != Timeout.init, "Delay argument uninitialized");
+    void sleep(Timeout until) {
+        assert(until != Timeout.init, "sleep argument uninitialized");
         auto timerHandle = registerTimer!resumeFiber(until, runningFiberHandle);
         scope(failure) cancelTimer(timerHandle);
 
@@ -726,7 +726,7 @@ unittest {
 
     void fiberFunc(Duration duration) {
         INFO!"Fiber %s sleeping for %s"(theReactor.runningFiberHandle, duration);
-        theReactor.delay(duration);
+        theReactor.sleep(duration);
         auto now = TscTimePoint.now;
         counter++;
         INFO!"Fiber %s woke up after %s, overshooting by %s counter is %s"(theReactor.runningFiberHandle, now - start,
@@ -735,7 +735,7 @@ unittest {
 
     void ender() {
         INFO!"Fiber %s ender is sleeping for 250ms"(theReactor.runningFiberHandle);
-        theReactor.delay(dur!"msecs"(250));
+        theReactor.sleep(dur!"msecs"(250));
         INFO!"Fiber %s ender woke up"(theReactor.runningFiberHandle);
 
         theReactor.stop();
@@ -818,14 +818,14 @@ unittest {
             handles[i] = theReactor.registerTimer!timer( Timeout(duration), &a, &handles[i], i );
         }
 
-        theReactor.delay(dur!"msecs"(3));
+        theReactor.sleep(dur!"msecs"(3));
 
         // Cancel one expired timeout and one yet to happen
         theReactor.cancelTimer(handles[0]);
         theReactor.cancelTimer(handles[6]);
 
         // Wait for all timers to run
-        theReactor.delay(dur!"msecs"(200));
+        theReactor.sleep(dur!"msecs"(200));
 
         assert(a == 0b1011_1111);
 

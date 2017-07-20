@@ -81,16 +81,16 @@ unittest {
             INFO!"Reset event"();
             evt.reset();
             savedCounter = counter;
-            INFO!"Infra begin delay"();
-            theReactor.delay(Delay);
-            INFO!"Infra end delay"();
+            INFO!"Infra begin sleep"();
+            theReactor.sleep(Delay);
+            INFO!"Infra end sleep"();
             assert(savedCounter == counter, "Worker fibers working while event is reset");
 
             INFO!"Set event"();
             evt.set();
-            INFO!"Infra begin delay2"();
-            theReactor.delay(Delay);
-            INFO!"Infra end delay2"();
+            INFO!"Infra begin sleep2"();
+            theReactor.sleep(Delay);
+            INFO!"Infra end sleep2"();
             assert(savedCounter != counter, "Worker fibers not released despite event set");
         }
 
@@ -100,9 +100,9 @@ unittest {
 
         assert(doneCount==0, "Worker fibers exit while not done");
         done = true;
-        INFO!"Infra begin delay end"();
-        theReactor.delay(Delay);
-        INFO!"Infra end delay end"();
+        INFO!"Infra begin sleep end"();
+        theReactor.sleep(Delay);
+        INFO!"Infra end sleep end"();
 
         assert(doneCount==0, "Worker fibers exit with event reset");
         INFO!"Set event end"();
