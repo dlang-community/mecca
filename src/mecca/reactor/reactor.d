@@ -349,6 +349,7 @@ public:
 
     void stop() {
         if (_running) {
+            INFO!"Stopping reactor"();
             _running = false;
             if (thisFiber !is mainFiber) {
                 resumeSpecialFiber(mainFiber);
@@ -681,13 +682,15 @@ version (unittest) {
         bool succ = false;
 
         void wrapper() {
-            scope(exit) theReactor.stop();
-            scope(success) succ = true;
+            scope(success) {
+                succ = true;
+                theReactor.stop();
+            }
             dg();
         }
 
-        theReactor.spawnFiber(dg);
-        theReactor.mainloop();
+        theReactor.spawnFiber(&wrapper);
+        theReactor.start();
         assert (succ);
     }
 }
