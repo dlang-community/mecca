@@ -1,4 +1,4 @@
-module mecca.node;
+module mecca.node.node;
 
 import std.stdio;
 import std.string;
