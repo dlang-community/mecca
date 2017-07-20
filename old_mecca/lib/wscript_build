@@ -1,7 +1,0 @@
-bld.objects(
-    source=bld.path.make_node('.').ant_glob("*.d"),
-    target='mecca-lib',
-    install_path=None,
-    use=["mecca-tracing"],
-)
-

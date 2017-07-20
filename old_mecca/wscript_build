@@ -1,6 +1,0 @@
-# -*- mode: Python -*-
-
-bld.recurse('containers')
-bld.recurse('lib')
-bld.recurse('reactor')
-
