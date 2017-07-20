@@ -42,8 +42,9 @@ align(1) struct ReactorFiber {
         SPECIAL        = 0x02,
         IMMEDIATE      = 0x04,
         SCHEDULED      = 0x08,
-        //HAS_EXCEPTION  = 0x10,
-        //REQUEST_BT     = 0x20,
+        HAS_EXCEPTION  = 0x10,
+        EXCEPTION_BT   = 0x20,
+        //REQUEST_BT     = 0x40,
     }
 
     enum State : ubyte {
@@ -157,12 +158,23 @@ private:
         }
     }
 
-    void switchInto() nothrow @safe @nogc {
+    void switchInto() @safe @nogc {
         switchCurrExcBuf( &params.currExcBuf );
         if (!flag!"SPECIAL") {
             params.flsBlock.switchTo();
         } else {
             FLSArea.switchToNone();
+        }
+
+        if (flag!"HAS_EXCEPTION") {
+            Throwable ex = params.currExcBuf.get();
+            if (flag!"EXCEPTION_BT") {
+                params.currExcBuf.setTraceback(ex);
+                flag!"EXCEPTION_BT" = false;
+            }
+
+            flag!"HAS_EXCEPTION" = false;
+            throw ex;
         }
     }
 }
@@ -424,12 +436,30 @@ public:
         suspendThisFiber();
     }
 
+    bool throwInFiber(FiberHandle fHandle, Throwable ex) nothrow @safe @nogc {
+        ReactorFiber* fib = fHandle.get();
+        if( fib is null ) {
+            WARN!"Failed to throw exception in fiber %s which is no longer valid"(fHandle);
+            return false;
+        }
+
+        if( fib.flag!"HAS_EXCEPTION" ) {
+            ERROR!"Tried to throw exception in fiber %s which already has an exception pending"(fHandle);
+            return false;
+        }
+
+        fib.params.currExcBuf.set(ex);
+        fib.flag!"HAS_EXCEPTION" = true;
+        fib.flag!"EXCEPTION_BT" = false;
+        return true;
+    }
+
 private:
     @property bool shouldRunTimedCallbacks() nothrow @safe @nogc {
         return timeQueue.cyclesTillNextEntry(TscTimePoint.now()) == 0;
     }
 
-    void switchToNext() nothrow @trusted @nogc {
+    void switchToNext() @trusted @nogc {
         //DEBUG!"SWITCH out of %s"(thisFiber.identity);
 
         // in source fiber
@@ -456,7 +486,6 @@ private:
             if (prevFiber !is thisFiber) {
                 // make the switch
                 prevFiber.fibril.switchTo(thisFiber.fibril);
-                thisFiber.switchInto();
             }
         }
 
@@ -466,6 +495,9 @@ private:
             // otherwise this might have been race-prone
             prevFiber.updateStackDescriptor();
             //DEBUG!"SWITCH into %s"(thisFiber.identity);
+
+            // This might throw, so it needs to be the last thing we do
+            thisFiber.switchInto();
         }
     }
 
@@ -836,5 +868,48 @@ unittest {
     }
 
     theReactor.spawnFiber(&fiberFunc);
+    theReactor.start();
+}
+
+unittest {
+    import mecca.reactor.sync.event;
+
+    theReactor.setup();
+    scope(exit) theReactor.teardown();
+
+    Event evt1, evt2;
+
+    class TheException : Exception {
+        this() {
+            super("The Exception");
+        }
+    }
+
+    void fib2() {
+        // Release 1
+        evt1.set();
+
+        try {
+            // Wait for 1 to do its stuff
+            evt2.wait();
+
+            assert( false, "Exception not thrown" );
+        } catch( Exception ex ) {
+            assert( ex.msg == "The Exception" );
+        }
+
+        theReactor.stop();
+    }
+
+    void fib1() {
+        auto fib = theReactor.spawnFiber(&fib2);
+
+        evt1.wait();
+
+        theReactor.throwInFiber(fib, new TheException);
+        evt2.set();
+    }
+
+    theReactor.spawnFiber(&fib1);
     theReactor.start();
 }

@@ -17,7 +17,7 @@ enum string[string] LogColors = [
         "ERROR" : ConsoleCode!(Console.BoldOn, Console.RedFg),
 ];
 
-private void internalLogOutput(string TYPE, T...)(string format, scope lazy T args) nothrow {
+private void internalLogOutput(string TYPE, T...)(string format, scope lazy T args) nothrow @nogc {
     enum Color = LogColors[TYPE];
     as!"nothrow @nogc"({writefln(Color ~ TYPE ~ " " ~ format ~ ConsoleReset, args);});
 }
@@ -34,7 +34,7 @@ void WARN(string format, string file = __FILE__, int line = __LINE__, T...)(T ar
     internalLogOutput!"WARN"("%s:%s " ~ format, file, line, args);
 }
 
-void ERROR(string format, string file = __FILE__, int line = __LINE__, T...)(scope lazy T args) nothrow @trusted {
+void ERROR(string format, string file = __FILE__, int line = __LINE__, T...)(T args) nothrow @trusted @nogc {
     internalLogOutput!"ERROR"("%s:%s " ~ format, file, line, args);
 }
 

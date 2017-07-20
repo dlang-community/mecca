@@ -72,14 +72,14 @@ struct ExcBuf {
     ubyte[MAX_TRACEBACK_SIZE] ti;
     char[MAX_EXCEPTION_MESSAGE_SIZE] msgBuf;
 
-    Throwable get() @nogc nothrow {
+    Throwable get() nothrow @trusted @nogc {
         if (*(cast(void**)ex.ptr) is null) {
             return null;
         }
         return cast(Throwable)ex.ptr;
     }
 
-    Throwable set(Throwable t, bool setTraceback = false) nothrow @nogc {
+    Throwable set(Throwable t, bool setTraceback = false) nothrow @trusted @nogc {
         static assert (this.ex.offsetof == 0);
         if (t is null) {
             *(cast(void**)ex.ptr) = null;
@@ -119,7 +119,7 @@ struct ExcBuf {
         return tobj;
     }
 
-    void setTraceback(Throwable tobj = null) nothrow @nogc {
+    void setTraceback(Throwable tobj = null) nothrow @trusted @nogc {
         if (tobj is null) {
             tobj = get();
             assert (tobj !is null, "setTraceback of unset exception");
@@ -199,8 +199,13 @@ T mkEx(T: Throwable, string file = __FILE__, size_t line = __LINE__, A...)(auto 
 
 private __gshared char[4096] tmpBuf;
 
-T mkExFmt(T: Throwable, string file = __FILE__, size_t line = __LINE__, A...)(string fmt, auto ref A args) @trusted @nogc {
+T mkExFmt(T: Throwable, string file = __FILE__, size_t line = __LINE__, A...)(string fmt, auto ref A args) @safe @nogc {
     pragma(inline, true); // Must inline because of __FILE__ as template parameter. https://github.com/ldc-developers/ldc/issues/1703
+
+    // Reduce code bloat by taking the file and line out of the template parameters
+    return realMkExFmt!T(file, line, fmt, args);
+}
+private T realMkExFmt(T, A...)(string file, size_t line, string fmt, auto ref A args) @trusted @nogc {
     import std.string: sformat;
 
     string msg = as!"@nogc"({return cast(string)sformat(tmpBuf, fmt, args);});
@@ -323,10 +328,10 @@ void ASSERT(string fmt, string file = __FILE__, size_t line = __LINE__, T...)(bo
         return;
     }
 
-    scope f = () nothrow {
+    scope f = () {
         ERROR!(fmt, file, line)(args);
     };
-    as!"@nogc pure"(f);
+    as!"@nogc pure nothrow"(f);
     DIE("Assertion failure", file, line);
 }
 
