@@ -165,6 +165,19 @@ private:
         } else {
             FLSArea.switchToNone();
         }
+        auto id = identity.value;
+        if (id == 0) {
+            logSource = "MAIN";
+        }
+        else if (id == 1) {
+            logSource = "IDLE";
+        }
+        else {
+            logSource[0] = "0123456789abcdef"[(id >> 12) & 0xf];
+            logSource[1] = "0123456789abcdef"[(id >> 8) & 0xf];
+            logSource[2] = "0123456789abcdef"[(id >> 4) & 0xf];
+            logSource[3] = "0123456789abcdef"[id & 0xf];
+        }
 
         if (flag!"HAS_EXCEPTION") {
             Throwable ex = params.currExcBuf.get();
