@@ -456,6 +456,9 @@ public:
             return false;
 
         fiberEx.set(ex);
+        auto fib = fHandle.get();
+        fib.flag!"IMMEDIATE" = true; //  this should be a parameter to resumeFiber instead
+        resumeFiber(fib);
         return true;
     }
 
@@ -466,6 +469,10 @@ public:
             return false;
 
         fiberEx.construct!T(file, line, false, args);
+        auto fib = fHandle.get();
+        fib.flag!"IMMEDIATE" = true; //  this should be a parameter to resumeFiber instead
+        resumeFiber(fib);
+        return true;
     }
 
 private:
