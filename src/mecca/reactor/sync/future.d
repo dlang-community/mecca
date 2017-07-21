@@ -35,6 +35,9 @@ struct Future(T) {
                 theReactor.resumeFiber(fibHandle);
                 fibHandle = null;
             }
+            else {
+                WARN!"Attempted to set an unwaited future"();
+            }
         }
     }
     else {
@@ -44,6 +47,9 @@ struct Future(T) {
                 theReactor.resumeFiber(fibHandle);
                 fibHandle = null;
             }
+            else {
+                WARN!"Attempted to set an unwaited future"();
+            }
         }
     }
 
@@ -51,6 +57,9 @@ struct Future(T) {
         if (fibHandle.isValid) {
             theReactor.throwInFiber(fibHandle, ex);
             fibHandle = null;
+        }
+        else {
+            WARN!"Attempted to throw in an unwaited future";
         }
     }
 }
@@ -80,14 +89,14 @@ unittest {
             fut.raise(new MyException());
         });
 
-        /+bool caught = false;
+        bool caught = false;
         try {
-            auto val = fut.wait();
+            val = fut.wait();
         }
         catch (MyException) {
             caught = true;
         }
-        assert (caught);+/
+        assert (caught);
     });
 }
 
