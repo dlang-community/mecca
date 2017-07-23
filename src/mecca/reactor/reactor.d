@@ -400,12 +400,12 @@ public:
         }
     }
 
-    void enterCriticalSection() pure nothrow @nogc {
+    void enterCriticalSection() pure nothrow @safe @nogc {
         pragma(inline, true);
         criticalSectionNesting++;
     }
 
-    void leaveCriticalSection() pure nothrow @nogc {
+    void leaveCriticalSection() pure nothrow @safe @nogc {
         pragma(inline, true);
         assert (criticalSectionNesting > 0);
         criticalSectionNesting--;
@@ -414,7 +414,7 @@ public:
         return criticalSectionNesting > 0;
     }
 
-    @property auto criticalSection() {
+    @property auto criticalSection() nothrow @safe @nogc {
         pragma(inline, true);
         struct CriticalSection {
             @disable this(this);
@@ -424,7 +424,7 @@ public:
         return CriticalSection();
     }
 
-    void yieldThisFiber() {
+    void yieldThisFiber() @safe @nogc {
         resumeFiber(thisFiber);
         suspendThisFiber();
     }
@@ -466,11 +466,11 @@ public:
         timeQueue.cancel(handle.callback);
     }
 
-    void sleep(Duration duration) {
+    void sleep(Duration duration) @safe @nogc {
         sleep(Timeout(duration));
     }
 
-    void sleep(Timeout until) {
+    void sleep(Timeout until) @safe @nogc {
         assert(until != Timeout.init, "sleep argument uninitialized");
         auto timerHandle = registerTimer!resumeFiber(until, runningFiberHandle);
         scope(failure) cancelTimer(timerHandle);

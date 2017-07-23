@@ -190,7 +190,7 @@ struct Timeout {
     this(TscTimePoint expiry) {
         this.expiry = expiry;
     }
-    this(Duration dur, TscTimePoint now = TscTimePoint.now) {
+    this(Duration dur, TscTimePoint now = TscTimePoint.now) @safe @nogc {
         if (dur == Duration.max) {
             this.expiry = TscTimePoint.max;
         }
