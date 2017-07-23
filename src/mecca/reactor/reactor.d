@@ -269,6 +269,7 @@ private:
         TimedCallback* _next, _prev;
         timeQueue.OwnerAttrType _owner;
         TscTimePoint timePoint;
+        ulong intervalCycles; // How many cycles between repeatetions. Zero means non-repeating
 
         Closure closure;
     }
@@ -442,8 +443,19 @@ public:
         TimedCallback* callback = timedCallbacksPool.alloc();
         callback.closure.set(&F, params);
         callback.timePoint = timeout.expiry;
+        callback.intervalCycles = 0;
 
         timeQueue.insert(callback);
+
+        return TimerHandle(callback);
+    }
+
+    TimerHandle registerRecurringTimer(alias F)(Duration interval, Parameters!F params) nothrow @safe @nogc {
+        TimedCallback* callback = timedCallbacksPool.alloc();
+        callback.closure.set(&F, params);
+        callback.intervalCycles = TscTimePoint.toCycles(interval);
+
+        rescheduleRecurringTimer(callback);
 
         return TimerHandle(callback);
     }
@@ -701,12 +713,23 @@ private:
         TimedCallback* callback;
         while ((callback = timeQueue.pop(now)) !is null) {
             callback.closure();
-            timedCallbacksPool.release(callback);
+            if( callback.intervalCycles==0 )
+                timedCallbacksPool.release(callback);
+            else
+                rescheduleRecurringTimer(callback);
 
             ret = true;
         }
 
         return ret;
+    }
+
+    void rescheduleRecurringTimer(TimedCallback* callback) nothrow @safe @nogc {
+        ulong cycles = TscTimePoint.now.cycles + callback.intervalCycles;
+        cycles -= cycles % callback.intervalCycles;
+        callback.timePoint = TscTimePoint(cycles);
+
+        timeQueue.insert(callback);
     }
 
     ExcBuf* prepThrowInFiber(FiberHandle fHandle, bool updateBT) nothrow @safe @nogc {
@@ -914,6 +937,13 @@ unittest {
             handles[i] = theReactor.registerTimer!timer( Timeout(duration), &a, &handles[i], i );
         }
 
+        uint recurringCounter;
+        static void recurringTimer(uint* counter) {
+            (*counter)++;
+        }
+
+        TimerHandle recurringTimerHandle = theReactor.registerRecurringTimer!recurringTimer( dur!"msecs"(7), &recurringCounter );
+
         theReactor.sleep(dur!"msecs"(3));
 
         // Cancel one expired timeout and one yet to happen
@@ -924,6 +954,7 @@ unittest {
         theReactor.sleep(dur!"msecs"(200));
 
         assert(a == 0b1011_1111);
+        assert(recurringCounter==29); // 203ms / 7
 
         theReactor.stop();
     }
