@@ -30,6 +30,10 @@ class ReactorTimeout : Exception {
     }
 }
 
+class ReactorExit : Throwable {
+    mixin ExceptionBody;
+}
+
 align(1) struct ReactorFiber {
     struct OnStackParams {
         Closure                 fiberBody;
@@ -142,6 +146,9 @@ private:
 
             try {
                 params.fiberBody();
+            }
+            catch (ReactorExit ex2) {
+                // Do nothing. The reactor is quitting
             }
             catch (Throwable ex2) {
                 ex = ex2;
@@ -318,7 +325,6 @@ public:
         assert(!_running, "reactor teardown called on still running reactor");
         assert(criticalSectionNesting==0);
 
-        // XXX: go over all scheduled/pending fibers and throwInFiber(ReactorExit)
         switchCurrExcBuf(null);
 
         options.setToInit();
@@ -374,11 +380,22 @@ public:
 
     void stop() {
         if (_running) {
+            Throwable reactorExit = mkEx!ReactorExit("Reactor is quitting");
+            foreach(ref fiber; allFibers) {
+                if( !fiber.flag!"SPECIAL" && fiber.state == ReactorFiber.State.Sleeping ) {
+                    throwInFiber(FiberHandle(&fiber), reactorExit);
+                }
+            }
+            yieldThisFiber(); // Let everyone else die
+
             INFO!"Stopping reactor"();
             _running = false;
             if (thisFiber !is mainFiber) {
                 resumeSpecialFiber(mainFiber);
             }
+
+            if( !thisFiber.flag!"SPECIAL" )
+                throw reactorExit; // We need to die too
         }
     }
 
@@ -463,6 +480,7 @@ public:
     }
 
     bool throwInFiber(T : Throwable, string file = __FILE__, size_t line = __LINE__, A...)(FiberHandle fHandle, auto ref A args) nothrow @safe @nogc {
+        pragma(inline, true);
         ExcBuf* fiberEx = prepThrowInFiber(fHandle, true);
 
         if( fiberEx is null )
@@ -495,8 +513,12 @@ private:
             assert (!scheduledFibers.empty, "scheduledList is empty");
 
             prevFiber = thisFiber;
-            assert (prevFiber.state == ReactorFiber.State.Running || prevFiber.state == ReactorFiber.State.Done);
-            prevFiber.state = ReactorFiber.State.Sleeping;
+            if( prevFiber.state==ReactorFiber.State.Running )
+                prevFiber.state = ReactorFiber.State.Sleeping;
+            else {
+                assert( prevFiber.state==ReactorFiber.State.Done );
+                prevFiber.state = ReactorFiber.State.None;
+            }
 
             thisFiber = scheduledFibers.popHead();
 
@@ -603,7 +625,7 @@ private:
 
     void resumeFiber(ReactorFiber* fib) nothrow @safe @nogc {
         assert (!fib.flag!"SPECIAL");
-        assert (fib.flag!"CALLBACK_SET");
+        ASSERT!"resumeFiber called on %s, which does not have a callback set"(fib.flag!"CALLBACK_SET", fib.identity);
 
         if (!fib.flag!"SCHEDULED") {
             if (fib._owner !is null) {
