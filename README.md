@@ -1,5 +1,1 @@
-♫ The moment I wekapp
-
-Before I put on my meccapp ♫
-
--@ord
+![by @ord](https://imgflip.com/i/1sxn5f)
