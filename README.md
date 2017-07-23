@@ -1,1 +1,1 @@
-![by @ord](https://imgflip.com/i/1sxn5f)
+![by @ord](https://i.imgflip.com/1sxn5f.jpg)
