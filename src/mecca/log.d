@@ -20,27 +20,28 @@ enum string[string] levelColor = [
     "ERROR" : ConsoleCode!(Console.BoldOn,Console.RedFg),
 ];
 
-private void internalLogOutput(string LEVEL, T...)(string format, string file, size_t line, scope lazy T args) nothrow @nogc {
+private void internalLogOutput(string LEVEL, string format, string file, size_t line, T...)(T args) nothrow @nogc {
+    enum string unifiedFormat = ConsoleCyanFg ~ "%s " ~ ConsoleGreyFg ~ "%s:%s\t " ~ levelColor[LEVEL] ~ " " ~ format ~ ConsoleReset;
+    enum string fileName = file.split("/")[$-1];
     as!"nothrow @nogc"({
-            writefln(ConsoleCyanFg ~ "%s " ~ ConsoleGreyFg ~ "%s:%s\t " ~ levelColor[LEVEL] ~ " " ~ format ~ ConsoleReset,
-                logSource, file.split("/")[$-1], line, args);
+            writefln(unifiedFormat, logSource, fileName, line, args);
     });
 }
 
 void DEBUG(string format, string file = __FILE__, int line = __LINE__, T...)(T args) nothrow @trusted @nogc {
-    internalLogOutput!"DEBUG"(format, file, line, args);
+    internalLogOutput!("DEBUG", format, file, line)(args);
 }
 
 void INFO(string format, string file = __FILE__, int line = __LINE__, T...)(T args) nothrow @trusted @nogc {
-    internalLogOutput!"INFO"(format, file, line, args);
+    internalLogOutput!("INFO", format, file, line)(args);
 }
 
 void WARN(string format, string file = __FILE__, int line = __LINE__, T...)(T args) nothrow @trusted @nogc {
-    internalLogOutput!"WARN"(format, file, line, args);
+    internalLogOutput!("WARN", format, file, line)(args);
 }
 
 void ERROR(string format, string file = __FILE__, int line = __LINE__, T...)(T args) nothrow @trusted @nogc {
-    internalLogOutput!"ERROR"(format, file, line, args);
+    internalLogOutput!("ERROR", format, file, line)(args);
 }
 
 unittest {
