@@ -14,15 +14,15 @@ import mecca.lib.console;
 /* thread local */ char[4] logSource = "MAIN";
 
 enum string[string] levelColor = [
-    "DEBUG" : "1;30",
-    "INFO" : "0;32",
-    "WARN" : "1;33",
-    "ERROR" : "1;31",
+    "DEBUG" : ConsoleGreyFg,
+    "INFO" : ConsoleCode!(Console.BoldOff,Console.GreenFg),
+    "WARN" : ConsoleCode!(Console.BoldOn,Console.YellowFg),
+    "ERROR" : ConsoleCode!(Console.BoldOn,Console.RedFg),
 ];
 
 private void internalLogOutput(string LEVEL, T...)(string format, string file, size_t line, scope lazy T args) nothrow @nogc {
     as!"nothrow @nogc"({
-            writefln("\x1b[36m%s \x1b[1;30m%s:%s\t \x1b[" ~ levelColor[LEVEL] ~ "m " ~ format ~ "\x1b[0m",
+            writefln(ConsoleCyanFg ~ "%s " ~ ConsoleGreyFg ~ "%s:%s\t " ~ levelColor[LEVEL] ~ " " ~ format ~ ConsoleReset,
                 logSource, file.split("/")[$-1], line, args);
     });
 }

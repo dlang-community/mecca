@@ -3,7 +3,7 @@ module mecca.lib.console;
 enum Console : string {
     Reset = "0",
     BoldOn = "1",
-    BolOff = "22",
+    BoldOff = "22",
     ItalicsOn = "3",
     ItalicsOff = "23",
     UnderlineOn = "4",
@@ -34,7 +34,7 @@ enum Console : string {
 
 enum ConsoleReset = ConsoleCode!(Console.Reset);
 enum ConsoleBoldOn = ConsoleCode!(Console.BoldOn);
-enum ConsoleBolOff = ConsoleCode!(Console.BolOff);
+enum ConsoleBoldOff = ConsoleCode!(Console.BoldOff);
 enum ConsoleItalicsOn = ConsoleCode!(Console.ItalicsOn);
 enum ConsoleItalicsOff = ConsoleCode!(Console.ItalicsOff);
 enum ConsoleUnderlineOn = ConsoleCode!(Console.UnderlineOn);
@@ -44,6 +44,7 @@ enum ConsoleInverseOff = ConsoleCode!(Console.InverseOff);
 enum ConsoleStrikethroughOn = ConsoleCode!(Console.StrikethroughOn);
 enum ConsoleStrikethroughOff = ConsoleCode!(Console.StrikethroughOff);
 enum ConsoleBlackFg = ConsoleCode!(Console.BlackFg);
+enum ConsoleGreyFg = ConsoleCode!(Console.BoldOn,Console.BlackFg);
 enum ConsoleRedFg = ConsoleCode!(Console.RedFg);
 enum ConsoleGreenFg = ConsoleCode!(Console.GreenFg);
 enum ConsoleYellowFg = ConsoleCode!(Console.YellowFg);
