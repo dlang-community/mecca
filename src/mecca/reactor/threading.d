@@ -16,7 +16,7 @@ import mecca.containers.arrays: FixedString;
 import mecca.containers.pools: FixedPool;
 
 import mecca.log;
-import mecca.reactor.reactor: theReactor, FiberHandle;
+import mecca.reactor.reactor: theReactor, FiberHandle, TimerHandle;
 
 
 class WorkerThread: Thread {
@@ -177,6 +177,7 @@ private:
     PthreadMutex pollerThreadMutex;
     Duration pollingInterval;
     WorkerThread[] threads;
+    TimerHandle timerHandle;
     PoolType tasksPool;
     DuplexQueue!(IdxType, numTasks) queue;
 
@@ -199,11 +200,11 @@ public:
         while (numActiveThreads < threads.length) {
             Thread.sleep(2.msecs);
         }
-        //timerCookie = theReactor.callEvery(reactorPollingInterval, &completionCallback);
+        timerHandle = theReactor.registerRecurringTimer(reactorPollingInterval, &completionCallback);
     }
 
     void close() {
-        //theReactor.cancelCall(timerCookie);
+        theReactor.cancelTimer(timerHandle);
         active = false;
         foreach(i; 0 .. threads.length) {
             queue.submitRequest(POISON);
@@ -262,6 +263,7 @@ public:
             DeferredTask* task = tasksPool.fromIndex(idx);
             task.runFinalizer(); // call finalizer, if the user provided one
 
+            DEBUG!"#THD pulled result of %s from thread"(task.cookie);
             if (task.fibHandle.isValid) {
                 theReactor.resumeFiber(task.fibHandle);
                 task.fibHandle = null;
@@ -329,21 +331,43 @@ public:
     }
 }
 
-/+
 unittest {
-    ThreadPool!1024 thdPool;
     import mecca.reactor.reactor: testWithReactor;
 
-    static int sleeper(Duration dur) {
+    __gshared static long sum;
+    __gshared static long done;
+    __gshared static ThreadPool!1024 thdPool;
+
+    static int sleeper(Duration dur, int x) {
         Thread.sleep(dur);
-        return 17;
+        return x * 2;
+    }
+
+    static void sleeperFib(int x) {
+        auto res = thdPool.deferToThread!sleeper(x.msecs, x);
+        assert (res == x * 2);
+        sum += x;
+        done--;
     }
 
     testWithReactor({
         thdPool.open(10);
-        auto res = thdPool.deferToThread!sleeper(10.msecs);
-        assert (res == 17);
+
+        done = 0;
+        foreach(int i; [10, 20, 30, 40, 50, 45, 35, 25, 15]) {
+            done++;
+            theReactor.spawnFiber(&sleeperFib, i);
+        }
+
+        // XXX: need semaphore
+        while (done > 0) {
+            theReactor.sleep(10.msecs);
+        }
+
+        assert (sum == 270);
     });
 }
-+/
+
+
+
 
