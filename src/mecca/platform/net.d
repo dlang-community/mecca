@@ -199,6 +199,8 @@ unittest {
 
 
 struct SockAddr {
+    enum maxLength = sin6.sizeof;
+
     union {
         struct {
             sa_family_t family;
@@ -207,8 +209,7 @@ struct SockAddr {
         sockaddr_in   sin4;
         sockaddr_in6  sin6;
     }
-    private socklen_t _len;
-    enum maxLength = sin6.sizeof;
+    socklen_t length;
 
     @property ushort port() const @nogc {
         return ntohs(portNBO);
@@ -217,11 +218,8 @@ struct SockAddr {
         portNBO = htons(newPort);
     }
 
-    @property sockaddr* asSockaddr() {
+    @property sockaddr* asSockaddr(this T)() {
         return cast(sockaddr*)&sin4;
-    }
-    @property auto length() {
-        return _len;
     }
 
     @property ref IP4 ip4() {
@@ -260,7 +258,7 @@ struct SockAddr {
     static SockAddr loopback4(ushort port=0) {
         SockAddr ep;
         ep.sin4.sin_addr = IP4.loopback.inaddr;
-        ep._len = sin4.sizeof;
+        ep.length = sin4.sizeof;
         ep.port = port;
         return ep;
     }
@@ -268,7 +266,7 @@ struct SockAddr {
     static SockAddr loopback6(ushort port=0) {
         SockAddr ep;
         ep.sin6.sin6_addr = in6addr_loopback;
-        ep._len = sin6.sizeof;
+        ep.length = sin6.sizeof;
         ep.port = port;
         return ep;
     }
@@ -276,7 +274,7 @@ struct SockAddr {
     static SockAddr any4(ushort port=0) {
         SockAddr ep;
         ep.sin4.sin_addr = IP4.any.inaddr;
-        ep._len = sin4.sizeof;
+        ep.length = sin4.sizeof;
         ep.port = port;
         return ep;
     }
@@ -284,22 +282,22 @@ struct SockAddr {
     static SockAddr any6(ushort port=0) {
         SockAddr ep;
         ep.sin6.sin6_addr = in6addr_any;
-        ep._len = sin6.sizeof;
+        ep.length = sin6.sizeof;
         ep.port = port;
         return ep;
     }
 
     static SockAddr getSockName(int fd) {
         SockAddr ep;
-        ep._len = maxLength;
-        errnoEnforce(getsockname(fd, ep.asSockaddr, &ep._len) == 0, "getsockname() failed");
+        ep.length = maxLength;
+        errnoEnforce(getsockname(fd, ep.asSockaddr, &ep.length) == 0, "getsockname() failed");
         return ep;
     }
 
     static SockAddr getPeerName(int fd) {
         SockAddr ep;
-        ep._len = maxLength;
-        errnoEnforce(getpeername(fd, ep.asSockaddr, &ep._len) == 0, "getpeername() failed");
+        ep.length = maxLength;
+        errnoEnforce(getpeername(fd, ep.asSockaddr, &ep.length) == 0, "getpeername() failed");
         return ep;
     }
 
@@ -334,12 +332,12 @@ struct SockAddr {
         for (auto curr = res; curr !is null; curr = curr.ai_next) {
             if (family == AF_INET && curr.ai_addrlen == sockaddr_in.sizeof) {
                 ep.sin4 = *(cast(sockaddr_in*)curr.ai_addr);
-                ep._len = sockaddr_in.sizeof;
+                ep.length = sockaddr_in.sizeof;
                 return ep;
             }
             else if (family == AF_INET6 && curr.ai_addrlen == sockaddr_in6.sizeof) {
                 ep.sin6 = *(cast(sockaddr_in6*)curr.ai_addr);
-                ep._len = sockaddr_in6.sizeof;
+                ep.length = sockaddr_in6.sizeof;
                 return ep;
             }
         }

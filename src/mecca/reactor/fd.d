@@ -6,14 +6,17 @@ import std.conv;
 import std.exception;
 import std.meta;
 import std.traits;
+import std.string;
 
 import unistd = core.sys.posix.unistd;
 import fcntl = core.sys.posix.fcntl;
-import socket = core.sys.posix.sys.socket : sockaddr, msghdr;
+import socket = core.sys.posix.sys.socket;
 
 import mecca.reactor.reactor;
 import mecca.containers.pools;
 import mecca.lib.time;
+import mecca.platform.net: SockAddr;
+import mecca.lib.exception: mkExFmt;
 import mecca.log;
 
 // Definitions missing from the phobos headers
@@ -72,99 +75,55 @@ public:
         writeFd = FD(fds[1], true);
     }
 
-    // We could use opDispatch here, and in fact, already had the code written and working. I (Shachar) then realized that opDispatch SFINAE
-    // behavior is disastrous when the user makes a mistake. With opDispatch, the following code:
-    // fd.read("buffer".ptr, 6);
-    // Results in an error:
-    // FD has no property read
-    // which is *really* confusing, whereas this way, it will say:
-    // Cannot convert argument 1 from immutable(char)* to void*
-    // Which tells you what you did wrong.
-    mixin(FDFunctionParser!(unistd, "write").genFunction);
-    mixin(FDFunctionParser!(unistd, "read").genFunction);
-    mixin(FDFunctionParser!(socket, "send").genFunction);
-    mixin(FDFunctionParser!(socket, "sendto").genFunction);
-    mixin(FDFunctionParser!(socket, "sendmsg").genFunction);
-    mixin(FDFunctionParser!(socket, "recv").genFunction);
-    mixin(FDFunctionParser!(socket, "recvfrom").genFunction);
-    mixin(FDFunctionParser!(socket, "recvmsg").genFunction);
-private:
-    // CTFE helper
-    struct FDFunctionParser(alias modul, string funcName) {
-        // DMDBUG issue 17571
-        alias func = Alias!(__traits(getMember, modul, funcName));
-        alias RetType = ReturnType!func;
-        alias Params = Parameters!func;
-        alias CompactParams = Params[1..$];
+    private auto blockingCall(alias F)(Parameters!F[1 .. $] args) {
+        static assert (is(Parameters!F[0] == int));
+        static assert (isSigned!(ReturnType!F));
 
-        @property static bool isFDHandler() {
-            // FD handlers need to return a signed integer, so we can test for error using <0
-            static if (!isIntegral!RetType || !isSigned!RetType) {
-                pragma(msg, funcName, " does not return a signed integer. Not an FD handler")
-                return false;
-            }
-
-            static if( !is( Params[0] == int ) ) {
-                pragma(msg, funcName, " first argument is not a file descriptor. Not an FD handler")
-                return false;
-            }
-
-            return true;
-        }
-
-        static if( isFDHandler() ) {
-            static RetType proxyCall(ref FD fd, CompactParams args) {
-                RetType res;
-                bool again;
-
-                do {
-                    again = false;
-                    res = func(fd.fd, args);
-                    if( res<0 && errno == EAGAIN ) {
-                        again = true;
-                        epoller.waitForEvent(fd.ctx); // Makes sure that the epoll will wake us up when we can try again. May result in false wakeups
-                    }
-                } while( again );
-
-                return res;
-            }
-
-            static string genFunction() {
-                import std.string: format;
-
-                enum numArgs = CompactParams.length;
-                string argsDeclList() {
-                    string ret;
-
-                    foreach(i, arg; CompactParams) {
-                        if( i!=0 )
-                            ret ~= ", ";
-                        ret ~= "%s arg%s".format(arg.stringof, i);
-                    }
-
-                    return ret;
+        while (true) {
+            auto ret = F(fd, args);
+            if (ret < 0) {
+                if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                    epoller.waitForEvent(ctx);
                 }
-
-                string argsList() {
-                    string ret;
-
-                    foreach(i, arg; CompactParams) {
-                        if( i!=0 )
-                            ret ~= ", ";
-                        ret ~= "arg%s".format(i);
-                    }
-
-                    return ret;
+                else {
+                    throw mkExFmt!ErrnoException("%s(%s)", __traits(identifier, F), fd);
                 }
-
-                return q{
-                    %s %s(%s) {
-                        return %s.proxyCall(this, %s);
-                    }
-                }.format(RetType.stringof, funcName, argsDeclList(), typeof(this).stringof, argsList());
+            }
+            else {
+                return ret;
             }
         }
     }
+
+    auto write(const(void)[] buf) {
+        return blockingCall!(unistd.write)(buf.ptr, buf.length);
+    }
+    auto read(void[] buf) {
+        return blockingCall!(unistd.read)(buf.ptr, buf.length);
+    }
+
+    /+auto send(const(void)[] buf, int flags=0) {
+        return blockingCall!(socket.send)(buf.ptr, buf.length, flags | socket.MSG_NOSIGNAL);
+    }
+    auto recv(void[] buf, int flags=0) {
+        return blockingCall!(socket.recv)(buf.ptr, buf.length, flags);
+    }
+
+    auto sendto(const(void)[] buf, const ref SockAddr sockAddr, int flags=0) {
+        return blockingCall!(socket.sendto)(buf.ptr, buf.length, flags | socket.MSG_NOSIGNAL, sockAddr.asSockaddr, sockAddr.length);
+    }
+    auto recvfrom(void[] buf, ref SockAddr sockAddr, int flags=0) {
+        return blockingCall!(socket.recvfrom)(buf.ptr, buf.length, flags, sockAddr.asSockaddr, &sockAddr.length);
+    }+/
+
+    /+ssize_t sendmsg(const(void)[] buf) {
+        return blockingCall!(socket.sendmsg)(fd, buf.ptr, buf.length);
+    }
+    ssize_t recvmsg(const(void)[] buf) {
+        return blockingCall!(socket.recvmsg)(fd, buf.ptr, buf.length);
+    }+/
+    // XXX: accept, listen, bind, connect, fcntl, dup/dup2, seek, tell, fallocate, truncate, stat, open, openat
+    // XXX: it would make more sense to separate these into different structs: FileHandle, ConnectedSockHandle, DgramSockHandle
 }
 
 private:
@@ -284,7 +243,7 @@ unittest {
 
         // Send 128MB over the pipe
         ssize_t res;
-        while((res = pipeRead.read(buffer.ptr, BUFF_SIZE))>0) {
+        while((res = pipeRead.read(buffer))>0) {
             DEBUG!"Received %s bytes"(res);
             assert(res==BUFF_SIZE, "Short read from pipe");
             assert(buffer[0] == ++lastNum, "Read incorrect value from buffer");
@@ -302,7 +261,7 @@ unittest {
         // Send 128MB over the pipe
         while(buffer[0] < (128*MB/BUFF_SIZE)) {
             DEBUG!"Sending %s bytes"(BUFF_SIZE);
-            ssize_t res = pipeWrite.write(buffer.ptr, BUFF_SIZE);
+            ssize_t res = pipeWrite.write(buffer);
             errnoEnforce( res>=0, "Write failed on pipe");
             assert( res==BUFF_SIZE, "Short write to pipe" );
             buffer[0]++;
