@@ -360,7 +360,7 @@ public:
 
     /+FiberHandle spawnFiber(alias F)(Parameters!F args) {
         auto fib = _spawnFiber(false);
-        fib.params.fiberBody.setF!F(args);
+        fib.params.fiberBody.set!F(args);
         return FiberHandle(fib);
     }+/
 

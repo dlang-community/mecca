@@ -27,97 +27,146 @@ unittest {
     static assert (is(CapacityType!17_000_000_000 == ulong));
 }
 
+private enum badStorageClass(uint cls) = (cls != ParameterStorageClass.none);
 
-struct _Closure(size_t ARGS_SIZE) {
+struct Closure {
+    enum ARGS_SIZE = 64;
+
 private:
-    void*                 _funcptr;
-    intptr_t              _wrapper;
+    enum DIRECT_FN = cast(void function(Closure*))0x1;
+    enum DIRECT_DG = cast(void function(Closure*))0x2;
+
+    void function(Closure*) _wrapper;
+    void* _funcptr;
     union {
-        void delegate()   _dg;
-        ubyte[ARGS_SIZE]  argsBuf;
+        void delegate() _dg;
+        ubyte[ARGS_SIZE] argsBuf;
     }
 
 public:
-    @property const(void*) funcptr() const pure @nogc nothrow @safe {return _funcptr;}
-    bool opCast(T: bool)() const pure @nogc nothrow {return _funcptr !is null;}
-    @property bool isSet(T: bool)() const pure @nogc nothrow {return _funcptr !is null;}
+    @property const(void)* funcptr() pure const nothrow @nogc {
+        return _funcptr;
+    }
+    @property bool isSet() pure const nothrow @nogc {
+        return _funcptr !is null;
+    }
+    bool opCast(T: bool)() const pure @nogc nothrow @safe {
+        return _funcptr !is null;
+    }
+    ref auto opAssign(typeof(null)) pure @nogc nothrow @safe {
+        clear();
+        return this;
+    }
+    ref auto opAssign(void function() fn) pure @nogc nothrow @safe {
+        set(fn);
+        return this;
+    }
+    ref auto opAssign(void delegate() dg) pure @nogc nothrow @safe {
+        set(dg);
+        return this;
+    }
 
-    ref auto opAssign(typeof(null)) pure @nogc nothrow {clear(); return this;}
-    ref auto opAssign(void function() fn) pure @nogc nothrow {set(fn); return this;}
-    ref auto opAssign(void delegate() dg) pure @nogc nothrow {set(dg); return this;}
-
-    void clear() pure @safe nothrow @nogc {
+    void clear() pure nothrow @nogc @trusted {
+        _wrapper = null;
         _funcptr = null;
-        _wrapper = 0;
         argsBuf[] = 0;
     }
-    void set(void function() fn) pure nothrow @safe @nogc {
-        _funcptr = fn;
-        _wrapper = 0;
-        argsBuf[] = 0;
-    }
-    void set(void delegate() dg) pure nothrow @trusted @nogc {
-        _funcptr = dg.funcptr;
-        _wrapper = 1;
-        _dg = dg;
-        argsBuf[dg.sizeof .. $] = 0;
-    }
 
-    void set(T...)(void function(T) fn, T args) pure nothrow @trusted @nogc {
-        struct Typed {T args;}
-        static assert (Typed.sizeof <= argsBuf.sizeof);
-        static void wrapper(_Closure* c) {
-            (cast(void function(T))c._funcptr)((cast(Typed*)c.argsBuf.ptr).args);
+    void set(F, T...)(F f, T args) pure nothrow @nogc @trusted if (isFunctionPointer!F) {
+        static assert (is(ReturnType!F == void));
+        static assert (is(typeof(f(args))));
+
+        static if (T.length == 0) {
+            _wrapper = DIRECT_FN;
+            _funcptr = f;
+            argsBuf[] = 0;
         }
+        else {
+            struct Typed {
+                T args;
+            }
+            static assert (Typed.sizeof <= argsBuf.sizeof, "Args too big");
 
-        _funcptr = fn;
-        _wrapper = cast(intptr_t)&wrapper;
-        (cast(Typed*)argsBuf.ptr).args = args;
-        argsBuf[Typed.sizeof .. $] = 0;
+            static void wrapper(Closure* closure) {
+                (cast(F)closure._funcptr)((cast(Typed*)closure.argsBuf.ptr).args);
+            }
+            _funcptr = f;
+            _wrapper = &wrapper;
+            (cast(Typed*)argsBuf.ptr).args = args;
+            argsBuf[Typed.sizeof .. $] = 0;
+        }
     }
 
-    void set(T...)(void delegate(T) dg, T args) pure nothrow @trusted @nogc {
-        struct Typed {void delegate(T) dg; T args;}
-        static assert (Typed.sizeof <= argsBuf.sizeof);
-        static void wrapper(_Closure* c) {
-            auto typed = (cast(Typed*)c.argsBuf.ptr);
-            typed.dg(typed.args);
-        }
+    void set(D, T...)(D dg, T args) pure nothrow @nogc @trusted if (isDelegate!D) {
+        static assert (is(ReturnType!D == void));
+        static assert (is(typeof(dg(args))));
 
-        _funcptr = dg.funcptr;
-        _wrapper = cast(intptr_t)&wrapper;
-        (cast(Typed*)argsBuf.ptr).dg = dg;
-        (cast(Typed*)argsBuf.ptr).args = args;
-        argsBuf[Typed.sizeof .. $] = 0;
+        static if (T.length == 0) {
+            _wrapper = DIRECT_DG;
+            _funcptr = dg.funcptr;
+            _dg = dg;
+            argsBuf[_dg.sizeof .. $] = 0;
+        }
+        else {
+            struct Typed {
+                D dg;
+                T args;
+            }
+            static assert (Typed.sizeof <= argsBuf.sizeof, "Args too big");
+
+            static void wrapper(Closure* closure) {
+                auto typed = cast(Typed*)closure.argsBuf.ptr;
+                typed.dg(typed.args);
+            }
+            _wrapper = &wrapper;
+            _funcptr = dg.funcptr;
+            auto typed = cast(Typed*)argsBuf.ptr;
+            typed.dg = dg;
+            typed.args = args;
+            argsBuf[Typed.sizeof .. $] = 0;
+        }
     }
 
-    void setF(alias F)(Parameters!F args) pure @nogc nothrow {
-        struct Typed {staticMap!(Unqual, Parameters!F) args;}
-        static void wrapper(_Closure* c) {
-            F((cast(Typed*)c.argsBuf.ptr).args);
-        }
+    void set(alias F)(Parameters!F args) pure nothrow @nogc @trusted {
+        static assert (is(ReturnType!F == void));
+        static assert (Filter!(badStorageClass, ParameterStorageClassTuple!F).length == 0,
+            "Bad storage class " ~ ParameterStorageClassTuple!F.stringof);
 
-        _funcptr = &F;
-        _wrapper = cast(intptr_t)&wrapper;
-        (cast(Typed*)argsBuf.ptr).args = args;
-        argsBuf[Typed.sizeof .. $] = 0;
+        static if (Parameters!F.length == 0) {
+            _wrapper = DIRECT_FN;
+            _funcptr = &F;
+            argsBuf[] = 0;
+        }
+        else {
+            struct Typed {
+                staticMap!(Unqual, Parameters!F) args;
+            }
+            static void wrapper(Closure* closure) {
+                F((cast(Typed*)closure.argsBuf.ptr).args);
+            }
+
+            _wrapper = &wrapper;
+            _funcptr = &F;
+            (cast(Typed*)argsBuf.ptr).args = args;
+            argsBuf[Typed.sizeof .. $] = 0;
+        }
     }
 
     void opCall() {
-        pragma(inline, true);
-        if (_wrapper == 0) {
-            (cast(void function())funcptr)();
+        if (_funcptr is null) {
+            return;
         }
-        else if (_wrapper == 1) {
+        else if (_wrapper == DIRECT_FN) {
+            (cast(void function())_funcptr)();
+        }
+        else if (_wrapper == DIRECT_DG) {
             _dg();
         }
         else {
-            (cast(void function(_Closure*))_wrapper)(&this);
+            (cast(void function(Closure*))_wrapper)(&this);
         }
     }
 }
-
-alias Closure = _Closure!64;
 
 unittest {
     static long sum;
@@ -166,7 +215,7 @@ unittest {
     }
 
     sum = 0;
-    c.setF!h(16, 8.5, "hello");
+    c.set!h(16, 8.5, "hello");
     c();
     assert (sum == cast(long)(16 * 8.5 + 5));
 }

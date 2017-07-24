@@ -112,7 +112,7 @@ struct DeferredTask {
             static void wrapper(void* res, Parameters!F args) {
                 *cast(R*)res = F(args);
             }
-            closure.setF!wrapper(result.ptr, args);
+            closure.set!wrapper(result.ptr, args);
         }
     }
 
