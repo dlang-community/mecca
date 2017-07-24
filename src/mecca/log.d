@@ -21,8 +21,9 @@ enum LEVEL_ERROR = FG.ired;
 private void internalLogOutput(ANSI level, T...)(string fmt, string file, size_t line, T args) nothrow @nogc {
     as!"nothrow @nogc"({
         auto t = Clock.currTime();
-        writefln(FG.grey("%02d:%02d:%02d.%03d") ~ " " ~ FG.cyan("%s") ~ " " ~ FG.grey("%s:%s") ~ "\t " ~ level(fmt),
-            t.hour, t.minute, t.second, t.fracSecs.total!"msecs", logSource, file.split("/")[$-1], line, args);
+        auto loc = "%s:%s".format(file.split("/")[$-1], line);
+        writefln(FG.grey("%02d:%02d:%02d.%03d") ~ "\u2502" ~ FG.cyan("%s") ~ "\u2502" ~ FG.grey("%-20s") ~ "\u2502" ~ level(fmt),
+            t.hour, t.minute, t.second, t.fracSecs.total!"msecs", logSource, loc[$ > 20 ? $ - 20 : 0 .. $], args);
     });
 }
 
