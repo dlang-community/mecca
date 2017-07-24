@@ -358,6 +358,12 @@ public:
         return FiberHandle(fib);
     }
 
+    /+FiberHandle spawnFiber(alias F)(Parameters!F args) {
+        auto fib = _spawnFiber(false);
+        fib.params.fiberBody.setF!F(args);
+        return FiberHandle(fib);
+    }+/
+
     @property bool isIdle() pure const nothrow @safe @nogc {
         return thisFiber is idleFiber;
     }
@@ -450,13 +456,23 @@ public:
         return TimerHandle(callback);
     }
 
-    TimerHandle registerRecurringTimer(alias F)(Duration interval, Parameters!F params) nothrow @safe @nogc {
+    private TimedCallback* _registerRecurringTimer(Duration interval) nothrow @safe @nogc {
         TimedCallback* callback = timedCallbacksPool.alloc();
-        callback.closure.set(&F, params);
         callback.intervalCycles = TscTimePoint.toCycles(interval);
-
         rescheduleRecurringTimer(callback);
+        return callback;
+    }
 
+
+    TimerHandle registerRecurringTimer(Duration interval, void delegate() dg) nothrow @safe @nogc {
+        TimedCallback* callback = _registerRecurringTimer(interval);
+        callback.closure.set(dg);
+        return TimerHandle(callback);
+    }
+
+    TimerHandle registerRecurringTimer(alias F)(Duration interval, Parameters!F params) nothrow @safe @nogc {
+        TimedCallback* callback = _registerRecurringTimer(interval);
+        callback.closure.set(&F, params);
         return TimerHandle(callback);
     }
 
@@ -695,7 +711,7 @@ private:
                         cb(ZERO_DURATION);
                     }
                 } else {
-                    WARN!"Idle thread called with no callbacks, sleeping %s"(sleepDuration);
+                    DEBUG!"Idle fiber called with no callbacks, sleeping %sus"(sleepDuration.total!"usecs");
                     import core.thread; Thread.sleep(sleepDuration);
                 }
             }
