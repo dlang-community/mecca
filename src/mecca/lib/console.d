@@ -1,91 +1,62 @@
 module mecca.lib.console;
 
-enum Console : string {
-    Reset = "0",
-    BoldOn = "1",
-    BoldOff = "22",
-    ItalicsOn = "3",
-    ItalicsOff = "23",
-    UnderlineOn = "4",
-    UnderlineOff = "24",
-    InverseOn = "7",
-    InverseOff = "27",
-    StrikethroughOn = "9",
-    StrikethroughOff = "29",
-    BlackFg = "30",
-    RedFg = "31",
-    GreenFg = "32",
-    YellowFg = "33",
-    BlueFg = "34",
-    MagentaFg = "35",
-    CyanFg = "36",
-    WhiteFg = "37",
-    DefaultFg = "39",
-    BlackBg = "40",
-    RedBg = "41",
-    GreenBg = "42",
-    YellowBg = "43",
-    BlueBg = "44",
-    MagentaBg = "45",
-    CyanBg = "46",
-    WhiteBg = "47",
-    DefaultBg = "49",
-};
-
-enum ConsoleReset = ConsoleCode!(Console.Reset);
-enum ConsoleBoldOn = ConsoleCode!(Console.BoldOn);
-enum ConsoleBoldOff = ConsoleCode!(Console.BoldOff);
-enum ConsoleItalicsOn = ConsoleCode!(Console.ItalicsOn);
-enum ConsoleItalicsOff = ConsoleCode!(Console.ItalicsOff);
-enum ConsoleUnderlineOn = ConsoleCode!(Console.UnderlineOn);
-enum ConsoleUnderlineOff = ConsoleCode!(Console.UnderlineOff);
-enum ConsoleInverseOn = ConsoleCode!(Console.InverseOn);
-enum ConsoleInverseOff = ConsoleCode!(Console.InverseOff);
-enum ConsoleStrikethroughOn = ConsoleCode!(Console.StrikethroughOn);
-enum ConsoleStrikethroughOff = ConsoleCode!(Console.StrikethroughOff);
-enum ConsoleBlackFg = ConsoleCode!(Console.BlackFg);
-enum ConsoleGreyFg = ConsoleCode!(Console.BoldOn,Console.BlackFg);
-enum ConsoleRedFg = ConsoleCode!(Console.RedFg);
-enum ConsoleGreenFg = ConsoleCode!(Console.GreenFg);
-enum ConsoleYellowFg = ConsoleCode!(Console.YellowFg);
-enum ConsoleBlueFg = ConsoleCode!(Console.BlueFg);
-enum ConsoleMagentaFg = ConsoleCode!(Console.MagentaFg);
-enum ConsoleCyanFg = ConsoleCode!(Console.CyanFg);
-enum ConsoleWhiteFg = ConsoleCode!(Console.WhiteFg);
-enum ConsoleDefaultFg = ConsoleCode!(Console.DefaultFg);
-enum ConsoleBlackBg = ConsoleCode!(Console.BlackBg);
-enum ConsoleRedBg = ConsoleCode!(Console.RedBg);
-enum ConsoleGreenBg = ConsoleCode!(Console.GreenBg);
-enum ConsoleYellowBg = ConsoleCode!(Console.YellowBg);
-enum ConsoleBlueBg = ConsoleCode!(Console.BlueBg);
-enum ConsoleMagentaBg = ConsoleCode!(Console.MagentaBg);
-enum ConsoleCyanBg = ConsoleCode!(Console.CyanBg);
-enum ConsoleWhiteBg = ConsoleCode!(Console.WhiteBg);
-enum ConsoleDefaultBg = ConsoleCode!(Console.DefaultBg);
-
-private enum string Esc = "\x1b[", Sep = ";", End = "m";
-
-template ConsoleCode(T...) {
-    string genCode() {
-        static assert(T.length >= 1);
-        string ret = Esc;
-        bool first=true;
-        foreach(code; T) {
-            if( !first ) {
-                ret ~= Sep;
-            }
-            first = false;
-            ret ~= code;
-        }
-        ret ~= End;
-
-        return ret;
+struct ANSI {
+    string code;
+    this(string code) pure nothrow @nogc {
+        this.code = code;
+    }
+    ANSI opBinary(string op)(ANSI rhs) const if (op == "|" || op == "+" || op == "~"){
+        return ANSI(code ~ ";" ~ rhs.code);
+    }
+    string opCall(string text) const {
+        return "\x1b[" ~ code ~ "m" ~ text ~ "\x1b[0m";
     }
 
-    enum string ConsoleCode = genCode();
+    enum reset = ANSI("0");
+    enum inverse = ANSI("7");
+    alias negative = inverse;
+    enum crossed = ANSI("9");
+    enum bold = ANSI("1");
+    alias intense = bold;
 }
 
+struct FG {
+    enum black    = ANSI("30");
+    enum red      = ANSI("31");
+    enum green    = ANSI("32");
+    enum yellow   = ANSI("33");
+    enum blue     = ANSI("34");
+    enum magenta  = ANSI("35");
+    enum cyan     = ANSI("36");
+    enum white    = ANSI("37");
+    enum default_ = ANSI("39");
+
+    enum iblack   = ANSI.intense | black;
+    enum ired     = ANSI.intense | red;
+    enum igreen   = ANSI.intense | green;
+    enum iyellow  = ANSI.intense | yellow;
+    enum iblue    = ANSI.intense | blue;
+    enum imagenta = ANSI.intense | magenta;
+    enum icyan    = ANSI.intense | cyan;
+    enum iwhite   = ANSI.intense | white;
+
+    alias grey    = iblack;
+    alias purple  = imagenta;
+}
+
+struct BG {
+    enum black    = ANSI("40");
+    enum red      = ANSI("41");
+    enum green    = ANSI("42");
+    enum yellow   = ANSI("43");
+    enum blue     = ANSI("44");
+    enum magenta  = ANSI("45");
+    enum cyan     = ANSI("46");
+    enum white    = ANSI("47");
+    enum default_ = ANSI("49");
+}
+
+
 unittest {
-    assert( ConsoleCode!(Console.RedFg) == Esc ~ Console.RedFg ~ End );
-    assert( ConsoleCode!(Console.RedFg, Console.BlueBg) == Esc ~ Console.RedFg ~ Sep ~ Console.BlueBg ~ End );
+    assert ("hello " ~ (FG.grey | BG.white)("moshe") ~ " of suburbia" == "hello \x1b[1;30;47mmoshe\x1b[0m of suburbia");
 }

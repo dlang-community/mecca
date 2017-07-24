@@ -18,31 +18,10 @@ shared static this() {
 int main(string[] argv) {
     bool tty = isatty(1) != 0;
 
-    void notify(string[] text...) {
+    void logLine(string text) {
         auto t = Clock.currTime();
-        if (tty) {
-            writef(ConsoleCode!(Console.BlackFg,Console.BoldOn) ~ "%02d:%02d:%02d.%03d" ~ ConsoleReset ~ " ", t.hour, t.minute, t.second,
-                    t.fracSecs.total!"msecs");
-        }
-        else {
-            writef("[%02d:%02d:%02d.%03d] ", t.hour, t.minute, t.second, t.fracSecs.total!"msecs");
-        }
-        foreach(i, part; text) {
-            if (tty) {
-                if (i % 2 == 0) {
-                    writef("\x1b[%sm", part);
-                }
-                else {
-                    writef("%s" ~ ConsoleReset, part);
-                }
-            }
-            else {
-                if (i % 2 == 1) {
-                    write(part);
-                }
-            }
-        }
-        writeln();
+        writefln(FG.grey("%02d:%02d:%02d.%03d") ~ " %s", t.hour, t.minute, t.second,
+                t.fracSecs.total!"msecs", text);
     }
 
     string[] do_run;
@@ -91,7 +70,7 @@ int main(string[] argv) {
     bool failed = false;
     auto startTime = MonoTime.currTime();
 
-    notify("1;36", "Started UT of %s (a total of %s found)".format(buildNormalizedPath(argv[0].absolutePath()), totalUTs));
+    logLine(FG.icyan("Started UT of %s (a total of %s found)".format(buildNormalizedPath(argv[0].absolutePath()), totalUTs)));
 
     foreach(m; ModuleInfo) {
         if (m is null) {
@@ -106,12 +85,12 @@ int main(string[] argv) {
         }
 
         counter++;
-        notify("33", "Running UT of ", "1;37", m.name);
+        logLine(FG.yellow("Running UT of ") ~ FG.iwhite(m.name));
         try {
             fp();
         }
         catch (Throwable ex) {
-            notify("31", "UT failed!");
+            logLine(FG.red("UT failed!"));
             auto seenSep = false;
             foreach(line; ex.toString().lineSplitter()) {
                 auto idx = line.indexOf(" ");
@@ -141,15 +120,15 @@ int main(string[] argv) {
     auto secs = (endTime - startTime).total!"msecs" / 1000.0;
 
     if (failed) {
-        notify("1;31", "Failed. Ran %s unittests in %.2f seconds".format(counter, secs));
+        logLine(FG.ired("Failed. Ran %s unittests in %.2f seconds".format(counter, secs)));
         return 1;
     }
     else if (counter == 0) {
-        notify("1;31", "Did not find any unittests to run");
+        logLine(FG.ired("Did not find any unittests to run"));
         return 2;
     }
     else {
-        notify("1;32", "Success. Ran %s unittests in %.2f seconds".format(counter, secs));
+        logLine(FG.igreen("Success. Ran %s unittests in %.2f seconds".format(counter, secs)));
         return 0;
     }
 }

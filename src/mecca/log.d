@@ -2,46 +2,44 @@ module mecca.log;
 
 import std.stdio;
 import std.string;
+import std.datetime;
 import mecca.lib.reflection: as;
+import mecca.lib.console;
 
 /*
    These functions are mostly placeholders. Since we'd sometimes want to replace them with functions that do binary logging, the format
    is part of the function's template.
  */
 
-import mecca.lib.console;
-
 /* thread local */ char[4] logSource = "MAIN";
 
-enum string[string] levelColor = [
-    "DEBUG" : ConsoleGreyFg,
-    "INFO" : ConsoleCode!(Console.BoldOff,Console.GreenFg),
-    "WARN" : ConsoleCode!(Console.BoldOn,Console.YellowFg),
-    "ERROR" : ConsoleCode!(Console.BoldOn,Console.RedFg),
-];
+enum LEVEL_DEBUG = FG.grey;
+enum LEVEL_INFO  = FG.green;
+enum LEVEL_WARN  = FG.iyellow;
+enum LEVEL_ERROR = FG.ired;
 
-private void internalLogOutput(string LEVEL, string format, string file, size_t line, T...)(T args) nothrow @nogc {
-    enum string unifiedFormat = ConsoleCyanFg ~ "%s " ~ ConsoleGreyFg ~ "%s:%s\t " ~ levelColor[LEVEL] ~ " " ~ format ~ ConsoleReset;
-    enum string fileName = file.split("/")[$-1];
+private void internalLogOutput(ANSI level, T...)(string fmt, string file, size_t line, T args) nothrow @nogc {
     as!"nothrow @nogc"({
-            writefln(unifiedFormat, logSource, fileName, line, args);
+        auto t = Clock.currTime();
+        writefln(FG.grey("%02d:%02d:%02d.%03d") ~ " " ~ FG.cyan("%s") ~ " " ~ FG.grey("%s:%s") ~ "\t " ~ level(fmt),
+            t.hour, t.minute, t.second, t.fracSecs.total!"msecs", logSource, file.split("/")[$-1], line, args);
     });
 }
 
-void DEBUG(string format, string file = __FILE__, int line = __LINE__, T...)(T args) nothrow @trusted @nogc {
-    internalLogOutput!("DEBUG", format, file, line)(args);
+void DEBUG(string fmt, string file = __FILE__, int line = __LINE__, T...)(T args) nothrow @trusted @nogc {
+    internalLogOutput!LEVEL_DEBUG(fmt, file, line, args);
 }
 
-void INFO(string format, string file = __FILE__, int line = __LINE__, T...)(T args) nothrow @trusted @nogc {
-    internalLogOutput!("INFO", format, file, line)(args);
+void INFO(string fmt, string file = __FILE__, int line = __LINE__, T...)(T args) nothrow @trusted @nogc {
+    internalLogOutput!LEVEL_INFO(fmt, file, line, args);
 }
 
-void WARN(string format, string file = __FILE__, int line = __LINE__, T...)(T args) nothrow @trusted @nogc {
-    internalLogOutput!("WARN", format, file, line)(args);
+void WARN(string fmt, string file = __FILE__, int line = __LINE__, T...)(T args) nothrow @trusted @nogc {
+    internalLogOutput!LEVEL_WARN(fmt, file, line, args);
 }
 
-void ERROR(string format, string file = __FILE__, int line = __LINE__, T...)(T args) nothrow @trusted @nogc {
-    internalLogOutput!("ERROR", format, file, line)(args);
+void ERROR(string fmt, string file = __FILE__, int line = __LINE__, T...)(T args) nothrow @trusted @nogc {
+    internalLogOutput!LEVEL_ERROR(fmt, file, line, args);
 }
 
 unittest {
