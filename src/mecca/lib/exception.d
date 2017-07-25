@@ -333,7 +333,12 @@ void ASSERT(string fmt, string file = __FILE__, size_t line = __LINE__, T...)(bo
         ERROR!(fmt, file, line)(args);
     };
     as!"@nogc pure nothrow"(f);
-    DIE("Assertion failure", file, line);
+    version(unittest ){
+        as!"@nogc pure nothrow"({throw new AssertError("Assertion failure", file, line);});
+    }
+    else {
+        DIE("Assertion failure", file, line);
+    }
 }
 
 void errnoEnforceNGC(string file = __FILE__, size_t line = __LINE__) (bool value, lazy string msg = null) @trusted @nogc {
@@ -356,6 +361,63 @@ else {
 unittest {
     ASSERT!"oh no"(true, "foobar");
 }
+
+
+//
+// useful assert variants
+//
+void assertOp(string op, L, R, string file = __FILE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") {
+    import std.meta: staticIndexOf;
+    enum idx = staticIndexOf!(op, "==", "!=", ">", "<", ">=", "<=");
+    static assert (idx >= 0);
+    enum inverseOp = ["!=", "==", "<=", ">=", "<", ">"][idx];
+
+    auto lhsVal = lhs;
+    auto rhsVal = rhs;
+    ASSERT!("%s %s %s%s", file, line)(mixin("lhsVal " ~ op ~ " rhsVal"), lhs, inverseOp, rhs, msg);
+}
+
+void assertEQ(L, R, string file = __FILE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow @nogc {
+    assertOp!("==", L, R, file, line)(lhs, rhs, msg);
+}
+void assertNE(L, R, string file = __FILE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow @nogc {
+    assertOp!("!=", L, R, file, line)(lhs, rhs, msg);
+}
+void assertGT(L, R, string file = __FILE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow @nogc {
+    assertOp!(">", L, R, file, line)(lhs, rhs, msg);
+}
+void assertGE(L, R, string file = __FILE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow @nogc {
+    assertOp!(">=", L, R, file, line)(lhs, rhs, msg);
+}
+void assertLT(L, R, string file = __FILE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow @nogc {
+    assertOp!("<", L, R, file, line)(lhs, rhs, msg);
+}
+void assertLE(L, R, string file = __FILE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow @nogc {
+    assertOp!("<=", L, R, file, line)(lhs, rhs, msg);
+}
+
+void assertThrows(T = Throwable, E, string file = __FILE__, size_t line = __LINE__)(scope lazy E expr) {
+    try {
+        expr();
+    }
+    catch (Throwable ex) {
+        ASSERT!("Threw %s instead of %s", file, line)(cast(T)ex !is null, typeid(ex).name, T.stringof);
+        return;
+    }
+    ASSERT!("Did not throw", file, line)(false);
+}
+
+unittest {
+    assertEQ(7, 7);
+    assertNE(7, 17);
+    assertThrows(assertEQ(7, 17));
+}
+
+
+
+
+
+
 
 
 
