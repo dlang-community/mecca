@@ -986,7 +986,7 @@ unittest {
         theReactor.sleep(dur!"msecs"(200));
 
         assert(a == 0b1011_1111);
-        ASSERT!"Recurring timer should run 29 times, ran %s"(recurringCounter==29, recurringCounter); // 203ms / 7
+        ASSERT!"Recurring timer should run 29 times, ran %s"(recurringCounter==29 || recurringCounter==30, recurringCounter); // 203ms / 7
 
         theReactor.stop();
     }
