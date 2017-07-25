@@ -769,7 +769,7 @@ private:
         return &fib.params.currExcBuf;
     }
 
-    void forwardExceptionToMain(Throwable ex) nothrow @safe @nogc {
+    void forwardExceptionToMain(Throwable ex) nothrow @trusted @nogc {
         ExcBuf* fiberEx = prepThrowInFiber(FiberHandle(mainFiber), false, true);
 
         if( fiberEx is null )
@@ -777,6 +777,8 @@ private:
 
         fiberEx.set(ex);
         resumeSpecialFiber(mainFiber);
+        as!"nothrow"(&theReactor.switchToNext);
+        assert(false, "switchToNext on dead system returned");
     }
 
 
@@ -984,7 +986,7 @@ unittest {
         theReactor.sleep(dur!"msecs"(200));
 
         assert(a == 0b1011_1111);
-        assert(recurringCounter==29); // 203ms / 7
+        ASSERT!"Recurring timer should run 29 times, ran %s"(recurringCounter==29, recurringCounter); // 203ms / 7
 
         theReactor.stop();
     }
