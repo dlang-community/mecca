@@ -16,12 +16,13 @@ import mecca.reactor.reactor;
 import mecca.containers.pools;
 import mecca.lib.time;
 import mecca.platform.net: SockAddr;
-import mecca.lib.exception: mkExFmt;
+import mecca.lib.exception: mkExFmt, errnoEnforceNGC;
 import mecca.log;
 
-// Definitions missing from the phobos headers
+// Definitions missing from the phobos headers or lacking nothrow @nogc
 extern(C) {
-    int pipe2(int[2]* pipefd, int flags);
+    int pipe2(int[2]* pipefd, int flags) nothrow @trusted @nogc;
+    int epoll_create1 (int flags) nothrow @trusted @nogc;
     /+
     int epoll_pwait(int epfd, epoll_event* events,
                       int maxevents, int timeout,
@@ -143,10 +144,10 @@ private: // Not that this does anything, as the struct itself is only visible to
 
 public:
 
-    void open() {
+    void open() @trusted @nogc {
         assert(theReactor.isOpen, "Must call theReactor.setup before calling FD.openReactor");
         epollFd = epoll_create1(0);
-        errnoEnforce( epollFd>=0, "Failed to create epoll fd" );
+        errnoEnforceNGC( epollFd>=0, "Failed to create epoll fd" );
 
         fdPool.open();
 

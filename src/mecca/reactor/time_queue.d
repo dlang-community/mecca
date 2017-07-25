@@ -44,11 +44,11 @@ public:
         alias OwnerAttrType = ListType*;
     }
 
-    void open(Duration resolution, TscTimePoint startTime = TscTimePoint.now) {
+    void open(Duration resolution, TscTimePoint startTime = TscTimePoint.now) @safe @nogc {
         open(TscTimePoint.toCycles(resolution), startTime);
     }
 
-    void open(long resolutionCycles, TscTimePoint startTime) {
+    void open(long resolutionCycles, TscTimePoint startTime) @safe @nogc {
         assert (resolutionCycles > 0);
         this.baseTime = startTime;
         this.poppedTime = startTime;
@@ -57,6 +57,15 @@ public:
         this.offset = 0;
         version (unittest) {
             this.stats[] = 0;
+        }
+    }
+
+    void close() nothrow @safe @nogc {
+        foreach(ref lvl; bins) {
+            foreach(ref bin; lvl) {
+                while( !bin.empty )
+                    bin.popHead;
+            }
         }
     }
 

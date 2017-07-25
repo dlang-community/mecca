@@ -161,7 +161,11 @@ private:
             assert (state == State.Running);
             state = State.Done;
             incarnationCounter++;
-            theReactor.fiberTerminated(ex);
+            if (ex !is null) {
+                theReactor.forwardExceptionToMain(ex);
+            } else {
+                theReactor.fiberTerminated();
+            }
         }
     }
 
@@ -331,6 +335,7 @@ public:
         options.setToInit();
         allFibers.free();
         fiberStacks.free();
+        timeQueue.close();
         timedCallbacksPool.close();
 
         setToInit(freeFibers);
@@ -346,7 +351,7 @@ public:
         _open = false;
     }
 
-    void registerIdleCallback(IdleCallbackDlg dg) {
+    void registerIdleCallback(IdleCallbackDlg dg) nothrow @safe @nogc {
         // You will notice our deliberate lack of function to unregister
         idleCallbacks ~= dg;
         DEBUG!"%s idle callbacks registered"(idleCallbacks.length);
@@ -424,7 +429,7 @@ public:
         pragma(inline, true);
         struct CriticalSection {
             @disable this(this);
-            ~this() {theReactor.leaveCriticalSection();}
+            ~this() nothrow @trusted @nogc {theReactor.leaveCriticalSection();}
         }
         enterCriticalSection();
         return CriticalSection();
@@ -502,7 +507,6 @@ public:
 
         fiberEx.set(ex);
         auto fib = fHandle.get();
-        fib.flag!"IMMEDIATE" = true; //  this should be a parameter to resumeFiber instead
         resumeFiber(fib);
         return true;
     }
@@ -572,9 +576,8 @@ private:
         }
     }
 
-    void fiberTerminated(Throwable ex) nothrow {
-        assert (!thisFiber.flag!"SPECIAL", "special fibers must never terminate");
-        assert (ex is null, ex.msg);
+    void fiberTerminated() nothrow {
+        ASSERT!"special fibers must never terminate" (!thisFiber.flag!"SPECIAL");
 
         freeFibers.prepend(thisFiber);
 
@@ -586,7 +589,7 @@ private:
             switchToNext();
         }
         catch (Throwable ex2) {
-            ERROR!"switchToNext failed with exception %s"(ex2);
+            ERROR!"switchToNext on dead fiber failed with exception %s"(ex2);
             assert(false);
         }
     }
@@ -748,9 +751,9 @@ private:
         timeQueue.insert(callback);
     }
 
-    ExcBuf* prepThrowInFiber(FiberHandle fHandle, bool updateBT) nothrow @safe @nogc {
+    ExcBuf* prepThrowInFiber(FiberHandle fHandle, bool updateBT, bool specialOkay = false) nothrow @safe @nogc {
         ReactorFiber* fib = fHandle.get();
-        ASSERT!"Cannot throw in the reactor's own fibers"( !fib.flag!"SPECIAL" );
+        ASSERT!"Cannot throw in the reactor's own fibers"( !fib.flag!"SPECIAL" || specialOkay );
         if( fib is null ) {
             WARN!"Failed to throw exception in fiber %s which is no longer valid"(fHandle);
             return null;
@@ -765,6 +768,17 @@ private:
         fib.flag!"EXCEPTION_BT" = updateBT;
         return &fib.params.currExcBuf;
     }
+
+    void forwardExceptionToMain(Throwable ex) nothrow @safe @nogc {
+        ExcBuf* fiberEx = prepThrowInFiber(FiberHandle(mainFiber), false, true);
+
+        if( fiberEx is null )
+            return;
+
+        fiberEx.set(ex);
+        resumeSpecialFiber(mainFiber);
+    }
+
 
     void mainloop() {
         assert (_open);

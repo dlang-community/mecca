@@ -150,7 +150,7 @@ struct _LinkedList(T, string nextAttr, string prevAttr, string ownerAttr, bool w
             if (owner is null) {
                 return false;
             }
-            assert (owner is &this);
+            ASSERT!"Trying to remove node that doesn't belong to list. Owner %s, this %s" (owner is &this, owner, &this);
             clearOwnerOf(node);
         }
 

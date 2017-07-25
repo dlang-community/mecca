@@ -2,6 +2,7 @@ module mecca.containers.arrays;
 
 import std.traits;
 import mecca.lib.reflection: CapacityType;
+import mecca.lib.exception;
 
 struct FixedArray(T, size_t N, bool InitializeMembers = true) {
     alias ElementType = T;
@@ -40,10 +41,8 @@ public:
         return data[0 .. _length];
     }
 
-    pure
-    auto ref opOpAssign(string op: "~", U)(U val) if (is(Unqual!U == T) || isAssignable!(T, U)) {
-        import std.string : format;
-        assert( _length < capacity, format("FixedArray is full. Capacity is %s", capacity) );
+    auto ref opOpAssign(string op: "~", U)(U val) nothrow @trusted @nogc if (is(Unqual!U == T) || isAssignable!(T, U)) {
+        ASSERT!"FixedArray is full. Capacity is %s"( _length < capacity, capacity );
         data[_length] = val;
         ++_length;
         return this;

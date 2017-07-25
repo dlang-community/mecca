@@ -2,6 +2,7 @@ module mecca.lib.exception;
 
 import core.exception: AssertError, RangeError, assertHandler;
 import core.runtime: Runtime, defaultTraceHandler;
+import std.exception: ErrnoException;
 
 import mecca.log;
 import mecca.lib.reflection: as;
@@ -333,6 +334,14 @@ void ASSERT(string fmt, string file = __FILE__, size_t line = __LINE__, T...)(bo
     };
     as!"@nogc pure nothrow"(f);
     DIE("Assertion failure", file, line);
+}
+
+void errnoEnforceNGC(string file = __FILE__, size_t line = __LINE__) (bool value, lazy string msg = null) @trusted @nogc {
+    if( !value ) {
+        string evaluatedMsg;
+        as!"@nogc"({evaluatedMsg = msg;});
+        throw mkEx!ErrnoException(evaluatedMsg, file, line);
+    }
 }
 
 version(assert) {

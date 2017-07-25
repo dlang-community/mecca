@@ -351,7 +351,7 @@ struct S64Divisor {
     int64_t magic;
     uint8_t more;
 
-    this(int64_t d) {
+    this(int64_t d) nothrow @trusted @nogc {
         assert (d > 0, "d<=0");
         // If d is a power of 2, or negative a power of 2, we have to use a shift.  This is especially important
         // because the magic algorithm fails for -1.  To check if d is a power of 2 or its inverse, it suffices
@@ -368,7 +368,7 @@ struct S64Divisor {
             //the dividend here is 2**(floor_log_2_d + 63), so the low 64 bit word is 0 and the high word is floor_log_2_d - 1
             uint8_t more;
             uint64_t rem, proposed_m;
-            proposed_m = libdivide_128_div_64_to_64(1UL << (floor_log_2_d - 1), 0, absD, &rem);
+            proposed_m = libdivide_128_div_64_to_64(1UL << (floor_log_2_d - 1), 0, absD, &rem); // XXX This line is not @safe
             const uint64_t e = absD - rem;
 
             /* We are going to start with a power of floor_log_2_d - 1.  This works if works if e < 2**floor_log_2_d. */
