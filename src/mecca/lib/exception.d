@@ -1,8 +1,10 @@
 module mecca.lib.exception;
 
-import core.exception: AssertError, RangeError, assertHandler;
+public import core.exception: AssertError, RangeError;
+public import std.exception: ErrnoException;
+import std.traits;
+import core.exception: assertHandler;
 import core.runtime: Runtime, defaultTraceHandler;
-import std.exception: ErrnoException;
 
 import mecca.log;
 import mecca.lib.reflection: as;
@@ -204,9 +206,10 @@ T mkExFmt(T: Throwable, string file = __FILE__, size_t line = __LINE__, A...)(st
     pragma(inline, true); // Must inline because of __FILE__ as template parameter. https://github.com/ldc-developers/ldc/issues/1703
 
     // Reduce code bloat by taking the file and line out of the template parameters
-    return realMkExFmt!T(file, line, fmt, args);
+    return _mkExFmt!T(file, line, fmt, args);
 }
-private T realMkExFmt(T, A...)(string file, size_t line, string fmt, auto ref A args) @trusted @nogc {
+
+T _mkExFmt(T, A...)(string file, size_t line, string fmt, auto ref A args) @trusted @nogc {
     import std.string: sformat;
 
     string msg = as!"@nogc"({return cast(string)sformat(tmpBuf, fmt, args);});
@@ -413,10 +416,25 @@ unittest {
     assertThrows(assertEQ(7, 17));
 }
 
+int errnoCall(alias F)(Parameters!F args, string file=__FILE__, size_t line=__LINE__) @safe @nogc if (is(ReturnType!F == int)) {
+    int res = F(args);
+    if (res < 0) {
+        import std.range: repeat;
+        import std.string;
+        enum fmt = __traits(identifier, F) ~ "(" ~ "%s".repeat(args.length).join(", ") ~ ")";
+        throw _mkExFmt!ErrnoException(file, line, fmt, args);
+    }
+    return res;
+}
 
-
-
-
+unittest {
+    import core.sys.posix.unistd: dup, close;
+    auto newFd = errnoCall!dup(1);
+    assert (newFd >= 0);
+    errnoCall!close(newFd);
+    // double close will throw
+    assertThrows!ErrnoException(errnoCall!close(newFd));
+}
 
 
 
