@@ -248,6 +248,7 @@ private:
         size_t   fiberStackSize = 32*1024;
         Duration gcInterval = 30.seconds;
         Duration timerGranularity = 1.msecs;
+        Duration hoggerWarningThreshold = 200.msecs;
         size_t   numTimers = 10000;
     }
 
@@ -268,6 +269,8 @@ private:
     ReactorFiber* idleFiber;
     alias IdleCallbackDlg = void delegate(Duration);
     FixedArray!(IdleCallbackDlg, MAX_IDLE_CALLBACKS) idleCallbacks;
+
+    TscTimePoint fiberRunStartTime;
 
     struct TimedCallback {
         TimedCallback* _next, _prev;
@@ -535,6 +538,17 @@ private:
 
         // in source fiber
         {
+            auto now = TscTimePoint.now;
+            if( !thisFiber.flag!"SPECIAL" ) {
+                auto fiberRunTime =  now - fiberRunStartTime;
+                if( fiberRunTime >= options.hoggerWarningThreshold ) {
+                    WARN!"#HOGGER detected: Fiber %s ran for %s"(thisFiber.identity, fiberRunTime);
+                    // TODO: Add dumping of stack trace
+                }
+            }
+
+            fiberRunStartTime = now;
+
             if (thisFiber !is mainFiber && !mainFiber.flag!"SCHEDULED" && shouldRunTimedCallbacks()) {
                 resumeSpecialFiber(mainFiber);
             }
