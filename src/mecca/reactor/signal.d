@@ -12,13 +12,13 @@ import mecca.reactor.fd;
 import mecca.reactor.reactor;
 
 // Definitions missing from the phobos headers or lacking nothrow @nogc
-extern(C) private {
-    int signalfd (int __fd, const(sigset_t)* __mask, int __flags) nothrow @trusted @nogc;
-    int sigemptyset(sigset_t*) nothrow @trusted @nogc;
-    int sigaddset(sigset_t*, int) nothrow @trusted @nogc;
-    int sigismember(in sigset_t*, int) nothrow @trusted @nogc;
-    int sigdelset(sigset_t*, int) nothrow @trusted @nogc;
-    int sigprocmask(int, in sigset_t*, sigset_t*) nothrow @trusted @nogc;
+extern(C) private nothrow @trusted @nogc {
+    int signalfd(int, const(sigset_t)*, int);
+    int sigemptyset(sigset_t*);
+    int sigaddset(sigset_t*, int);
+    int sigismember(in sigset_t*, int);
+    int sigdelset(sigset_t*, int);
+    int sigprocmask(int, in sigset_t*, sigset_t*);
 }
 
 // @safe wrappers
@@ -47,11 +47,6 @@ private {
     int sigprocmask(int op, const ref sigset_t newMask, ref sigset_t oldMask) nothrow @trusted @nogc {
         return sigprocmask( op, &newMask, &oldMask );
     }
-}
-
-struct SignalHandle {
-private:
-    OsSignal sig;
 }
 
 private struct ReactorSignal {
