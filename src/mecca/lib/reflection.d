@@ -221,7 +221,7 @@ unittest {
 }
 
 
-void setToInit(T)(ref T val) nothrow @nogc if (!isPointer!T) {
+void setToInit(T)(ref T val) nothrow @trusted @nogc if (!isPointer!T) {
     auto initBuf = cast(ubyte[])typeid(T).initializer();
     if (initBuf.ptr is null) {
         val.asBytes[] = 0;

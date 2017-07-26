@@ -89,7 +89,7 @@ struct FixedPool(T, size_t N) {
         // XXX: release all allocated elements?
     }
 
-    T* alloc() nothrow @nogc {
+    T* alloc() nothrow @safe @nogc {
         assert (isInited);
         if (used >= N) {
             static const PoolDepleted poolDepeleted = new PoolDepleted(typeof(this).stringof);

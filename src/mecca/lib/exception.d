@@ -131,13 +131,13 @@ struct ExcBuf {
         tobj.info = cast(Throwable.TraceInfo)tinfo;
     }
 
-    T construct(T:Throwable, A...)(string file, size_t line, bool setTraceback, auto ref A args) {
+    T construct(T:Throwable, A...)(string file, size_t line, bool setTraceback, auto ref A args) nothrow @trusted @nogc {
         static assert (__traits(classInstanceSize, T) <= ExcBuf.MAX_EXCEPTION_INSTANCE_SIZE);
 
         // create the exception
         ex[0 .. __traits(classInstanceSize, T)] = cast(ubyte[])typeid(T).initializer[];
         auto t = cast(T)ex.ptr;
-        as!"@nogc"({t.__ctor(args);});
+        as!"nothrow @nogc"({t.__ctor(args);});
         t.file = file;
         t.line = line;
         t.info = null;

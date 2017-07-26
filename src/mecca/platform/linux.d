@@ -339,7 +339,7 @@ unittest {
     assert (gettid() == getpid());
 }
 
-enum OsSignal: int {
+enum OsSignal: uint {
     SIGHUP         = 1,       /* Hangup (POSIX).  */
     SIGINT         = 2,       /* Interrupt (ANSI).  */
     SIGQUIT        = 3,       /* Quit (POSIX).  */

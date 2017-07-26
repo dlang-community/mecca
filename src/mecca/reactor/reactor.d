@@ -34,7 +34,7 @@ class ReactorExit : Throwable {
     mixin ExceptionBody;
 }
 
-align(1) struct ReactorFiber {
+struct ReactorFiber {
     struct OnStackParams {
         Closure                 fiberBody;
         GCStackDescriptor       stackDescriptor;
@@ -58,12 +58,12 @@ align(1) struct ReactorFiber {
 align(1):
     Fibril                                      fibril;
     OnStackParams*                              params;
+    LinkedListWithOwner!(ReactorFiber*)*        _owner;
     FiberId                                     _nextId;
     FiberId                                     _prevId;
     FiberIncarnation                            incarnationCounter;
     ubyte                                       _flags;
     State                                       state;
-    LinkedListWithOwner!(ReactorFiber*)*        _owner;
 
     // We define this struct align(1) for the sole purpose of making the following static assert verify what it's supposed to
     static assert (this.sizeof == 32);  // keep it small and cache-line friendly
@@ -141,7 +141,7 @@ private:
             INFO!"wrapper on %s flags=0x%0x"(identity, _flags);
 
             assert (theReactor.thisFiber is &this, "this is wrong");
-            assert (state == State.Running);
+            ASSERT!"Fiber %s is in state %s instead of \"Running\"" (state == State.Running, theReactor.thisFiber.identity, state);
             Throwable ex = null;
 
             try {
@@ -357,7 +357,7 @@ public:
         DEBUG!"%s idle callbacks registered"(idleCallbacks.length);
     }
 
-    FiberHandle spawnFiber(T...)(T args) {
+    FiberHandle spawnFiber(T...)(T args) nothrow @safe @nogc {
         auto fib = _spawnFiber(false);
         fib.params.fiberBody.set(args);
         return FiberHandle(fib);
@@ -674,7 +674,7 @@ private:
         }
     }
 
-    ReactorFiber* _spawnFiber(bool immediate) {
+    ReactorFiber* _spawnFiber(bool immediate) nothrow @safe @nogc {
         auto fib = freeFibers.popHead();
         assert (!fib.flag!"CALLBACK_SET");
         fib.flag!"IMMEDIATE" = immediate;

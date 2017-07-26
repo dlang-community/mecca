@@ -9,7 +9,7 @@ import std.traits;
 import std.string;
 
 import unistd = core.sys.posix.unistd;
-import fcntl = core.sys.posix.fcntl;
+import core.sys.posix.fcntl;
 import socket = core.sys.posix.sys.socket;
 
 import mecca.reactor.reactor;
@@ -20,9 +20,11 @@ import mecca.lib.exception: mkExFmt, errnoEnforceNGC;
 import mecca.log;
 
 // Definitions missing from the phobos headers or lacking nothrow @nogc
-extern(C) {
+private extern(C) {
     int pipe2(int[2]* pipefd, int flags) nothrow @trusted @nogc;
     int epoll_create1 (int flags) nothrow @trusted @nogc;
+    int fcntl(int, int, ...) nothrow @trusted @nogc;
+    int epoll_ctl (int epfd, int op, int fd, epoll_event *event) nothrow @trusted @nogc;
     /+
     int epoll_pwait(int epfd, epoll_event* events,
                       int maxevents, int timeout,
@@ -46,37 +48,41 @@ public:
 
     @disable this(this);
 
-    this(int fd, bool alreadyNonBlocking = false) {
+    this(int fd, bool alreadyNonBlocking = false) @trusted @nogc {
         this.fd = fd;
         ctx = epoller.registerFD(fd, alreadyNonBlocking);
     }
 
-    ~this() {
+    ~this() @safe @nogc {
         close();
     }
 
-    void close() {
+    void close() @trusted @nogc {
         if( fd>=0 ) {
             assert(ctx !is null);
 
             epoller.deregisterFd( fd, ctx );
 
             int res = unistd.close(fd);
-            errnoEnforce(res>=0, "Close failed");
+            errnoEnforceNGC(res>=0, "Close failed");
             fd = -1;
             ctx = null;
         }
     }
 
+    @property bool isValid() const pure nothrow @safe @nogc {
+        return fd >= 0;
+    }
+
     static void pipe(out FD readFd, out FD writeFd) {
         int[2] fds;
-        int res = pipe2(&fds, fcntl.O_NONBLOCK);
+        int res = pipe2(&fds, O_NONBLOCK);
         errnoEnforce(res>=0, "Failed to create anonymous pipe");
         readFd = FD(fds[0], true);
         writeFd = FD(fds[1], true);
     }
 
-    private auto blockingCall(alias F)(Parameters!F[1 .. $] args) {
+    private auto blockingCall(alias F)(Parameters!F[1 .. $] args) @system @nogc {
         static assert (is(Parameters!F[0] == int));
         static assert (isSigned!(ReturnType!F));
 
@@ -96,10 +102,14 @@ public:
         }
     }
 
-    auto write(const(void)[] buf) {
+    @property int get() nothrow @safe @nogc {
+        return fd;
+    }
+
+    auto write(const(void)[] buf) @trusted @nogc {
         return blockingCall!(unistd.write)(buf.ptr, buf.length);
     }
-    auto read(void[] buf) {
+    auto read(void[] buf) @trusted @nogc {
         return blockingCall!(unistd.read)(buf.ptr, buf.length);
     }
 
@@ -158,32 +168,36 @@ public:
         assert(false, "TODO: implement");
     }
 
-    FdContext* registerFD(int fd, bool alreadyNonBlocking = false) {
+    @property bool isOpen() const pure nothrow @safe @nogc {
+        return epollFd>=0;
+    }
+
+    FdContext* registerFD(int fd, bool alreadyNonBlocking = false) @trusted @nogc {
         assert( epollFd>=0, "registerFD called without first calling FD.openReactor" );
         FdContext* ctx = fdPool.alloc();
         scope(failure) fdPool.release(ctx);
 
         if( !alreadyNonBlocking ) {
-            int res = fcntl.fcntl(fd, fcntl.F_SETFL, fcntl.O_NONBLOCK);
-            errnoEnforce( res>=0, "Failed to set fd to non-blocking mode" );
+            int res = .fcntl(fd, F_SETFL, O_NONBLOCK);
+            errnoEnforceNGC( res>=0, "Failed to set fd to non-blocking mode" );
         }
 
         epoll_event event = void;
         event.events = EPOLLIN | EPOLLOUT | EPOLLRDHUP | EPOLLET; // Register with Edge Trigger behavior
         event.data.ptr = ctx;
         int res = epoll_ctl(epollFd, EPOLL_CTL_ADD, fd, &event);
-        errnoEnforce( res>=0, "Adding fd to epoll failed" );
+        errnoEnforceNGC( res>=0, "Adding fd to epoll failed" );
 
         return ctx;
     }
 
-    void deregisterFd(int fd, FdContext* ctx) {
+    void deregisterFd(int fd, FdContext* ctx) nothrow @safe @nogc {
         fdPool.release(ctx);
         // We do not call EPOLL_CTL_DEL, as the caller of this function will soon call close, which achieves the same result. No reason to
         // waste a syscall.
     }
 
-    void waitForEvent(FdContext* ctx) {
+    void waitForEvent(FdContext* ctx) @trusted @nogc {
         /*
             TODO: In the future, we might wish to allow one fiber to read from an FD while another writes to the same FD. As the code
             currently stands, this will trigger the assert below
@@ -223,7 +237,7 @@ private:
     }
 }
 
-__gshared Epoll epoller;
+package __gshared Epoll epoller;
 
 unittest {
     import mecca.lib.consts;
@@ -242,7 +256,7 @@ unittest {
         enum BUFF_SIZE = typeof(buffer).sizeof;
         uint lastNum = -1;
 
-        // Send 128MB over the pipe
+        // Send 2MB over the pipe
         ssize_t res;
         while((res = pipeRead.read(buffer))>0) {
             DEBUG!"Received %s bytes"(res);
@@ -259,8 +273,8 @@ unittest {
         uint[1024] buffer;
         enum BUFF_SIZE = typeof(buffer).sizeof;
 
-        // Send 128MB over the pipe
-        while(buffer[0] < (128*MB/BUFF_SIZE)) {
+        // Send 2MB over the pipe
+        while(buffer[0] < (2*MB/BUFF_SIZE)) {
             DEBUG!"Sending %s bytes"(BUFF_SIZE);
             ssize_t res = pipeWrite.write(buffer);
             errnoEnforce( res>=0, "Write failed on pipe");
