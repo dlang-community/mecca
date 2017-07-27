@@ -11,6 +11,8 @@ private:
     LinkedListWithOwner!(ReactorFiber*) waitingList;
 
 public:
+    @disable this(this);
+
     void suspend(Timeout timeout = Timeout.infinite) @trusted @nogc {
         auto ourHandle = theReactor.runningFiberHandle;
         bool inserted = waitingList.append(ourHandle.get);
@@ -24,14 +26,14 @@ public:
         // ASSERT!"Fiber %s woken up but not removed from FiberQueue"(ourHandle.get !in waitingList, ourHandle);
     }
 
-    FiberHandle resumeOne() nothrow @trusted @nogc {
+    FiberHandle resumeOne(bool immediate=false) nothrow @trusted @nogc {
         ReactorFiber* wakeupFiber = waitingList.popHead;
 
         if (wakeupFiber is null)
             return FiberHandle.init;
 
         auto handle = FiberHandle( wakeupFiber );
-        theReactor.resumeFiber( handle );
+        theReactor.resumeFiber( handle, immediate );
 
         return handle;
     }

@@ -44,8 +44,7 @@ struct ReactorFiber {
     enum Flags: ubyte {
         CALLBACK_SET   = 0x01,
         SPECIAL        = 0x02,
-        IMMEDIATE      = 0x04,
-        SCHEDULED      = 0x08,
+        SCHEDULED      = 0x04,
         HAS_EXCEPTION  = 0x10,
         EXCEPTION_BT   = 0x20,
         //REQUEST_BT     = 0x40,
@@ -138,6 +137,11 @@ private:
 
     void wrapper() nothrow {
         while (true) {
+            try {
+                switchInto();
+            } catch(Exception ex) {
+                ASSERT!"Fiber %s had exception at the very beginning of its run"(false, identity);
+            }
             INFO!"wrapper on %s flags=0x%0x"(identity, _flags);
 
             assert (theReactor.thisFiber is &this, "this is wrong");
@@ -496,7 +500,7 @@ public:
 
     void sleep(Timeout until) @safe @nogc {
         assert(until != Timeout.init, "sleep argument uninitialized");
-        auto timerHandle = registerTimer!resumeFiber(until, runningFiberHandle);
+        auto timerHandle = registerTimer!resumeFiber(until, runningFiberHandle, false);
         scope(failure) cancelTimer(timerHandle);
 
         suspendThisFiber();
@@ -523,8 +527,7 @@ public:
 
         fiberEx.construct!T(file, line, false, args);
         auto fib = fHandle.get();
-        fib.flag!"IMMEDIATE" = true; //  this should be a parameter to resumeFiber instead
-        resumeFiber(fib);
+        resumeFiber(fib, true);
         return true;
     }
 
@@ -664,11 +667,11 @@ private:
         }
     }
 
-    package void resumeFiber(FiberHandle handle) nothrow @safe @nogc {
-        resumeFiber(handle.get());
+    package void resumeFiber(FiberHandle handle, bool immediate = false) nothrow @safe @nogc {
+        resumeFiber(handle.get(), immediate);
     }
 
-    void resumeFiber(ReactorFiber* fib) nothrow @safe @nogc {
+    void resumeFiber(ReactorFiber* fib, bool immediate = false) nothrow @safe @nogc {
         assert (!fib.flag!"SPECIAL");
         ASSERT!"resumeFiber called on %s, which does not have a callback set"(fib.flag!"CALLBACK_SET", fib.identity);
 
@@ -678,8 +681,7 @@ private:
                 fib._owner.remove(fib);
             }
             fib.flag!"SCHEDULED" = true;
-            if (fib.flag!"IMMEDIATE") {
-                fib.flag!"IMMEDIATE" = false;
+            if (immediate) {
                 scheduledFibers.prepend(fib);
             }
             else {
@@ -691,14 +693,13 @@ private:
     ReactorFiber* _spawnFiber(bool immediate) nothrow @safe @nogc {
         auto fib = freeFibers.popHead();
         assert (!fib.flag!"CALLBACK_SET");
-        fib.flag!"IMMEDIATE" = immediate;
         fib.flag!"CALLBACK_SET" = true;
         fib.state = ReactorFiber.State.Sleeping;
         fib._prevId = FiberId.invalid;
         fib._nextId = FiberId.invalid;
         fib._owner = null;
         fib.params.flsBlock.reset();
-        resumeFiber(fib);
+        resumeFiber(fib, immediate);
         return fib;
     }
 
