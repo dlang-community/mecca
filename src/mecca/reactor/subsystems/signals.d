@@ -8,7 +8,7 @@ import mecca.lib.exception;
 import mecca.lib.reflection;
 import mecca.log;
 import mecca.platform.linux;
-import mecca.reactor.fd;
+import mecca.reactor.subsystems.epoll;
 import mecca.reactor.reactor;
 
 // Definitions missing from the phobos headers or lacking nothrow @nogc
@@ -189,7 +189,7 @@ unittest {
         it.it_interval.tv_usec = 500; // Wake up every half millisecond. More accurate than our reactor timers ;-)
         it.it_value = it.it_interval;
 
-        errnoEnforceNGC( setitimer(ITIMER_REAL, &it, null)==0, "Registering OS timer failed" );
+        errnoCall!setitimer(ITIMER_REAL, &it, null);
 
         it = itimerval.init;
         scope(exit) setitimer(ITIMER_REAL, &it, null);
@@ -205,3 +205,5 @@ unittest {
     INFO!"500µs timer triggered %s time during 3ms sleep"(sigcount);
     ASSERT!"sigcount has incorrect value: %s"(sigcount>=6, sigcount); // Will probably be higher
 }
+
+

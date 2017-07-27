@@ -1,4 +1,4 @@
-module mecca.reactor.time_queue;
+module mecca.reactor.impl.time_queue;
 
 import std.string;
 

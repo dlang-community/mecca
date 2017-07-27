@@ -1,4 +1,4 @@
-module mecca.reactor.fd;
+module mecca.reactor.subsystems.epoll;
 
 import core.stdc.errno;
 import core.sys.linux.epoll;
@@ -15,9 +15,14 @@ import socket = core.sys.posix.sys.socket;
 import mecca.reactor.reactor;
 import mecca.containers.pools;
 import mecca.lib.time;
-import mecca.platform.net: SockAddr;
-import mecca.lib.exception: mkExFmt, errnoEnforceNGC;
+import mecca.lib.exception;
 import mecca.log;
+
+
+
+//
+// epoll subsystems (sleep in the kernel until events occur)
+//
 
 // Definitions missing from the phobos headers or lacking nothrow @nogc
 private extern(C) {
@@ -31,6 +36,7 @@ private extern(C) {
                       const sigset_t *sigmask);
     +/
 }
+
 
 struct FD {
 private:
@@ -63,8 +69,7 @@ public:
 
             epoller.deregisterFd( fd, ctx );
 
-            int res = unistd.close(fd);
-            errnoEnforceNGC(res>=0, "Close failed");
+            errnoCall!(unistd.close)(fd);
             fd = -1;
             ctx = null;
         }
@@ -93,6 +98,7 @@ public:
                     epoller.waitForEvent(ctx);
                 }
                 else {
+
                     throw mkExFmt!ErrnoException("%s(%s)", __traits(identifier, F), fd);
                 }
             }
@@ -137,7 +143,6 @@ public:
     // XXX: it would make more sense to separate these into different structs: FileHandle, ConnectedSockHandle, DgramSockHandle
 }
 
-private:
 
 struct Epoll {
     struct FdContext {
@@ -237,7 +242,7 @@ private:
     }
 }
 
-package __gshared Epoll epoller;
+public __gshared Epoll epoller;
 
 unittest {
     import mecca.lib.consts;
@@ -291,3 +296,5 @@ unittest {
 
     theReactor.start();
 }
+
+

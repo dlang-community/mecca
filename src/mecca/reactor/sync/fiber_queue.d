@@ -42,7 +42,6 @@ public:
 }
 
 unittest {
-    import mecca.reactor.fd;
     import std.random;
 
     Mt19937 random;
@@ -50,8 +49,6 @@ unittest {
 
     theReactor.setup();
     scope(exit) theReactor.teardown();
-
-    FD.openReactor();
 
     FiberQueue fq;
     DEBUG!"Fiber queue at %s"( &fq );

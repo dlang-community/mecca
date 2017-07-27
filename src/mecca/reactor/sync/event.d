@@ -47,13 +47,11 @@ public:
 }
 
 unittest {
-    import mecca.reactor.fd;
+    //import mecca.reactor.fd;
     import mecca.reactor.reactor;
 
     theReactor.setup();
     scope(exit) theReactor.teardown();
-
-    FD.openReactor();
 
     Event evt;
 

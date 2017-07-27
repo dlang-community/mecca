@@ -1,4 +1,4 @@
-module mecca.reactor.fibril;
+module mecca.reactor.impl.fibril;
 
 
 version (D_InlineAsm_X86_64) version (Posix) {

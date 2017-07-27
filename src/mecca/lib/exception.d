@@ -416,7 +416,7 @@ unittest {
     assertThrows(assertEQ(7, 17));
 }
 
-int errnoCall(alias F)(Parameters!F args, string file=__FILE__, size_t line=__LINE__) @safe @nogc if (is(ReturnType!F == int)) {
+int errnoCall(alias F)(Parameters!F args, string file=__FILE__, size_t line=__LINE__) @nogc if (is(ReturnType!F == int)) {
     int res = F(args);
     if (res < 0) {
         import std.range: repeat;

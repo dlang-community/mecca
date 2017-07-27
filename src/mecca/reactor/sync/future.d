@@ -4,11 +4,6 @@ import mecca.reactor.reactor;
 import mecca.log;
 
 
-private void throwInFiber(ref Reactor reactor, FiberHandle fib, Throwable x) @nogc {
-    // XXX waiting for shachar to implement
-}
-
-
 struct Future(T) {
     FiberHandle fibHandle;
     static if (!is(T == void)) {

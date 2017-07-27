@@ -12,9 +12,9 @@ import mecca.lib.reflection;
 import mecca.lib.memory;
 import mecca.lib.typedid;
 import mecca.log;
-import mecca.reactor.time_queue;
-import mecca.reactor.fibril: Fibril;
-import mecca.reactor.fls;
+import mecca.reactor.impl.time_queue;
+import mecca.reactor.impl.fibril: Fibril;
+import mecca.reactor.impl.fls;
 import core.memory: GC;
 import core.sys.posix.sys.mman: munmap, mprotect, PROT_NONE;
 
@@ -880,7 +880,7 @@ unittest {
 unittest {
     // Test simple timeout
     import std.stdio;
-    import mecca.reactor.fd;
+    import mecca.reactor.subsystems.epoll;
 
     theReactor.setup();
     scope(exit) theReactor.teardown();
@@ -925,7 +925,7 @@ unittest {
 unittest {
     // Test suspending timeout
     import std.stdio;
-    import mecca.reactor.fd;
+    import mecca.reactor.subsystems.epoll;
 
     theReactor.setup();
     scope(exit) theReactor.teardown();
@@ -952,7 +952,7 @@ unittest {
 unittest {
     // Test suspending timeout
     import std.stdio;
-    import mecca.reactor.fd;
+    import mecca.reactor.subsystems.epoll;
 
     theReactor.setup();
     scope(exit) theReactor.teardown();

@@ -1,17 +1,15 @@
-module mecca.reactor.fls;
+module mecca.reactor.impl.fls;
 
 
 enum FLS_AREA_SIZE = 512;
 
-package struct FLSArea {
-private:
+struct FLSArea {
     __gshared static const FLSArea flsAreaInit;
     __gshared static int _flsOffset = 0;
     /* thread local */ static FLSArea* thisFls;
 
     ubyte[FLS_AREA_SIZE] data;
 
-package:
     void reset() nothrow @safe @nogc {
         pragma(inline, true);
         data[] = flsAreaInit.data[];
@@ -26,8 +24,8 @@ package:
         pragma(inline, true);
         thisFls = null;
     }
-private:
-    static int alloc(T)(T initVal) {
+
+    private static int alloc(T)(T initVal) {
         int offset = _flsOffset;
         _flsOffset += T.sizeof;
         assert (_flsOffset <= data.sizeof);

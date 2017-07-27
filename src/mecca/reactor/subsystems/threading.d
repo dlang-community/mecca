@@ -1,4 +1,4 @@
-module mecca.reactor.threading;
+module mecca.reactor.subsystems.threading;
 
 import core.atomic;
 import core.thread;
