@@ -1,4 +1,4 @@
-module mecca.reactor.signal;
+module mecca.reactor.subsystems.signal;
 
 import core.sys.posix.signal;
 import core.sys.posix.unistd;
