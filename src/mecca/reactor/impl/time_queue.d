@@ -7,7 +7,7 @@ import mecca.lib.exception;
 import mecca.lib.time;
 import mecca.lib.reflection;
 import mecca.containers.lists;
-import mecca.lib.divide: S64Divisor;
+import mecca.lib.division: S64Divisor;
 
 
 class TooFarAhead: Error {

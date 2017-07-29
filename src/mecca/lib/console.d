@@ -1,5 +1,6 @@
 module mecca.lib.console;
 
+
 struct ANSI {
     string code;
     this(string code) pure nothrow @nogc {

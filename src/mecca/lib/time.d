@@ -1,7 +1,7 @@
 module mecca.lib.time;
 
 public import std.datetime;
-import mecca.lib.divide: S64Divisor;
+import mecca.lib.division: S64Divisor;
 public import mecca.platform.x86: readTSC;
 
 
