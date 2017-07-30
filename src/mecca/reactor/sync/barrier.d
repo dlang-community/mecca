@@ -35,6 +35,7 @@ struct Barrier {
     }
 }
 
+/+
 unittest {
     import mecca.reactor.reactor;
 
@@ -55,3 +56,4 @@ unittest {
         assert (count == numFibs);
     });
 }
++/
