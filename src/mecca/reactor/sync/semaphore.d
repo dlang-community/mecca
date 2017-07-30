@@ -11,8 +11,9 @@ struct Semaphore {
 private:
     size_t _capacity;
     size_t available;
+    size_t requestsPending;
     FiberQueue waiters;
-    uint fibersWaiting;
+    bool resumePending;
 
 public:
     @disable this(this);
@@ -24,6 +25,8 @@ public:
 
         _capacity = capacity;
         available = _capacity - used;
+        requestsPending = 0;
+        ASSERT!"open called with waiters in queue"( waiters.empty );
     }
 
     void close() nothrow @safe @nogc {
@@ -37,36 +40,36 @@ public:
     }
 
     void acquire(size_t amount = 1, Timeout timeout = Timeout.infinite) @safe @nogc {
-        if( fibersWaiting>0 ) {
-            // Even if the semaphore has coins, other fibers are ahead of us in queue to get them.
-            fibersWaiting++;
-            scope(exit) fibersWaiting--;
+        ASSERT!"Semaphore tried to acquire %s, but total capacity is only %s"( amount<=capacity, amount, capacity );
+        requestsPending += amount;
+        scope(exit) requestsPending -= amount;
 
-            waiters.suspend(timeout);
+        bool slept;
+        if( requestsPending>amount ) {
+            // There are others waiting before us
+            suspend(timeout);
+            slept = true;
         }
 
-        size_t totalObtained;
-        scope(failure) {
-            if(totalObtained>0)
-                release(totalObtained);
+        while( available<amount ) {
+            if( slept ) {
+                DEBUG!"Spurious wakeup waiting to acquire %s from semaphore. Available %s, capacity %s"(amount, available, capacity);
+            }
+
+            slept = true;
+            suspend(timeout);
         }
 
-        while( amount > 0 ) {
-            size_t obtained = min(amount, available);
-            amount -= obtained;
-            available -= obtained;
-            totalObtained += obtained;
+        DBG_ASSERT!"Semaphore has %s requests pending including us, but we're requesting %s"(requestsPending >= amount, requestsPending,
+                amount);
 
-            if( amount>0 ) {
-                fibersWaiting++;
-                scope(exit) fibersWaiting--;
+        available -= amount;
+        // requestsPending -= amount; Will be done by scope(exit) above. We're not sleeping until the end of the function
 
-                waiters.suspend(timeout);
-            } else if( available>0 ) {
-                // While we slept, it is possible that more coins became available than what we need. If that's the case, wake up the
-                // next waiter in the list. We perform an immediate resume, as the fiber should have been resumed with us.
-                waiters.resumeOne(true);
-            } 
+        if( requestsPending>amount && available>0 ) {
+            // If there are other pendings, we've slept. The same release that woke us up should have woken the next in line too, except it
+            // didn't know it released enough to wake more than one.
+            resumeOne(true);
         }
     }
 
@@ -77,11 +80,26 @@ public:
         ASSERT!"Semaphore.release(%s) called results in %s available coins but only %s capacity"( available<=capacity, amount, available,
                capacity );
 
-        waiters.resumeOne();
+        if( requestsPending>0 )
+            resumeOne(false);
+    }
+
+private:
+    void resumeOne(bool immediate) nothrow @safe @nogc {
+        if( !resumePending ) {
+            waiters.resumeOne(immediate);
+            resumePending = true;
+        }
+    }
+
+    void suspend(Timeout timeout) @safe @nogc {
+        waiters.suspend(timeout);
+        ASSERT!"Semaphore woke up without anyone owning up to waking us up."(resumePending);
+
+        resumePending = false;
     }
 }
 
-/+
 unittest {
     import mecca.reactor.reactor;
 
@@ -115,8 +133,8 @@ unittest {
 
     theReactor.start();
 
+    INFO!"Counters at end: %s"(counters);
     foreach(i, cnt; counters) {
-        ASSERT!"Counter %s not correct: %s"(cnt>998, i, counters);
+        ASSERT!"Counter %s not correct: %s"(cnt>=999, i, counters);
     }
 }
-+/
