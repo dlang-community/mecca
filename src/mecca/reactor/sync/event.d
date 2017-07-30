@@ -7,7 +7,7 @@ import mecca.log;
 
 struct Event {
 private:
-    FiberQueue waiters;
+    VolatileFiberQueue waiters;
     bool currentlySet;
 
 public:
@@ -17,9 +17,7 @@ public:
             return;
 
         currentlySet = true;
-        while( !waiters.empty ) {
-            waiters.resumeOne();
-        }
+        waiters.resumeAll();
     }
 
     void reset() nothrow @safe @nogc {

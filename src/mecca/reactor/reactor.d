@@ -45,6 +45,7 @@ struct ReactorFiber {
         CALLBACK_SET   = 0x01,
         SPECIAL        = 0x02,
         SCHEDULED      = 0x04,
+        SLEEPING       = 0x08,
         HAS_EXCEPTION  = 0x10,
         EXCEPTION_BT   = 0x20,
         //REQUEST_BT     = 0x40,
