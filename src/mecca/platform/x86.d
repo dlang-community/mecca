@@ -5,8 +5,8 @@ version(LDC) {
     public import ldc.intrinsics: readTSC = llvm_readcyclecounter;
 }
 else version (D_InlineAsm_X86_64) {
-    ulong readTSC() nothrow @nogc @trusted {
-        asm nothrow @nogc @trusted {
+    ulong readTSC() nothrow @nogc @safe {
+        asm nothrow @nogc @safe {
             naked;
             rdtsc;         // EDX(hi):EAX(lo)
             shl RDX, 32;
@@ -58,9 +58,9 @@ version (LDC) {
     }
 }
 else version (D_InlineAsm_X86_64) {
-    void prefetch(const void* p /* RDI */) pure nothrow @trusted @nogc {
+    void prefetch(const void* p /* RDI */) pure nothrow @safe @nogc {
         pragma(inline, true);
-        asm pure nothrow @trusted @nogc {
+        asm pure nothrow @safe @nogc {
             naked;
             prefetcht0 [RDI];
             ret;

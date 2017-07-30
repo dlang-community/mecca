@@ -58,7 +58,7 @@ struct DefaultTraceInfoABI {
         assert (typeid(obj).name == "core.runtime.defaultTraceHandler.DefaultTraceInfo", typeid(obj).name);
         return cast(DefaultTraceInfoABI*)(cast(void*)obj);
     }
-    static DefaultTraceInfoABI* extract(Throwable ex) nothrow @trusted @nogc {
+    static DefaultTraceInfoABI* extract(Throwable ex) nothrow @safe @nogc {
         return extract(ex.info);
     }
     @property void*[] frames() nothrow @trusted @nogc {
@@ -195,7 +195,7 @@ void switchCurrExcBuf(ExcBuf* newCurrentExcBuf) nothrow @safe @nogc {
         _currExcBuf = &_tlsExcBuf;
 }
 
-T mkEx(T: Throwable, string file = __FILE__, size_t line = __LINE__, A...)(auto ref A args) @trusted @nogc {
+T mkEx(T: Throwable, string file = __FILE__, size_t line = __LINE__, A...)(auto ref A args) @safe @nogc {
     pragma(inline, true); // Must inline because of __FILE__ as template parameter. https://github.com/ldc-developers/ldc/issues/1703
     return _currExcBuf.construct!T(file, line, true, args);
 }
@@ -326,7 +326,7 @@ void ABORT(string msg, string file = __FILE__, size_t line = __LINE__) nothrow @
     DIE(msg, file, line, true);
 }
 
-void ASSERT(string fmt, string file = __FILE__, size_t line = __LINE__, T...)(bool cond, scope lazy T args) @trusted @nogc {
+void ASSERT(string fmt, string file = __FILE__, size_t line = __LINE__, T...)(bool cond, scope lazy T args) nothrow @trusted @nogc {
     pragma(inline, true);
     if (cond) {
         return;

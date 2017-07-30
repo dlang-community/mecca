@@ -54,7 +54,7 @@ public:
 
     @disable this(this);
 
-    this(int fd, bool alreadyNonBlocking = false) @trusted @nogc {
+    this(int fd, bool alreadyNonBlocking = false) @safe @nogc {
         this.fd = fd;
         ctx = epoller.registerFD(fd, alreadyNonBlocking);
     }
@@ -63,7 +63,7 @@ public:
         close();
     }
 
-    void close() @trusted @nogc {
+    void close() @safe @nogc {
         if( fd>=0 ) {
             assert(ctx !is null);
 
@@ -159,7 +159,7 @@ private: // Not that this does anything, as the struct itself is only visible to
 
 public:
 
-    void open() @trusted @nogc {
+    void open() @safe @nogc {
         assert(theReactor.isOpen, "Must call theReactor.setup before calling FD.openReactor");
         epollFd = epoll_create1(0);
         errnoEnforceNGC( epollFd>=0, "Failed to create epoll fd" );
@@ -202,7 +202,7 @@ public:
         // waste a syscall.
     }
 
-    void waitForEvent(FdContext* ctx) @trusted @nogc {
+    void waitForEvent(FdContext* ctx) @safe @nogc {
         /*
             TODO: In the future, we might wish to allow one fiber to read from an FD while another writes to the same FD. As the code
             currently stands, this will trigger the assert below
@@ -242,7 +242,10 @@ private:
     }
 }
 
-public __gshared Epoll epoller;
+private __gshared Epoll __epoller;
+public @property ref Epoll epoller() nothrow @trusted @nogc {
+    return __epoller;
+}
 
 unittest {
     import mecca.lib.consts;

@@ -18,7 +18,7 @@ enum LEVEL_INFO  = FG.green;
 enum LEVEL_WARN  = FG.iyellow;
 enum LEVEL_ERROR = FG.ired;
 
-private void internalLogOutput(ANSI level, T...)(string fmt, string file, size_t line, T args) nothrow @nogc {
+private void internalLogOutput(ANSI level, T...)(string fmt, string file, size_t line, T args) nothrow @trusted @nogc {
     as!"nothrow @nogc"({
         auto t = Clock.currTime();
         auto loc = "%s:%s".format(file.split("/")[$-1], line);
@@ -27,19 +27,19 @@ private void internalLogOutput(ANSI level, T...)(string fmt, string file, size_t
     });
 }
 
-void DEBUG(string fmt, string file = __FILE__, int line = __LINE__, T...)(T args) nothrow @trusted @nogc {
+void DEBUG(string fmt, string file = __FILE__, int line = __LINE__, T...)(T args) nothrow @safe @nogc {
     internalLogOutput!LEVEL_DEBUG(fmt, file, line, args);
 }
 
-void INFO(string fmt, string file = __FILE__, int line = __LINE__, T...)(T args) nothrow @trusted @nogc {
+void INFO(string fmt, string file = __FILE__, int line = __LINE__, T...)(T args) nothrow @safe @nogc {
     internalLogOutput!LEVEL_INFO(fmt, file, line, args);
 }
 
-void WARN(string fmt, string file = __FILE__, int line = __LINE__, T...)(T args) nothrow @trusted @nogc {
+void WARN(string fmt, string file = __FILE__, int line = __LINE__, T...)(T args) nothrow @safe @nogc {
     internalLogOutput!LEVEL_WARN(fmt, file, line, args);
 }
 
-void ERROR(string fmt, string file = __FILE__, int line = __LINE__, T...)(T args) nothrow @trusted @nogc {
+void ERROR(string fmt, string file = __FILE__, int line = __LINE__, T...)(T args) nothrow @safe @nogc {
     internalLogOutput!LEVEL_ERROR(fmt, file, line, args);
 }
 

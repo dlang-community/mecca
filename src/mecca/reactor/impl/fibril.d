@@ -107,7 +107,7 @@ struct Fibril {
     void set(void[] stackArea, void delegate() nothrow dg) nothrow @nogc {
         set(stackArea, cast(void function(void*) nothrow)dg.funcptr, dg.ptr);
     }
-    void switchTo(ref Fibril next) nothrow @nogc {
+    void switchTo(ref Fibril next) nothrow @trusted @nogc {
         pragma(inline, true);
         _fibril_switch(&this.rsp, next.rsp);
     }

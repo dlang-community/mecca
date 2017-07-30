@@ -13,7 +13,7 @@ private:
 public:
     @disable this(this);
 
-    void suspend(Timeout timeout = Timeout.infinite) @trusted @nogc {
+    void suspend(Timeout timeout = Timeout.infinite) @safe @nogc {
         auto ourHandle = theReactor.runningFiberHandle;
         bool inserted = waitingList.append(ourHandle.get);
         DBG_ASSERT!"Fiber %s added to same queue twice"(inserted, ourHandle);
@@ -26,7 +26,7 @@ public:
         // ASSERT!"Fiber %s woken up but not removed from FiberQueue"(ourHandle.get !in waitingList, ourHandle);
     }
 
-    FiberHandle resumeOne(bool immediate=false) nothrow @trusted @nogc {
+    FiberHandle resumeOne(bool immediate=false) nothrow @safe @nogc {
         ReactorFiber* wakeupFiber = waitingList.popHead;
 
         if (wakeupFiber is null)

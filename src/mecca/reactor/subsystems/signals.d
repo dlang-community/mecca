@@ -50,7 +50,7 @@ private {
 }
 
 private struct ReactorSignal {
-    alias SignalHandler = void delegate(const ref signalfd_siginfo siginfo) nothrow @trusted @nogc;
+    alias SignalHandler = void delegate(const ref signalfd_siginfo siginfo) nothrow @safe @nogc;
 private:
     enum BATCH_SIZE = 16; // How many signals to handle with one syscall
 
@@ -61,7 +61,7 @@ private:
 
     SignalHandler[NUM_SIGS] handlers;
 public:
-    void open() @trusted @nogc {
+    void open() @safe @nogc {
         ASSERT!"ReactorSignal.open called without first calling reactor.FD.openReactor"(epoller.isOpen);
         sigemptyset(signals);
         handlers[] = null;
@@ -73,7 +73,7 @@ public:
         fiberHandle = theReactor.spawnFiber(&fiberMainWrapper, &this);
     }
 
-    void close() @trusted @nogc {
+    void close() @safe @nogc {
         verifyOpen();
         signalFd.close();
         errnoEnforceNGC( sigprocmask( SIG_UNBLOCK, &signals, null )>=0, "sigprocmask unblocking signals failed" );
@@ -127,7 +127,7 @@ private:
         rs.fiberMain();
     }
 
-    void fiberMain() @trusted @nogc {
+    void fiberMain() @safe @nogc {
         try {
             while(true) {
                 // XXX Consider placing the array in the struct, so it's not on the stack

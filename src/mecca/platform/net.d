@@ -69,7 +69,7 @@ struct IP4 {
         return inaddr.s_addr != 0 && inaddr.s_addr != 0xffffffff;
     }
 
-    string toString() @trusted const {
+    string toString() @safe const {
         return format("%d.%d.%d.%d", bytes[0], bytes[1], bytes[2], bytes[3]);
     }
 

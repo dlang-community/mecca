@@ -66,7 +66,7 @@ public:
         return this;
     }
 
-    void clear() pure nothrow @nogc @trusted {
+    void clear() pure nothrow @nogc @safe {
         _wrapper = null;
         _funcptr = null;
         argsBuf[] = 0;

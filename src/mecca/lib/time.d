@@ -87,7 +87,7 @@ struct TscTimePoint {
     static auto fromNow(Duration dur) @nogc {
         return now + toCycles(dur);
     }
-    static long toCycles(Duration dur) @nogc @trusted nothrow {
+    static long toCycles(Duration dur) @nogc @safe nothrow {
         long hns = dur.total!"hnsecs";
         return (hns / HECTONANO) * cyclesPerSecond + ((hns % HECTONANO) * cyclesPerSecond) / HECTONANO;
     }

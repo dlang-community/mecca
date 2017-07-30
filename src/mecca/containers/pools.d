@@ -210,7 +210,7 @@ struct SimplePool(T) {
         assert (!closed);
         return used;
     }
-    @property auto numAvailable() const pure nothrow @nogc {
+    @property auto numAvailable() const pure nothrow @safe @nogc {
         assert (!closed);
         return elements.length - used;
     }

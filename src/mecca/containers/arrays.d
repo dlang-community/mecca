@@ -41,7 +41,7 @@ public:
         return data[0 .. _length];
     }
 
-    auto ref opOpAssign(string op: "~", U)(U val) nothrow @trusted @nogc if (is(Unqual!U == T) || isAssignable!(T, U)) {
+    auto ref opOpAssign(string op: "~", U)(U val) nothrow @safe @nogc if (is(Unqual!U == T) || isAssignable!(T, U)) {
         ASSERT!"FixedArray is full. Capacity is %s"( _length < capacity, capacity );
         data[_length] = val;
         ++_length;

@@ -131,7 +131,7 @@ align(1):
     }
 
 private:
-    void updateStackDescriptor() nothrow @nogc {
+    void updateStackDescriptor() nothrow @safe @nogc {
         params.stackDescriptor.tstack = fibril.rsp;
     }
 
@@ -225,7 +225,7 @@ struct FiberHandle {
         }
         return this;
     }
-    package @property ReactorFiber* get() const nothrow @trusted @nogc {
+    package @property ReactorFiber* get() const nothrow @safe @nogc {
         if (!identity.isValid || theReactor.allFibers[identity.value].incarnationCounter != incarnation) {
             return null;
         }
@@ -290,7 +290,7 @@ private:
     CascadingTimeQueue!(TimedCallback*, TIMER_NUM_BINS, TIMER_NUM_LEVELS, true) timeQueue;
 
 public:
-    @property bool isOpen() const pure nothrow @nogc {
+    @property bool isOpen() const pure nothrow @safe @nogc {
         return _open;
     }
 
@@ -436,7 +436,7 @@ public:
         pragma(inline, true);
         struct CriticalSection {
             @disable this(this);
-            ~this() nothrow @trusted @nogc {theReactor.leaveCriticalSection();}
+            ~this() nothrow @safe @nogc {theReactor.leaveCriticalSection();}
         }
         enterCriticalSection();
         return CriticalSection();
@@ -536,7 +536,7 @@ private:
         return timeQueue.cyclesTillNextEntry(TscTimePoint.now()) == 0;
     }
 
-    void switchToNext() @trusted @nogc {
+    void switchToNext() @safe @nogc {
         //DEBUG!"SWITCH out of %s"(thisFiber.identity);
 
         // in source fiber
@@ -625,7 +625,7 @@ private:
             throw mkEx!ReactorTimeout;
         }
 
-        static void resumer(FiberHandle fibHandle, TimerHandle* cookie, bool* timeoutExpired) nothrow @trusted @nogc{
+        static void resumer(FiberHandle fibHandle, TimerHandle* cookie, bool* timeoutExpired) nothrow @safe @nogc{
             *cookie = TimerHandle.init;
             ReactorFiber* fib = fibHandle.get;
             assert( fib !is null, "Fiber disappeared while suspended with timer" );
@@ -817,7 +817,7 @@ private:
 }
 
 // Expose the conversion to/from ReactorFiber only to the reactor package
-package ReactorFiber* to(T : ReactorFiber*)(FiberId fid) nothrow @trusted @nogc {
+package ReactorFiber* to(T : ReactorFiber*)(FiberId fid) nothrow @safe @nogc {
     if (!fid.isValid)
         return null;
 
@@ -825,18 +825,23 @@ package ReactorFiber* to(T : ReactorFiber*)(FiberId fid) nothrow @trusted @nogc 
     return &theReactor.allFibers[fid.value];
 }
 
-package FiberId to(T : FiberId)(const ReactorFiber* rfp) nothrow @trusted @nogc {
+package FiberId to(T : FiberId)(const ReactorFiber* rfp) nothrow @safe @nogc {
     if (rfp is null)
         return FiberId.invalid;
 
     ASSERT!"Reactor is not open"( theReactor.isOpen );
-    auto idx = rfp - theReactor.allFibers.arr.ptr;
+    auto idx = rfp - &theReactor.allFibers.arr[0];
     DBG_ASSERT!"Reactor fiber pointer not pointing to fibers pool: base %s ptr %s idx %s"(idx>=0 && idx<theReactor.allFibers.arr.length,
             &theReactor.allFibers.arr[0], rfp, idx);
     return FiberId( cast(ushort)idx );
 }
 
-__gshared Reactor theReactor;
+private __gshared Reactor __theReactor;
+
+// Lots of code can be @safe if it didn't need to access "theReactor". This wrapper allows it to be
+@property ref Reactor theReactor() nothrow @trusted @nogc {
+    return __theReactor;
+}
 
 version (unittest) {
     void testWithReactor(void delegate() dg) {
