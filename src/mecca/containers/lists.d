@@ -60,7 +60,7 @@ struct _LinkedList(T, string nextAttr, string prevAttr, string ownerAttr, bool w
     }
 
     static if (withOwner) {
-        private static _LinkedList* getOwnerOf(T node) nothrow {
+        private static _LinkedList* getOwnerOf(T node) nothrow @trusted @nogc {
             pragma(inline, true);
             mixin("return cast(_LinkedList*)(node." ~ ownerAttr ~ ");");
         }
@@ -181,7 +181,7 @@ struct _LinkedList(T, string nextAttr, string prevAttr, string ownerAttr, bool w
     }
 
     static if (withOwner) {
-        bool opBinaryRight(string op: "in")(T node) {
+        bool opBinaryRight(string op: "in")(T node) const nothrow @safe @nogc {
             return getOwnerOf(node) is &this;
         }
 

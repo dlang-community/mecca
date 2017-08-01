@@ -245,6 +245,12 @@ void enforceFmt(T: Throwable = Exception, string file = __FILE__, size_t line = 
 }
 
 
+mixin template ExceptionBody(string msg) {
+    this(string file = __FILE__, size_t line = __LINE__, Throwable next = null) @safe pure nothrow @nogc {
+        super(msg, file, line, next);
+    }
+}
+
 mixin template ExceptionBody() {
     this(string msg, string file = __FILE__, size_t line = __LINE__, Throwable next = null) @safe pure nothrow @nogc {
         super(msg, file, line, next);

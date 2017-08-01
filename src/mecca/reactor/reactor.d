@@ -15,6 +15,7 @@ import mecca.log;
 import mecca.reactor.impl.time_queue;
 import mecca.reactor.impl.fibril: Fibril;
 import mecca.reactor.impl.fls;
+import mecca.reactor.fiber_group;
 import core.memory: GC;
 import core.sys.posix.sys.mman: munmap, mprotect, PROT_NONE;
 
@@ -38,6 +39,7 @@ struct ReactorFiber {
     struct OnStackParams {
         Closure                 fiberBody;
         GCStackDescriptor       stackDescriptor;
+        FiberGroup.Chain        fgChain;
         FLSArea                 flsBlock;
         ExcBuf                  currExcBuf;
     }
@@ -140,7 +142,7 @@ private:
         while (true) {
             try {
                 switchInto();
-            } catch(Exception ex) {
+            } catch(Throwable ex) {
                 ASSERT!"Fiber %s had exception at the very beginning of its run"(false, identity);
             }
             INFO!"wrapper on %s flags=0x%0x"(identity, _flags);
@@ -155,8 +157,15 @@ private:
             catch (ReactorExit ex2) {
                 // Do nothing. The reactor is quitting
             }
+            catch (FiberGroup.FiberGroupExtinction ex2) {
+                INFO!"Fiber %s killed by fiber group"(theReactor.runningFiberId);
+            }
             catch (Throwable ex2) {
                 ex = ex2;
+            }
+
+            if (params.fgChain.owner !is null) {
+                params.fgChain.owner.remove(theReactor.thisFiber);
             }
 
             INFO!"wrapper finished on %s, ex=%s"(identity, ex);
@@ -371,11 +380,11 @@ public:
         return FiberHandle(fib);
     }
 
-    /+FiberHandle spawnFiber(alias F)(Parameters!F args) {
+    FiberHandle spawnFiber(alias F)(Parameters!F args) {
         auto fib = _spawnFiber(false);
         fib.params.fiberBody.set!F(args);
         return FiberHandle(fib);
-    }+/
+    }
 
     @property bool isIdle() pure const nothrow @safe @nogc {
         return thisFiber is idleFiber;
@@ -390,6 +399,14 @@ public:
         // XXX This assert may be incorrect, but it is easier to remove an assert than to add one
         assert(!isSpecialFiber, "Should not blindly get fiber handle of special fibers");
         return FiberHandle(thisFiber);
+    }
+    @property package ReactorFiber* runningFiberPtr() nothrow @safe @nogc {
+        // XXX This assert may be incorrect, but it is easier to remove an assert than to add one
+        assert(!isSpecialFiber, "Should not blindly get fiber handle of special fibers");
+        return thisFiber;
+    }
+    @property FiberId runningFiberId() const nothrow @safe @nogc {
+        return thisFiber.identity;
     }
 
     void start() {
@@ -435,9 +452,28 @@ public:
 
     @property auto criticalSection() nothrow @safe @nogc {
         pragma(inline, true);
-        struct CriticalSection {
+        static struct CriticalSection {
+        private:
+            bool owner = true;
+
+        public:
             @disable this(this);
-            ~this() nothrow @safe @nogc {theReactor.leaveCriticalSection();}
+            ~this() nothrow @safe @nogc {
+                if( owner )
+                    leave();
+            }
+
+            void enter() nothrow @safe @nogc {
+                DBG_ASSERT!"The same critical section was activated twice"(!owner);
+                theReactor.enterCriticalSection();
+                owner = true;
+            }
+
+            void leave() nothrow @safe @nogc {
+                DBG_ASSERT!"Asked to leave critical section not owned by us"(owner);
+                theReactor.leaveCriticalSection();
+                owner = false;
+            }
         }
         enterCriticalSection();
         return CriticalSection();
@@ -461,6 +497,17 @@ public:
     TimerHandle registerTimer(alias F)(Timeout timeout, Parameters!F params) nothrow @safe @nogc {
         TimedCallback* callback = timedCallbacksPool.alloc();
         callback.closure.set(&F, params);
+        callback.timePoint = timeout.expiry;
+        callback.intervalCycles = 0;
+
+        timeQueue.insert(callback);
+
+        return TimerHandle(callback);
+    }
+
+    TimerHandle registerTimer(T)(Timeout timeout, T dg) nothrow @safe @nogc {
+        TimedCallback* callback = timedCallbacksPool.alloc();
+        callback.closure.set(dg);
         callback.timePoint = timeout.expiry;
         callback.intervalCycles = 0;
 
