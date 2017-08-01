@@ -83,7 +83,7 @@ struct _LinkedList(T, string nextAttr, string prevAttr, string ownerAttr, bool w
         assert (isValid(node), "appending null");
 
         static if (withOwner) {
-            assert (anchor is null || getOwnerOf(anchor) is &this, "anchor does not belong to this list");
+            assert (!isValid(anchor) || getOwnerOf(anchor) is &this, "anchor does not belong to this list");
             auto owner = getOwnerOf(node);
             if (owner is &this) {
                 return false;
@@ -190,8 +190,8 @@ struct _LinkedList(T, string nextAttr, string prevAttr, string ownerAttr, bool w
                 return owner.remove(node);
             }
             else {
-                assert (getNextOf(node) is null, "next is linked");
-                assert (getPrevOf(node) is null, "prev is linked");
+                assert (!isValid(getNextOf(node)), "next is linked");
+                assert (!isValid(getPrevOf(node)), "prev is linked");
                 return false;
             }
         }
@@ -752,4 +752,29 @@ unittest {
 
     queue.removeAll();
     assert (queue.empty);
+}
+
+unittest {
+    // Dummy node type for list. This is means primarily to make sure no one in the list implementation is comparing to null instead of using
+    // isValid. Nothing runs in this UT. If it compiles, it's fine
+    struct S {
+        alias OurList = _LinkedList!(S, "_next", "_prev", "owner", false);
+        @property S _next() pure nothrow @nogc @safe {
+            return invalid;
+        }
+        @property void _next(S rhs) pure nothrow @nogc @safe {
+        }
+        @property S _prev() pure nothrow @nogc @safe {
+            return invalid;
+        }
+        @property void _prev(S rhs) pure nothrow @nogc @safe {
+        }
+        OurList* owner;
+        bool isValid() const pure nothrow @nogc {
+            return false;
+        }
+        enum invalid = S.init;
+    }
+
+    S.OurList list;
 }
