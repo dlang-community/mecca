@@ -105,6 +105,13 @@ public:
         return spawnFiber!wrapper(dg);
     }
 
+    FiberHandle spawnFiberIfOpen(void delegate() dg) nothrow @safe @nogc {
+        if( state != State.Active )
+            return FiberHandle.init;
+
+        return spawnFiber(dg);
+    }
+
     struct ExecutionResult(T) {
         bool completed = false;
         static if (!is(T == void)) {
@@ -260,5 +267,68 @@ unittest {
         tracker.spawnFiber({tracker.close();});
         theReactor.sleep(msecs(1));
         assert(tracker.closed());
+    });
+}
+/*
+   Make sure nested calls work correctly
+ */
+unittest {
+    import std.exception;
+    import std.stdio;
+
+    testWithReactor({
+        FiberGroup foo;
+        foo.open();
+
+        // Make sure we dont catch the fiberbomb in the nested call
+        auto res1 = foo.runTracked({
+            foo.runTracked({
+                throw mkEx!(foo.FiberGroupExtinction);
+            });
+            assert(false, "Nested call caught the fiber bomb!");
+        });
+        assert(res1.completed == false, "res2 marked as completed when shouldn't has");
+
+        // Make sure we dont catch the fiberbomb in a deeply nested call
+        auto res2 = foo.runTracked({
+            foo.runTracked({
+                foo.runTracked({
+                    foo.runTracked({
+                        foo.runTracked({
+                            throw mkEx!(foo.FiberGroupExtinction);
+                        });
+                        assert(false, "Nested call caught the fiber bomb!");
+                    });
+                    assert(false, "Nested call caught the fiber bomb!");
+                });
+                assert(false, "Nested call caught the fiber bomb!");
+            });
+            assert(false, "Nested call caught the fiber bomb!");
+        });
+        assert(res2.completed == false, "res2 marked as completed when shouldn't have");
+    });
+}
+
+/*
+    Spawn fibers on inactive trackers
+*/
+unittest {
+    import std.exception;
+    import std.stdio;
+
+    testWithReactor({
+        FiberGroup foo;
+
+        void dlg() {}
+
+        assert( !foo.spawnFiberIfOpen(&dlg).isValid );
+
+        foo.open();
+
+        assert(foo.spawnFiberIfOpen(&dlg).isValid);
+
+        foo.close();
+
+        assert( !foo.spawnFiberIfOpen(&dlg).isValid);
     });
 }
