@@ -1,17 +1,23 @@
 module mecca.reactor.reactor;
 
+import posix_signal = core.sys.posix.signal;
+import posix_time = core.sys.posix.time;
+import core.sys.posix.signal;
+
 import std.exception;
 import std.string;
 
 import mecca.containers.lists;
 import mecca.containers.arrays;
 import mecca.containers.pools;
+import mecca.lib.concurrency;
 import mecca.lib.exception;
 import mecca.lib.time;
 import mecca.lib.reflection;
 import mecca.lib.memory;
 import mecca.lib.typedid;
 import mecca.log;
+import mecca.platform.linux;
 import mecca.reactor.impl.time_queue;
 import mecca.reactor.impl.fibril: Fibril;
 import mecca.reactor.impl.fls;
@@ -257,12 +263,16 @@ private:
     enum NUM_SPECIAL_FIBERS = 2;
     enum ZERO_DURATION = Duration.zero;
 
+    enum MainFiberId = FiberId(0);
+    enum IdleFiberId = FiberId(1);
+
     struct Options {
         uint     numFibers = 256;
         size_t   fiberStackSize = 32*1024;
         Duration gcInterval = 30.seconds;
         Duration timerGranularity = 1.msecs;
         Duration hoggerWarningThreshold = 200.msecs;
+        Duration hangDetectorTimeout = Duration.zero;
         size_t   numTimers = 10000;
     }
 
@@ -283,8 +293,10 @@ private:
     ReactorFiber* idleFiber;
     alias IdleCallbackDlg = void delegate(Duration);
     FixedArray!(IdleCallbackDlg, MAX_IDLE_CALLBACKS) idleCallbacks;
+    __gshared OsSignal hangDetectorSig;
+    posix_time.timer_t hangDetectorTimerId = null;
 
-    TscTimePoint fiberRunStartTime;
+    SignalHandlerValue!TscTimePoint fiberRunStartTime;
 
     struct TimedCallback {
         TimedCallback* _next, _prev;
@@ -328,18 +340,21 @@ public:
             }
         }
 
-        mainFiber = &allFibers[0];
+        mainFiber = &allFibers[MainFiberId.value];
         mainFiber.flag!"SPECIAL" = true;
         mainFiber.flag!"CALLBACK_SET" = true;
         mainFiber.state = ReactorFiber.State.Running;
 
-        idleFiber = &allFibers[1];
+        idleFiber = &allFibers[IdleFiberId.value];
         idleFiber.flag!"SPECIAL" = true;
         idleFiber.flag!"CALLBACK_SET" = true;
         idleFiber.params.fiberBody.set(&idleLoop);
 
         timedCallbacksPool.open(options.numTimers, true);
         timeQueue.open(options.timerGranularity);
+
+        if( options.hangDetectorTimeout !is Duration.zero )
+            registerHangDetector();
     }
 
     void teardown() {
@@ -349,6 +364,7 @@ public:
 
         switchCurrExcBuf(null);
 
+        deregisterHangDetector();
         options.setToInit();
         allFibers.free();
         fiberStacks.free();
@@ -844,6 +860,63 @@ private:
         assert(false, "switchToNext on dead system returned");
     }
 
+    void registerHangDetector() @trusted @nogc {
+        DBG_ASSERT!"registerHangDetector called twice"( hangDetectorSig == OsSignal.SIGNONE );
+        hangDetectorSig = cast(OsSignal)SIGRTMIN;
+        scope(failure) hangDetectorSig = OsSignal.init;
+
+        posix_signal.sigaction_t sa;
+        sa.sa_flags = posix_signal.SA_RESTART | posix_signal.SA_ONSTACK | posix_signal.SA_SIGINFO;
+        sa.sa_sigaction = &hangDetectorHandler;
+        errnoEnforceNGC(posix_signal.sigaction(hangDetectorSig, &sa, null) == 0, "sigaction() for registering hang detector signal failed");
+        scope(failure) posix_signal.signal(hangDetectorSig, posix_signal.SIG_DFL);
+
+        enum SIGEV_THREAD_ID = 4;
+        // SIGEV_THREAD_ID (Linux-specific)
+        // As  for  SIGEV_SIGNAL, but the signal is targeted at the thread whose ID is given in sigev_notify_thread_id,
+        // which must be a thread in the same process as the caller.  The sigev_notify_thread_id field specifies a kernel
+        // thread ID, that is, the value returned by clone(2) or gettid(2).  This flag is intended only for use by
+        // threading libraries.
+
+        sigevent sev;
+        sev.sigev_notify = SIGEV_THREAD_ID;
+        sev.sigev_signo = hangDetectorSig;
+        sev.sigev_value.sival_ptr = &hangDetectorTimerId;
+        sev._sigev_un._tid = gettid();
+
+        errnoEnforceNGC(posix_time.timer_create(posix_time.CLOCK_MONOTONIC, &sev, &hangDetectorTimerId) == 0,
+                "timer_create for hang detector");
+        ASSERT!"hangDetectorTimerId is null"(hangDetectorTimerId !is null);
+        scope(failure) posix_time.timer_delete(hangDetectorTimerId);
+
+        posix_time.itimerspec its;
+
+        enum TIMER_GRANULARITY = 4; // Number of wakeups during the monitored period
+        Duration threshold = options.hangDetectorTimeout / TIMER_GRANULARITY;
+        threshold.split!("seconds", "nsecs")(its.it_value.tv_sec, its.it_value.tv_nsec);
+        its.it_interval = its.it_value;
+        INFO!"Hang detector will wake up every %s seconds and %s nsecs"(its.it_interval.tv_sec, its.it_interval.tv_nsec);
+
+        errnoEnforceNGC(posix_time.timer_settime(hangDetectorTimerId, 0, &its, null) == 0, "timer_settime");
+    }
+
+    void deregisterHangDetector() nothrow @trusted @nogc {
+        if( hangDetectorSig is OsSignal.SIGNONE )
+            return; // Hang detector was not initialized
+
+        posix_time.timer_delete(hangDetectorTimerId);
+        posix_signal.signal(hangDetectorSig, posix_signal.SIG_DFL);
+        hangDetectorSig = OsSignal.init;
+    }
+
+    extern(C) static void hangDetectorHandler(int signum, siginfo_t* info, void *ctx) {
+        auto now = TscTimePoint.now();
+
+        if( (now-theReactor.fiberRunStartTime)<theReactor.options.hangDetectorTimeout || theReactor.runningFiberId == IdleFiberId )
+            return;
+
+        ASSERT!"TODO implement"(false);
+    }
 
     void mainloop() {
         assert (_open);
@@ -1104,4 +1177,13 @@ unittest {
 
     theReactor.spawnFiber(&fib1);
     theReactor.start();
+}
+
+unittest {
+    theReactor.options.hangDetectorTimeout = 20.msecs;
+    DEBUG!"sanity: %s"(theReactor.options.hangDetectorTimeout);
+
+    testWithReactor({
+            theReactor.sleep(200.msecs);
+            });
 }
