@@ -909,13 +909,25 @@ private:
         hangDetectorSig = OsSignal.init;
     }
 
-    extern(C) static void hangDetectorHandler(int signum, siginfo_t* info, void *ctx) {
+    extern(C) static void hangDetectorHandler(int signum, siginfo_t* info, void *ctx) nothrow @trusted @nogc {
         auto now = TscTimePoint.now();
+        auto delay = now - theReactor.fiberRunStartTime;
 
-        if( (now-theReactor.fiberRunStartTime)<theReactor.options.hangDetectorTimeout || theReactor.runningFiberId == IdleFiberId )
+        if( delay<theReactor.options.hangDetectorTimeout || theReactor.runningFiberId == IdleFiberId )
             return;
 
-        ASSERT!"TODO implement"(false);
+        void*[50] stack;
+        void*[] actualStack = extractStack(stack);
+
+        long seconds, usecs;
+        delay.split!("seconds", "usecs")(seconds, usecs);
+
+        ERROR!"Hang detector triggered for %s after %s.%06s seconds. Stack trace:"(theReactor.runningFiberId, seconds, usecs);
+        foreach(sp; actualStack) {
+            DEBUG!"%s"(sp);
+        }
+
+        DIE("Hang detector killed process");
     }
 
     void mainloop() {
