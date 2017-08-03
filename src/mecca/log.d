@@ -1,5 +1,8 @@
 module mecca.log;
 
+version(MeccaAlternateLogger) {
+mixin("public import " ~ import("MeccaAlternateLogger.txt") ~ ";");
+} else {
 import std.stdio;
 import std.string;
 import std.datetime;
@@ -48,4 +51,5 @@ unittest {
     INFO!"Event worthy of run time mention %s"(100);
     WARN!"Take heed, %s traveller, for something strange is a%s"("weary", "foot");
     ERROR!"2b || !2b == %s"('?');
+}
 }
