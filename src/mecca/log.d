@@ -20,6 +20,7 @@ enum LEVEL_DEBUG = FG.grey;
 enum LEVEL_INFO  = FG.green;
 enum LEVEL_WARN  = FG.iyellow;
 enum LEVEL_ERROR = FG.ired;
+enum LEVEL_BT    = FG.red;
 
 private void internalLogOutput(ANSI level, T...)(string fmt, string file, size_t line, T args) nothrow @trusted @nogc {
     as!"nothrow @nogc"({
@@ -44,6 +45,17 @@ void WARN(string fmt, string file = __FILE__, int line = __LINE__, T...)(T args)
 
 void ERROR(string fmt, string file = __FILE__, int line = __LINE__, T...)(T args) nothrow @safe @nogc {
     internalLogOutput!LEVEL_ERROR(fmt, file, line, args);
+}
+
+void LOG_TRACEBACK(void*[] bt, string msg, string file, size_t line) nothrow @trusted @nogc {
+    internalLogOutput!LEVEL_BT("%s", file, line, msg);
+    foreach( ptr; bt ) {
+        as!"nothrow @nogc"({ writefln("\t0x%x", ptr); });
+    }
+}
+
+void flushLog() nothrow @trusted @nogc {
+    as!"nothrow @nogc"({ stdout.flush(); });
 }
 
 unittest {

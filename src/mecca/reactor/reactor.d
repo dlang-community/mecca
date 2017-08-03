@@ -1,7 +1,8 @@
 module mecca.reactor.reactor;
 
-import posix_signal = core.sys.posix.signal;
-import posix_time = core.sys.posix.time;
+static import posix_signal = core.sys.posix.signal;
+static import posix_time = core.sys.posix.time;
+static import posix_ucontext = core.sys.posix.ucontext;
 import core.sys.posix.signal;
 
 import std.exception;
@@ -260,6 +261,8 @@ private:
     enum TIMER_NUM_BINS = 256;
     enum TIMER_NUM_LEVELS = 3;
 
+    enum GUARD_ZONE_SIZE = SYS_PAGE_SIZE;
+
     enum NUM_SPECIAL_FIBERS = 2;
     enum ZERO_DURATION = Duration.zero;
 
@@ -319,6 +322,7 @@ public:
     void setup() {
         assert (!_open, "reactor.setup called twice");
         _open = true;
+        __reactorThread = true;
         assert (options.numFibers > NUM_SPECIAL_FIBERS);
 
         const stackPerFib = (((options.fiberStackSize + SYS_PAGE_SIZE - 1) / SYS_PAGE_SIZE) + 1) * SYS_PAGE_SIZE;
@@ -332,7 +336,7 @@ public:
         foreach(i, ref fib; allFibers) {
             auto stack = fiberStacks[i * stackPerFib .. (i + 1) * stackPerFib];
             //errnoEnforce(mprotect(stack.ptr, SYS_PAGE_SIZE, PROT_NONE) == 0);
-            errnoEnforce(munmap(stack.ptr, SYS_PAGE_SIZE) == 0, "munmap");
+            errnoEnforce(munmap(stack.ptr, GUARD_ZONE_SIZE) == 0, "munmap");
             fib.setup(stack[SYS_PAGE_SIZE .. $]);
 
             if (i >= NUM_SPECIAL_FIBERS) {
@@ -355,6 +359,8 @@ public:
 
         if( options.hangDetectorTimeout !is Duration.zero )
             registerHangDetector();
+
+        registerFaultHandlers();
     }
 
     void teardown() {
@@ -364,6 +370,7 @@ public:
 
         switchCurrExcBuf(null);
 
+        deregisterFaultHandlers();
         deregisterHangDetector();
         options.setToInit();
         allFibers.free();
@@ -381,6 +388,7 @@ public:
         idleCallbacks.length = 0;
         idleCycles = 0;
 
+        __reactorThread = false;
         _open = false;
     }
 
@@ -916,18 +924,72 @@ private:
         if( delay<theReactor.options.hangDetectorTimeout || theReactor.runningFiberId == IdleFiberId )
             return;
 
-        void*[50] stack;
-        void*[] actualStack = extractStack(stack);
-
         long seconds, usecs;
         delay.split!("seconds", "usecs")(seconds, usecs);
 
         ERROR!"Hang detector triggered for %s after %s.%06s seconds. Stack trace:"(theReactor.runningFiberId, seconds, usecs);
-        foreach(sp; actualStack) {
-            DEBUG!"%s"(sp);
+        dumpStackTrace();
+
+        ABORT("Hang detector killed process");
+    }
+
+    void registerFaultHandlers() @trusted @nogc {
+        posix_signal.sigaction_t action;
+        action.sa_sigaction = &faultHandler;
+        action.sa_flags = posix_signal.SA_SIGINFO | posix_signal.SA_RESETHAND | posix_signal.SA_ONSTACK;
+
+        errnoEnforceNGC( posix_signal.sigaction(OsSignal.SIGSEGV, &action, null)==0, "Failed to register SIGSEGV handler" );
+        errnoEnforceNGC( posix_signal.sigaction(OsSignal.SIGILL, &action, null)==0, "Failed to register SIGILL handler" );
+        errnoEnforceNGC( posix_signal.sigaction(OsSignal.SIGBUS, &action, null)==0, "Failed to register SIGBUS handler" );
+    }
+
+    void deregisterFaultHandlers() nothrow @trusted @nogc {
+        posix_signal.signal(OsSignal.SIGBUS, posix_signal.SIG_DFL);
+        posix_signal.signal(OsSignal.SIGILL, posix_signal.SIG_DFL);
+        posix_signal.signal(OsSignal.SIGSEGV, posix_signal.SIG_DFL);
+    }
+
+    extern(C) static void faultHandler(int signum, siginfo_t* info, void *ctx) nothrow @trusted @nogc {
+        OsSignal sig = cast(OsSignal)signum;
+        string faultName;
+
+        switch(sig) {
+        case OsSignal.SIGSEGV:
+            faultName = "Segmentation fault";
+            break;
+        case OsSignal.SIGILL:
+            faultName = "Illegal instruction";
+            break;
+        case OsSignal.SIGBUS:
+            faultName = "Bus error";
+            break;
+        default:
+            faultName = "Unknown fault";
+            break;
         }
 
-        DIE("Hang detector killed process");
+        dumpStackTrace(faultName);
+        flushLog(); // There is a certain chance the following lines themselves fault. Flush the logs now so that we have something
+
+        posix_ucontext.ucontext_t* contextPtr = cast(posix_ucontext.ucontext_t*)ctx;
+        auto pc = contextPtr ? contextPtr.uc_mcontext.gregs[posix_ucontext.REG_RIP] : 0;
+
+        if( isReactorThread ) {
+            auto onStackParams = theReactor.runningFiberPtr.params;
+            ERROR!"%s on %s address 0x%x, PC 0x%x stack params at 0x%x"(faultName, theReactor.runningFiberId, info.si_addr, pc,
+                    onStackParams);
+            ERROR!"Stack is at [%s .. %s]"( onStackParams.stackDescriptor.bstack, onStackParams.stackDescriptor.tstack );
+            auto guardAddrStart = onStackParams.stackDescriptor.bstack - GUARD_ZONE_SIZE;
+            if( info.si_addr < onStackParams.stackDescriptor.bstack && info.si_addr >= guardAddrStart ) {
+                ERROR!"Hit stack guard area"();
+            }
+        } else {
+            ERROR!"%s on OS thread at address %s, PC %s"(faultName, info.si_addr, pc);
+        }
+        flushLog();
+
+        // Exit the fault handler, which will re-execute the offending instruction. Since we registered as run once, the default handler
+        // will then kill the node.
     }
 
     void mainloop() {
@@ -970,10 +1032,15 @@ package FiberId to(T : FiberId)(const ReactorFiber* rfp) nothrow @safe @nogc {
 }
 
 private __gshared Reactor __theReactor;
+private bool /* thread local */ __reactorThread;
 
 // Lots of code can be @safe if it didn't need to access "theReactor". This wrapper allows it to be
 @property ref Reactor theReactor() nothrow @trusted @nogc {
     return __theReactor;
+}
+
+@property bool isReactorThread() nothrow @safe @nogc {
+    return __reactorThread;
 }
 
 version (unittest) {
@@ -1197,5 +1264,23 @@ unittest {
 
     testWithReactor({
             theReactor.sleep(200.msecs);
+            /+
+            // To trigger the hang, uncomment this:
+            import core.thread;
+            Thread.sleep(200.msecs);
+            +/
             });
 }
+
+/+
+unittest {
+    // Trigger a segmentation fault
+    theReactor.options.hangDetectorTimeout = 20.msecs;
+    DEBUG!"sanity: %s"(theReactor.options.hangDetectorTimeout);
+
+    testWithReactor({
+            int* a = cast(int*) 16;
+            *a = 3;
+            });
+}
++/

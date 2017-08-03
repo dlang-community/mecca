@@ -118,8 +118,8 @@ pragma(mangle, "gc_stats") extern(C) GCStats gcGetStats() @nogc nothrow @safe;
 struct GCStackDescriptor {
     private import core.sync.mutex: Mutex;
 
-    void*              bstack;
-    void*              tstack;
+    void*              bstack; /// Stack bottom
+    void*              tstack; /// Stack top
     void*              ehContext;
     GCStackDescriptor* within;
     GCStackDescriptor* next;

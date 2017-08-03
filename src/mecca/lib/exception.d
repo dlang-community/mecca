@@ -2,6 +2,7 @@ module mecca.lib.exception;
 
 public import core.exception: AssertError, RangeError;
 public import std.exception: ErrnoException;
+import std.algorithm : min;
 import std.traits;
 import core.exception: assertHandler;
 import core.runtime: Runtime, defaultTraceHandler;
@@ -440,6 +441,17 @@ unittest {
     errnoCall!close(newFd);
     // double close will throw
     assertThrows!ErrnoException(errnoCall!close(newFd));
+}
+
+void dumpStackTrace(string msg="Dumping stack ptrs...", size_t skip = 0, string file = __FILE__, size_t line = __LINE__)
+        nothrow @trusted @nogc
+{
+    void*[] backtrace;
+    static void*[128] rawBacktrace = void;
+
+    backtrace = extractStack(rawBacktrace);
+    skip = min(skip, backtrace.length);
+    LOG_TRACEBACK(backtrace[skip..$], msg, file, line);
 }
 
 
