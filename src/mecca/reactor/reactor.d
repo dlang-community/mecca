@@ -19,10 +19,11 @@ import mecca.lib.memory;
 import mecca.lib.typedid;
 import mecca.log;
 import mecca.platform.linux;
+import mecca.reactor.fiber_group;
 import mecca.reactor.impl.time_queue;
 import mecca.reactor.impl.fibril: Fibril;
 import mecca.reactor.impl.fls;
-import mecca.reactor.fiber_group;
+import mecca.reactor.subsystems.gc_tracker;
 import core.memory: GC;
 import core.sys.posix.sys.mman: munmap, mprotect, PROT_NONE;
 
@@ -51,12 +52,14 @@ struct ReactorFiber {
         ExcBuf                  currExcBuf;
     }
     enum Flags: ubyte {
-        CALLBACK_SET   = 0x01,
-        SPECIAL        = 0x02,
-        SCHEDULED      = 0x04,
-        SLEEPING       = 0x08,
-        HAS_EXCEPTION  = 0x10,
-        EXCEPTION_BT   = 0x20,
+        // XXX Do we need CALLBACK_SET?
+        CALLBACK_SET   = 0x01,  /// Has callback set
+        SPECIAL        = 0x02,  /// Special fiber. Not a normal user fiber
+        SCHEDULED      = 0x04,  /// Fiber currently scheduled to be run
+        SLEEPING       = 0x08,  /// Fiber is sleeping on a sync object
+        HAS_EXCEPTION  = 0x10,  /// Fiber has pending exception to be thrown in it
+        EXCEPTION_BT   = 0x20,  /// Fiber exception needs to have fiber's backtrace
+        GC_ENABLED     = 0x40,  /// Fiber is allowed to perform GC without warning
         //REQUEST_BT     = 0x40,
     }
 
@@ -370,6 +373,7 @@ public:
 
         switchCurrExcBuf(null);
 
+        enableGcTracking(false);
         deregisterFaultHandlers();
         deregisterHangDetector();
         options.setToInit();
