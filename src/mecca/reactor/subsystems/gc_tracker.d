@@ -17,7 +17,17 @@ private enum ALLOCATIONS_TO_SKIP = 0;
   Global enable/disable of tracking GC operations by fibers.
  */
 void enableGcTracking(bool enable) {
-    gcTrackerEnabled = true;
+    if( gcTrackerEnabled == enable )
+        return; // No change
+
+    if( enable ) {
+        gcTrackerEnabled = true;
+        // TODO fix linker error: g_log_malloc_call = &logGCMallocCalls;
+        // DEBUG!"Previous logger: %s"(g_log_malloc_call);
+    } else {
+        gcTrackerEnabled = false;
+        // g_log_malloc_call = null;
+    }
 }
 
 /**
