@@ -31,19 +31,19 @@ private void internalLogOutput(ANSI level, T...)(string fmt, string file, size_t
     });
 }
 
-void DEBUG(string fmt, string file = __FILE__, int line = __LINE__, T...)(T args) nothrow @safe @nogc {
+void DEBUG(string fmt, string file = __FILE__, string modul = __MODULE__, int line = __LINE__, T...)(T args) nothrow @safe @nogc {
     internalLogOutput!LEVEL_DEBUG(fmt, file, line, args);
 }
 
-void INFO(string fmt, string file = __FILE__, int line = __LINE__, T...)(T args) nothrow @safe @nogc {
+void INFO(string fmt, string file = __FILE__, string modul = __MODULE__, int line = __LINE__, T...)(T args) nothrow @safe @nogc {
     internalLogOutput!LEVEL_INFO(fmt, file, line, args);
 }
 
-void WARN(string fmt, string file = __FILE__, int line = __LINE__, T...)(T args) nothrow @safe @nogc {
+void WARN(string fmt, string file = __FILE__, string modul = __MODULE__, int line = __LINE__, T...)(T args) nothrow @safe @nogc {
     internalLogOutput!LEVEL_WARN(fmt, file, line, args);
 }
 
-void ERROR(string fmt, string file = __FILE__, int line = __LINE__, T...)(T args) nothrow @safe @nogc {
+void ERROR(string fmt, string file = __FILE__, string modul = __MODULE__, int line = __LINE__, T...)(T args) nothrow @safe @nogc {
     internalLogOutput!LEVEL_ERROR(fmt, file, line, args);
 }
 

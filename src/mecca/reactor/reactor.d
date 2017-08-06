@@ -229,9 +229,11 @@ private:
 
 
 struct FiberHandle {
+private:
     FiberId identity;
     FiberIncarnation incarnation;
 
+public:
     this(ReactorFiber* fib) nothrow @safe @nogc {
         opAssign(fib);
     }
@@ -254,6 +256,13 @@ struct FiberHandle {
 
     @property bool isValid() const nothrow @safe @nogc {
         return get() !is null;
+    }
+
+    @property FiberId fiberId() const nothrow @safe @nogc {
+        if( isValid )
+            return identity;
+
+        return FiberId.invalid;
     }
 }
 

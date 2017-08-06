@@ -11,6 +11,10 @@ private:
     bool currentlySet = InitiallySet;
 
 public:
+    this(bool initialState) nothrow @safe @nogc {
+        currentlySet = initialState;
+    }
+
     void set() nothrow @safe @nogc {
         DBG_ASSERT!"Event is set but has fibers waiting"(!isSet || waiters.empty);
         if (isSet)

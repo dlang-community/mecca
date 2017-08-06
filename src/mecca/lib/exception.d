@@ -333,14 +333,16 @@ void ABORT(string msg, string file = __FILE__, size_t line = __LINE__) nothrow @
     DIE(msg, file, line, true);
 }
 
-void ASSERT(string fmt, string file = __FILE__, size_t line = __LINE__, T...)(bool cond, scope lazy T args) nothrow @trusted @nogc {
+void ASSERT(string fmt, string file = __FILE__, string modul = __MODULE__, size_t line = __LINE__, T...)(bool cond, scope lazy T args)
+    nothrow @trusted @nogc
+{
     pragma(inline, true);
     if (cond) {
         return;
     }
 
     scope f = () {
-        ERROR!(fmt, file, line)(args);
+        ERROR!(fmt, file, modul, line)(args);
     };
     as!"@nogc pure nothrow"(f);
     version(unittest ){
@@ -376,7 +378,7 @@ unittest {
 //
 // useful assert variants
 //
-void assertOp(string op, L, R, string file = __FILE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") {
+void assertOp(string op, L, R, string file = __FILE__, string modul = __MODULE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") {
     import std.meta: staticIndexOf;
     enum idx = staticIndexOf!(op, "==", "!=", ">", "<", ">=", "<=");
     static assert (idx >= 0);
@@ -384,37 +386,37 @@ void assertOp(string op, L, R, string file = __FILE__, size_t line = __LINE__)(L
 
     auto lhsVal = lhs;
     auto rhsVal = rhs;
-    ASSERT!("%s %s %s%s", file, line)(mixin("lhsVal " ~ op ~ " rhsVal"), lhs, inverseOp, rhs, msg);
+    ASSERT!("%s %s %s%s", file, modul, line)(mixin("lhsVal " ~ op ~ " rhsVal"), lhs, inverseOp, rhs, msg);
 }
 
-void assertEQ(L, R, string file = __FILE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow @nogc {
-    assertOp!("==", L, R, file, line)(lhs, rhs, msg);
+void assertEQ(L, R, string file = __FILE__, string modul = __MODULE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow @nogc {
+    assertOp!("==", L, R, file, modul, line)(lhs, rhs, msg);
 }
-void assertNE(L, R, string file = __FILE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow @nogc {
-    assertOp!("!=", L, R, file, line)(lhs, rhs, msg);
+void assertNE(L, R, string file = __FILE__, string modul = __MODULE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow @nogc {
+    assertOp!("!=", L, R, file, modul, line)(lhs, rhs, msg);
 }
-void assertGT(L, R, string file = __FILE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow @nogc {
-    assertOp!(">", L, R, file, line)(lhs, rhs, msg);
+void assertGT(L, R, string file = __FILE__, string modul = __MODULE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow @nogc {
+    assertOp!(">", L, R, file, modul, line)(lhs, rhs, msg);
 }
-void assertGE(L, R, string file = __FILE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow @nogc {
-    assertOp!(">=", L, R, file, line)(lhs, rhs, msg);
+void assertGE(L, R, string file = __FILE__, string modul = __MODULE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow @nogc {
+    assertOp!(">=", L, R, file, modul, line)(lhs, rhs, msg);
 }
-void assertLT(L, R, string file = __FILE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow @nogc {
-    assertOp!("<", L, R, file, line)(lhs, rhs, msg);
+void assertLT(L, R, string file = __FILE__, string modul = __MODULE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow @nogc {
+    assertOp!("<", L, R, file, modul, line)(lhs, rhs, msg);
 }
-void assertLE(L, R, string file = __FILE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow @nogc {
-    assertOp!("<=", L, R, file, line)(lhs, rhs, msg);
+void assertLE(L, R, string file = __FILE__, string modul = __MODULE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow @nogc {
+    assertOp!("<=", L, R, file, modul, line)(lhs, rhs, msg);
 }
 
-void assertThrows(T = Throwable, E, string file = __FILE__, size_t line = __LINE__)(scope lazy E expr) {
+void assertThrows(T = Throwable, E, string file = __FILE__, string modul = __MODULE__, size_t line = __LINE__)(scope lazy E expr) {
     try {
         expr();
     }
     catch (Throwable ex) {
-        ASSERT!("Threw %s instead of %s", file, line)(cast(T)ex !is null, typeid(ex).name, T.stringof);
+        ASSERT!("Threw %s instead of %s", file, modul, line)(cast(T)ex !is null, typeid(ex).name, T.stringof);
         return;
     }
-    ASSERT!("Did not throw", file, line)(false);
+    ASSERT!("Did not throw", file, modul, line)(false);
 }
 
 unittest {
