@@ -1,3 +1,7 @@
+/// Fiber queue helper for writing synchronization objects
+
+// Authors: Shachar Shemesh
+// Copyright: ©2017 Weka.io Ltd.
 module mecca.reactor.sync.fiber_queue;
 
 import mecca.containers.lists;
@@ -6,6 +10,19 @@ import mecca.lib.time;
 import mecca.log;
 import mecca.reactor.reactor;
 
+/**
+  Implementation of the fiber queue.
+
+  A fiber queue supports two basic operations: suspend, which causes a fiber to stop execution and wait in the queue, and resume, which wakes
+  up one (or more) suspended fibers.
+
+  As the name suggests, the queue maintains a strict FIFO order.
+
+  This should not, typically, be used directly by client code. Instead, it is a helper for developing synchronization objects.
+
+Params:
+ Volatile = Sets whether suspend is supported in the case where the fiber queue itself goes out of context before all fibers wake up.
+ */
 struct FiberQueueImpl(bool Volatile) {
 private:
     LinkedListWithOwner!(ReactorFiber*) waitingList;
@@ -13,6 +30,14 @@ private:
 public:
     @disable this(this);
 
+    /** Suspends the current fiber until it is awoken.
+        Params:
+            timeout = How long to wait.
+        Throws:
+            ReactorTimeout if the timeout expires.
+
+            Anything else if someone calls Reactor.throwInFiber
+     */
     void suspend(Timeout timeout = Timeout.infinite) @safe @nogc {
         auto ourHandle = theReactor.runningFiberHandle;
         DBG_ASSERT!"Fiber already has sleep flag when FQ.suspend called"( ! ourHandle.get.flag!"SLEEPING" );
@@ -44,19 +69,36 @@ public:
     }
 
     static if( !Volatile ) {
-        // We cannot provide a reliable resumeOne in a volatile FQ. In order to not trap innocent implementers, we disable the function
-        // altogether.
+        /** Resumes execution of one fiber.
+
+          Unless there are no viable fibers in the queue, exactly one fiber will be resumed.
+
+          Any fibers with pending exceptions (ReactorTimeout or anything else) do not count as viable, even if they are first in line to be
+          resumed.
+
+          A volatile FiberQueue cannot provide a reliable resumeOne semantics. In order to not entrap innocent implementers, this method is
+          only available in the non-volatile version of the queue.
+
+            Params:
+                immediate = By default the fiber resumed is appended to the end of the scheduled fibers. Setting immediate to true causes
+                    it to be scheduled at the beginning of the queue.
+         */
         FiberHandle resumeOne(bool immediate=false) nothrow @safe @nogc {
             return internalResumeOne(immediate);
         }
     }
 
+    /** Resumes execution of all pending fibers
+     */
     void resumeAll() nothrow @safe @nogc {
         while( !empty ) {
             internalResumeOne(false);
         }
     }
 
+    /** Reports whether there are pending fibers in the queue.
+        Returns: true if there are no pending fibers.
+     */
     @property bool empty() const pure nothrow @nogc @safe {
         return waitingList.empty;
     }
@@ -77,7 +119,12 @@ private:
     }
 }
 
+/** A simple type for defining a volatile fiber queue.
+
+  Please use with extreme care. Writing correct code with a volatile queue is a difficult task. Consider whether you really need it.
+ */
 alias VolatileFiberQueue = FiberQueueImpl!true;
+/// A simple type for defining a non-volatile fiber queue.
 alias FiberQueue = FiberQueueImpl!false;
 
 unittest {

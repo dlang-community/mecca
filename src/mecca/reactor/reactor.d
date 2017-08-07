@@ -1,3 +1,4 @@
+/// Define the micro-threading reactor
 module mecca.reactor.reactor;
 
 static import posix_signal = core.sys.posix.signal;
@@ -29,10 +30,13 @@ import core.sys.posix.sys.mman: munmap, mprotect, PROT_NONE;
 
 import std.stdio;
 
+/// Handle for manipulating registered timers.
 alias TimerHandle = Reactor.TimerHandle;
+/// Fibers' ID type
 alias FiberId = TypedIdentifier!("FiberId", ushort);
 alias FiberIncarnation = ushort;
 
+/// Exception thrown when a fiber is suspended for too long.
 class ReactorTimeout : Exception {
     this(string file = __FILE__, size_t line = __LINE__, Throwable next = null) @safe pure nothrow @nogc {
         super("Reactor timed out on a timed suspend", file, line, next);
@@ -228,6 +232,14 @@ private:
 }
 
 
+/**
+  A handle to a running fiber.
+
+  This handle expires automatically when the fiber stops running. Unless you know, semantically, that a fiber is still running, don't assume
+  there is a running fiber attached to this handle.
+
+  The handle will correctly claim invalidity even if a new fiber is launched with the same FiberId.
+ */
 struct FiberHandle {
 private:
     FiberId identity;
@@ -254,10 +266,12 @@ public:
         return &theReactor.allFibers[identity.value];
     }
 
+    /// returns whether the handle currently describes a running fiber.
     @property bool isValid() const nothrow @safe @nogc {
         return get() !is null;
     }
 
+    /// returns the FiberId described by the handle. If the handle is no longer valid, will return FiberId.invalid
     @property FiberId fiberId() const nothrow @safe @nogc {
         if( isValid )
             return identity;
@@ -266,7 +280,9 @@ public:
     }
 }
 
-
+/**
+  The main scheduler for the micro-threading architecture.
+ */
 struct Reactor {
 private:
     enum MAX_IDLE_CALLBACKS = 16;
