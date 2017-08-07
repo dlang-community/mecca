@@ -1,8 +1,9 @@
-.dub/
-.project
-.settings/
+/.dub/
+/docs/
+/docs.json
+/.project
+/.settings/
 *.o
 *.a
-mecca-test-library
 /mecca
 .*.swp
