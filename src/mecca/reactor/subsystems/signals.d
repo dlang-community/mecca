@@ -55,20 +55,20 @@ private:
     enum BATCH_SIZE = 16; // How many signals to handle with one syscall
 
     enum SignalFdFlags = SFD_NONBLOCK|SFD_CLOEXEC;
-    FD signalFd;
+    ReactorFD signalFd;
     sigset_t signals;
     FiberHandle fiberHandle;
 
     SignalHandler[NUM_SIGS] handlers;
 public:
     void open() @safe @nogc {
-        ASSERT!"ReactorSignal.open called without first calling reactor.FD.openReactor"(epoller.isOpen);
+        ASSERT!"ReactorSignal.open called without first calling ReactorFD.openReactor"(epoller.isOpen);
         sigemptyset(signals);
         handlers[] = null;
         int fd = signalfd(-1, signals, SignalFdFlags);
         errnoEnforceNGC(fd >= 0, "signalfd creation failed");
 
-        signalFd = FD(fd, true);
+        signalFd = ReactorFD(fd, true);
 
         fiberHandle = theReactor.spawnFiber(&fiberMainWrapper, &this);
     }
@@ -169,7 +169,7 @@ unittest {
     theReactor.setup();
     scope(exit) theReactor.teardown();
 
-    FD.openReactor();
+    ReactorFD.openReactor();
     reactorSignal.open();
     scope(exit) reactorSignal.close();
 

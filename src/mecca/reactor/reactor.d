@@ -1115,11 +1115,9 @@ unittest {
 unittest {
     // Test simple timeout
     import std.stdio;
-    import mecca.reactor.subsystems.epoll;
 
     theReactor.setup();
     scope(exit) theReactor.teardown();
-    FD.openReactor();
 
     uint counter;
     TscTimePoint start;
@@ -1160,11 +1158,9 @@ unittest {
 unittest {
     // Test suspending timeout
     import std.stdio;
-    import mecca.reactor.subsystems.epoll;
 
     theReactor.setup();
     scope(exit) theReactor.teardown();
-    FD.openReactor();
 
     void fiberFunc() {
         bool thrown;
@@ -1187,11 +1183,9 @@ unittest {
 unittest {
     // Test suspending timeout
     import std.stdio;
-    import mecca.reactor.subsystems.epoll;
 
     theReactor.setup();
     scope(exit) theReactor.teardown();
-    FD.openReactor();
 
     void fiberFunc() {
         TimerHandle[8] handles;

@@ -38,7 +38,7 @@ private extern(C) {
 }
 
 
-struct FD {
+struct ReactorFD {
 private:
     int fd = -1;
     Epoll.FdContext* ctx;
@@ -79,12 +79,12 @@ public:
         return fd >= 0;
     }
 
-    static void pipe(out FD readFd, out FD writeFd) {
+    static void pipe(out ReactorFD readFd, out ReactorFD writeFd) {
         int[2] fds;
         int res = pipe2(&fds, O_NONBLOCK);
         errnoEnforce(res>=0, "Failed to create anonymous pipe");
-        readFd = FD(fds[0], true);
-        writeFd = FD(fds[1], true);
+        readFd = ReactorFD(fds[0], true);
+        writeFd = ReactorFD(fds[1], true);
     }
 
     private auto blockingCall(alias F)(Parameters!F[1 .. $] args) @system @nogc {
@@ -160,7 +160,7 @@ private: // Not that this does anything, as the struct itself is only visible to
 public:
 
     void open() @safe @nogc {
-        assert(theReactor.isOpen, "Must call theReactor.setup before calling FD.openReactor");
+        assert(theReactor.isOpen, "Must call theReactor.setup before calling ReactorFD.openReactor");
         epollFd = epoll_create1(0);
         errnoEnforceNGC( epollFd>=0, "Failed to create epoll fd" );
 
@@ -178,7 +178,7 @@ public:
     }
 
     FdContext* registerFD(int fd, bool alreadyNonBlocking = false) @trusted @nogc {
-        assert( epollFd>=0, "registerFD called without first calling FD.openReactor" );
+        assert( epollFd>=0, "registerFD called without first calling ReactorFD.openReactor" );
         FdContext* ctx = fdPool.alloc();
         scope(failure) fdPool.release(ctx);
 
@@ -204,10 +204,10 @@ public:
 
     void waitForEvent(FdContext* ctx) @safe @nogc {
         /*
-            TODO: In the future, we might wish to allow one fiber to read from an FD while another writes to the same FD. As the code
+            TODO: In the future, we might wish to allow one fiber to read from an ReactorFD while another writes to the same ReactorFD. As the code
             currently stands, this will trigger the assert below
          */
-        assert( !ctx.fibHandle.isValid, "Two fibers cannot wait on the same FD at once" );
+        assert( !ctx.fibHandle.isValid, "Two fibers cannot wait on the same ReactorFD at once" );
         ctx.fibHandle = theReactor.runningFiberHandle;
         scope(exit) destroy(ctx.fibHandle);
 
@@ -254,10 +254,10 @@ unittest {
     theReactor.setup();
     scope(exit) theReactor.teardown();
 
-    FD.openReactor();
+    ReactorFD.openReactor();
 
-    FD pipeRead, pipeWrite;
-    FD.pipe( pipeRead, pipeWrite );
+    ReactorFD pipeRead, pipeWrite;
+    ReactorFD.pipe( pipeRead, pipeWrite );
 
     void reader() {
         uint[1024] buffer;
