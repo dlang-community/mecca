@@ -98,7 +98,7 @@ public:
      * The main difference between this method and wait is that this method supports the case where the struct holding the Event is freed
      * while the fiber is sleeping. As a result, two main differences are possible:
      * $(OL
-     * $(LI Spurious wakeups are possible &#40;i.e. - unreliableWait returns, but the event is not set&#41; )
+     * $(LI Spurious wakeups are possible $(LPAREN)i.e. - unreliableWait returns, but the event is not set$(RPAREN) )
      * $(LI The VerboseEvent will not report when we wake up from the sleep.) )
      *
      * Params:
