@@ -5,10 +5,10 @@ import mecca.lib.exception;
 import mecca.lib.time;
 import mecca.log;
 
-struct EventType(bool InitiallySet) {
+struct Event {
 private:
     VolatileFiberQueue waiters;
-    bool currentlySet = InitiallySet;
+    bool currentlySet;
 
 public:
     this(bool initialState) nothrow @safe @nogc {
@@ -47,8 +47,6 @@ public:
         waiters.suspend(timeout);
     }
 }
-
-alias Event = EventType!false;
 
 unittest {
     //import mecca.reactor.fd;

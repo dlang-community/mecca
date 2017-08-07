@@ -5,7 +5,7 @@ import mecca.log;
 import mecca.reactor.sync.event;
 
 struct Barrier {
-    private EventType!true evt;
+    private Event evt = Event(true);
     private uint numWaiters = 0;
 
     void addWaiter() nothrow @safe @nogc {
