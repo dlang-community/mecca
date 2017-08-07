@@ -70,18 +70,22 @@ public:
 
     static if( !Volatile ) {
         /** Resumes execution of one fiber.
-
-          Unless there are no viable fibers in the queue, exactly one fiber will be resumed.
-
-          Any fibers with pending exceptions (ReactorTimeout or anything else) do not count as viable, even if they are first in line to be
-          resumed.
-
-          A volatile FiberQueue cannot provide a reliable resumeOne semantics. In order to not entrap innocent implementers, this method is
-          only available in the non-volatile version of the queue.
-
-            Params:
-                immediate = By default the fiber resumed is appended to the end of the scheduled fibers. Setting immediate to true causes
-                    it to be scheduled at the beginning of the queue.
+         *
+         * Unless there are no viable fibers in the queue, exactly one fiber will be resumed.
+         *
+         * Any fibers with pending exceptions (ReactorTimeout or anything else) do not count as viable, even if they are first in line to be
+         * resumed.
+         *
+         * A volatile FiberQueue cannot provide a reliable resumeOne semantics. In order to not entrap innocent implementers, this method is
+         * only available in the non-volatile version of the queue.
+         *
+         * Params:
+         *    immediate = By default the fiber resumed is appended to the end of the scheduled fibers. Setting immediate to true causes
+         *        it to be scheduled at the beginning of the queue.
+         * Note:
+         *    If the fibers at the head of the queue have pending exceptions, the fiber actually woken might be one that was not in the queue
+         *    when resumeOne was originally called. Most of the time, this is the desired behavior. If not, this might result in a spurious
+         *    wakeup.
          */
         FiberHandle resumeOne(bool immediate=false) nothrow @safe @nogc {
             return internalResumeOne(immediate);
