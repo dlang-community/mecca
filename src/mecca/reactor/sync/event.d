@@ -223,3 +223,33 @@ unittest {
     theReactor.start();
 }
 
+/// Edge trigger condition variable supporting multiple waiters.
+struct Signal {
+private:
+    FiberQueue waiters;
+
+public:
+    /**
+     * waits for the event to trigger
+     *
+     * This function is $(B guaranteed) to sleep.
+     *
+     * Params:
+     * timeout = sets a timeout for the wait.
+     *
+     * Throws:
+     * ReactorTimeout if the timeout expires.
+     *
+     * Any other exception injected to this fiber using Reactor.throwInFiber
+     */
+    void suspend(Timeout timeout = Timeout.infinite) @safe @nogc {
+        waiters.suspend(timeout);
+    }
+
+    /**
+     * Wake up all waiting fibers
+     */
+    void signal() nothrow @safe @nogc {
+        waiters.resumeAll();
+    }
+}
