@@ -93,6 +93,12 @@ unittest {
             }
             barrier.waitAll();
             ASSERT!"Lock held after end"(!held);
+
+            // Test whether the lock is free and can be acquired without sleep
+            theReactor.enterCriticalSection();
+            lock.acquire();
+            lock.release();
+            theReactor.leaveCriticalSection();
             });
     TscTimePoint end = TscTimePoint.now;
 
