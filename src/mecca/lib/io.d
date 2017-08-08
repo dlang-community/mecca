@@ -2,6 +2,7 @@
 module mecca.lib.io;
 
 import core.sys.posix.unistd;
+import std.traits;
 
 import mecca.lib.exception;
 
@@ -31,6 +32,20 @@ public:
 
     ~this() nothrow @safe @nogc {
         close();
+    }
+
+    /**
+     * Call an OS function that accepts an FD as the first argument.
+     *
+     * Parameters:
+     * The parameters are the arguments that OS function accepts without the first one (the file descriptor).
+     *
+     * Returns:
+     * Whatever the original OS function returns.
+     */
+    auto osCall(alias F)(Parameters!F[1..$] args) nothrow @nogc if( is( Parameters!F[0]==int ) ) {
+        static assert( fullyQualifiedName!F != fullyQualifiedName!(.close), "Do not try to close the fd directly. Use FD.close instead." );
+        return F(fd, args);
     }
 
     /**
@@ -72,6 +87,10 @@ unittest {
         auto fd = FD(open("/tmp/meccaUTfile1", O_CREAT|O_RDWR|O_TRUNC, octal!666));
         fd1copy = fd.fileNo;
 
+        fd.osCall!write("Hello, world\n".ptr, 13);
+        // The following line should not compile:
+        // fd.osCall!(.close)();
+
         unlink("/tmp/meccaUTfile1");
 
         fd = FD(open("/tmp/meccaUTfile2", O_CREAT|O_RDWR|O_TRUNC, octal!666));
@@ -80,6 +99,6 @@ unittest {
         unlink("/tmp/meccaUTfile2");
     }
 
-    assert( close(fd1copy)<0 && errno==EBADF, "FD1 was not closed" );
-    assert( close(fd2copy)<0 && errno==EBADF, "FD2 was not closed" );
+    assert( .close(fd1copy)<0 && errno==EBADF, "FD1 was not closed" );
+    assert( .close(fd2copy)<0 && errno==EBADF, "FD2 was not closed" );
 }
