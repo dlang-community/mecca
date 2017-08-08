@@ -956,8 +956,7 @@ private:
         long seconds, usecs;
         delay.split!("seconds", "usecs")(seconds, usecs);
 
-        ERROR!"Hang detector triggered for %s after %s.%06s seconds. Stack trace:"(theReactor.runningFiberId, seconds, usecs);
-        dumpStackTrace();
+        LOG_STACK!"Hang detector triggered for %s after %s.%06s seconds"(theReactor.runningFiberId, seconds, usecs);
 
         ABORT("Hang detector killed process");
     }
@@ -997,7 +996,7 @@ private:
             break;
         }
 
-        dumpStackTrace(faultName);
+        LOG_STACK!"#OSSIGNAL %s"(faultName);
         flushLog(); // There is a certain chance the following lines themselves fault. Flush the logs now so that we have something
 
         posix_ucontext.ucontext_t* contextPtr = cast(posix_ucontext.ucontext_t*)ctx;
