@@ -4,7 +4,10 @@ module mecca.reactor.reactor;
 static import posix_signal = core.sys.posix.signal;
 static import posix_time = core.sys.posix.time;
 static import posix_ucontext = core.sys.posix.ucontext;
+import core.memory: GC;
 import core.sys.posix.signal;
+import core.sys.posix.sys.mman: munmap, mprotect, PROT_NONE;
+import core.thread: thread_isMainThread;
 
 import std.exception;
 import std.string;
@@ -25,8 +28,6 @@ import mecca.reactor.impl.time_queue;
 import mecca.reactor.impl.fibril: Fibril;
 import mecca.reactor.impl.fls;
 import mecca.reactor.subsystems.gc_tracker;
-import core.memory: GC;
-import core.sys.posix.sys.mman: munmap, mprotect, PROT_NONE;
 
 import std.stdio;
 
@@ -350,7 +351,8 @@ public:
     void setup() {
         assert (!_open, "reactor.setup called twice");
         _open = true;
-        __reactorThread = true;
+        assert (thread_isMainThread);
+        _isReactorThread = true;
         assert (options.numFibers > NUM_SPECIAL_FIBERS);
 
         const stackPerFib = (((options.fiberStackSize + SYS_PAGE_SIZE - 1) / SYS_PAGE_SIZE) + 1) * SYS_PAGE_SIZE;
@@ -398,7 +400,7 @@ public:
 
         switchCurrExcBuf(null);
 
-        enableGcTracking(false);
+        disableGCTracking();
         deregisterFaultHandlers();
         deregisterHangDetector();
         options.setToInit();
@@ -417,7 +419,7 @@ public:
         idleCallbacks.length = 0;
         idleCycles = 0;
 
-        __reactorThread = false;
+        _isReactorThread = false;
         _open = false;
     }
 
@@ -1059,16 +1061,17 @@ package FiberId to(T : FiberId)(const ReactorFiber* rfp) nothrow @safe @nogc {
     return FiberId( cast(ushort)idx );
 }
 
-private __gshared Reactor __theReactor;
-private bool /* thread local */ __reactorThread;
+private __gshared Reactor _theReactor;
+private bool /* thread local */ _isReactorThread;
 
 // Lots of code can be @safe if it didn't need to access "theReactor". This wrapper allows it to be
 @property ref Reactor theReactor() nothrow @trusted @nogc {
-    return __theReactor;
+    //DBG_ASSERT!"not main thread"(_isReactorThread);
+    return _theReactor;
 }
 
 @property bool isReactorThread() nothrow @safe @nogc {
-    return __reactorThread;
+    return _isReactorThread;
 }
 
 version (unittest) {
