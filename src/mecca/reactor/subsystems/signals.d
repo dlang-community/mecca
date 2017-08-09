@@ -8,8 +8,9 @@ import mecca.lib.exception;
 import mecca.lib.reflection;
 import mecca.log;
 import mecca.platform.linux;
-import mecca.reactor.subsystems.epoll;
+import mecca.reactor.io;
 import mecca.reactor.reactor;
+import mecca.reactor.subsystems.epoll;
 
 // Definitions missing from the phobos headers or lacking nothrow @nogc
 extern(C) private nothrow @trusted @nogc {
@@ -84,7 +85,7 @@ public:
         }
     }
 
-    void registerSignal(OsSignal signum, SignalHandler handler) @safe @nogc {
+    void registerSignal(OsSignal signum, SignalHandler handler) @trusted @nogc {
         verifyOpen();
         ASSERT!"registerSignal called with invalid signal %s"(signum<NUM_SIGS || signum<=0, signum);
         ASSERT!"signal %s registered twice"(handlers[signum] is null, signum);
@@ -93,7 +94,8 @@ public:
         sigaddset(signals, signum);
         scope(failure) sigdelset(signals, signum);
 
-        errnoEnforceNGC( signalfd(signalFd.get, signals, SignalFdFlags)>=0, "Registering new signal handler failed" );
+        errnoEnforceNGC( signalFd.osCall!(core.sys.linux.sys.signalfd.signalfd)(&signals, SignalFdFlags)>=0,
+                "Registering new signal handler failed" );
         sigset_t oldSigMask;
         sigprocmask(SIG_BLOCK, signals, oldSigMask);
         ASSERT!"Registered signal %s already masked"(sigismember(oldSigMask, signum)!=1, signum);
@@ -101,7 +103,7 @@ public:
         handlers[signum] = handler;
     }
 
-    void unregisterSignal(OsSignal signum) @safe @nogc {
+    void unregisterSignal(OsSignal signum) @trusted @nogc {
         verifyOpen();
         ASSERT!"registerSignal called with invalid signal %s"(signum<NUM_SIGS || signum<=0, signum);
         ASSERT!"signal %s not registered"(handlers[signum] !is null, signum);
@@ -112,7 +114,8 @@ public:
         sigaddset(clearMask, signum);
         errnoEnforceNGC( sigprocmask( SIG_UNBLOCK, clearMask )>=0, "sigprocmask unblocking signal failed" );
         sigdelset( signals, signum );
-        errnoEnforceNGC( signalfd(signalFd.get, signals, SignalFdFlags)>=0, "Deregistering signal handler failed" );
+        errnoEnforceNGC( signalFd.osCall!(core.sys.linux.sys.signalfd.signalfd)(&signals, SignalFdFlags)>=0,
+                "Deregistering signal handler failed" );
         handlers[signum] = null;
     }
 
@@ -127,12 +130,12 @@ private:
         rs.fiberMain();
     }
 
-    void fiberMain() @safe @nogc {
+    void fiberMain() @trusted @nogc {
         try {
             while(true) {
                 // XXX Consider placing the array in the struct, so it's not on the stack
                 signalfd_siginfo[BATCH_SIZE] info;
-                ssize_t readSize = signalFd.read(info);
+                ssize_t readSize = signalFd.blockingCall!(read)(&info, typeof(info).sizeof);
                 ASSERT!"read from signalfd returned misaligned size %s, expected a multiple of %s"( (readSize%signalfd_siginfo.sizeof) == 0,
                         signalfd_siginfo.sizeof);
 
@@ -169,7 +172,9 @@ unittest {
     theReactor.setup();
     scope(exit) theReactor.teardown();
 
-    ReactorFD.openReactor();
+    openReactorEpoll();
+    scope(exit) closeReactorEpoll();
+
     reactorSignal.open();
     scope(exit) reactorSignal.close();
 

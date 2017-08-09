@@ -44,8 +44,13 @@ public:
      * Whatever the original OS function returns.
      */
     auto osCall(alias F)(Parameters!F[1..$] args) nothrow @nogc if( is( Parameters!F[0]==int ) ) {
+        import mecca.lib.reflection : as;
+
         static assert( fullyQualifiedName!F != fullyQualifiedName!(.close), "Do not try to close the fd directly. Use FD.close instead." );
-        return F(fd, args);
+        ReturnType!F res;
+        as!"nothrow @nogc"({ res = F(fd, args); });
+
+        return res;
     }
 
     /**
@@ -53,6 +58,9 @@ public:
      *
      * Closes the OS handle. This happens automatically on struct destruction. It is only necessary to call this method if you wish to close
      * the underlying FD before the struct goes out of scope.
+     *
+     * Throws:
+     * Nothing. There is nothing useful to do if close fails.
      */
     void close() nothrow @safe @nogc {
         if( fd != InvalidFd ) {
@@ -73,6 +81,22 @@ public:
       */
     @property int fileNo() pure nothrow @safe @nogc {
         return fd;
+    }
+
+    /**
+     * Report whether the FD currently holds a valid fd
+     *
+     * Additional_Details:
+     * Hold stick near centre of its length. Moisten pointed end in mouth. Insert in tooth space, blunt end next to gum. Use gentle in-out
+     * motion.
+     *
+     * See_Also:
+     * <a href="http://hitchhikers.wikia.com/wiki/Wonko_the_Sane">Wonko the sane</a>
+     *
+     * Returns: true if valid
+     */
+    @property bool isValid() pure const nothrow @safe @nogc {
+        return fd != InvalidFd;
     }
 }
 
