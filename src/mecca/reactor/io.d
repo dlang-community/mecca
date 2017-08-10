@@ -5,6 +5,7 @@ import core.stdc.errno;
 import unistd = core.sys.posix.unistd;
 import fcntl = core.sys.posix.fcntl;
 import core.sys.posix.sys.types;
+import core.sys.posix.sys.ioctl;
 import std.algorithm;
 import std.traits;
 
@@ -21,13 +22,21 @@ private extern(C) nothrow @trusted @nogc {
 struct ListenerSocket {
 }
 
-struct ConnectedSocket {
-}
-
 struct DatagramSocket {
 }
 
 struct ConnectedDatagramSocket {
+}
+
+struct ConnectedSocket {
+}
+
+struct Socket {
+    ReactorFD fd;
+
+    alias fd this;
+
+
 }
 
 /// Reactor aware FD wrapper for pipes
@@ -36,6 +45,13 @@ struct Pipe {
 
     alias fd this;
 
+    /**
+     * create an unnamed pipe pair
+     *
+     * Parameters:
+     *  readEnd = `Pipe` struct to receive the reading (output) end of the pipe
+     *  writeEnd = `Pipe` struct to receive the writing (input) end of the pipe
+     */
     static void create(out Pipe readEnd, out Pipe writeEnd) @trusted @nogc {
         int[2] pipeRawFD;
 
@@ -46,16 +62,27 @@ struct Pipe {
     }
 }
 
+/// Reactor aware FD wrapper for files
 struct File {
     ReactorFD fd;
 
     alias fd this;
 
+    /**
+     * Open a named file.
+     *
+     * Parameters are as defined for the open system call. `flags` must not have `O_CREAT` set (use the other overload for that case).
+     */
     void open(string pathname, int flags) @trusted @nogc {
         DBG_ASSERT!"open called with O_CREAT but no file mode argument. Flags %x"( (flags & fcntl.O_CREAT)==0, flags );
         open(pathname, flags, 0);
     }
 
+    /**
+     * Open or create a named file.
+     *
+     * Parameters are as defined for the open system call.
+     */
     void open(string pathname, int flags, mode_t mode) @trusted @nogc {
         ASSERT!"open called on already open file."(!fd.isValid);
 
@@ -146,6 +173,8 @@ public:
         return blockingCall!(unistd.write)( buffer.ptr, buffer.length );
     }
 
+    alias fcntl = osCallErrno!(.fcntl.fcntl);
+    alias ioctl = osCallErrno!(.ioctl);
 package:
     auto blockingCall(alias F)(Parameters!F[1 .. $] args) @system @nogc {
         static assert (is(Parameters!F[0] == int));
@@ -169,6 +198,21 @@ package:
 
     auto osCall(alias F)(Parameters!F[1..$] args) nothrow @system @nogc {
         return fd.osCall!F(args);
+    }
+
+    auto osCallErrno(alias F)(Parameters!F[1..$] args) @system @nogc if(isSigned!(ReturnType!F) && isIntegral!(ReturnType!F)) {
+        alias RetType = ReturnType!F;
+        RetType ret = osCall!F(args);
+
+        enum FuncFullName = fullyQualifiedName!F;
+
+        import std.string : lastIndexOf;
+        enum FuncName = FuncFullName[ lastIndexOf(FuncFullName, '.')+1 .. $ ];
+
+        enum ErrorMessage = "Running " ~ FuncName ~ " failed";
+        errnoEnforceNGC(ret>=0, ErrorMessage);
+
+        return ret;
     }
 }
 
