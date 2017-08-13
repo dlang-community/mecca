@@ -6,20 +6,20 @@ import unistd = core.sys.posix.unistd;
 import fcntl = core.sys.posix.fcntl;
 import core.sys.posix.sys.types;
 import core.sys.posix.sys.ioctl;
+import core.sys.posix.sys.socket;
 import std.algorithm;
 import std.traits;
 
 import mecca.lib.exception;
 import mecca.lib.io;
+import mecca.lib.net;
 import mecca.lib.string;
+import mecca.lib.time;
 import mecca.log;
 import mecca.reactor.subsystems.epoll;
 
 private extern(C) nothrow @trusted @nogc {
     int pipe2(ref int[2], int flags);
-}
-
-struct ListenerSocket {
 }
 
 struct DatagramSocket {
@@ -28,7 +28,33 @@ struct DatagramSocket {
 struct ConnectedDatagramSocket {
 }
 
+/**
+ * Wrapper for connection oriented sockets.
+ */
 struct ConnectedSocket {
+    Socket sock;
+
+    alias sock this;
+
+    static ConnectedSocket connect(SockAddr sa, Timeout timeout = Timeout.infinite, bool nodelay = true) @trusted @nogc {
+        ConnectedSocket ret = ConnectedSocket( Socket.socket(sa.family, SOCK_STREAM, 0) );
+
+        int result = ret.osCall!(.connect)(&sa.base, SockAddr.sizeof);
+        ASSERT!"connect returned unexpected value %s errno %s"(result<0 && errno == EINPROGRESS, result, errno);
+
+        // Wait for connect to finish
+        epoller.waitForEvent(ret.ctx);
+
+        socklen_t reslen = result.sizeof;
+        ret.osCallErrno!(.getsockopt)( SOL_SOCKET, SO_ERROR, &result, &reslen);
+
+        if( result!=0 ) {
+            errno = result;
+            errnoEnforceNGC(false, "connect");
+        }
+
+        return ret;
+    }
 }
 
 struct Socket {
@@ -36,7 +62,24 @@ struct Socket {
 
     alias fd this;
 
+    static Socket socket(sa_family_t domain, int type, int protocol) @trusted @nogc {
+        int fd = .socket(domain, type, protocol);
+        errnoEnforceNGC( fd>=0, "socket creation failed" );
 
+        return Socket( ReactorFD(fd) );
+    }
+
+    ssize_t send(const void[] data, int flags) @trusted @nogc {
+        return fd.blockingCall!(.send)(data.ptr, data.length, flags);
+    }
+
+    ssize_t sendto(const void[] data, int flags, const ref SockAddr destAddr) @trusted @nogc {
+        return fd.blockingCall!(.sendto)(data.ptr, data.length, flags, &destAddr.base, SockAddr.sizeof); 
+    }
+
+    ssize_t sendmsg(const ref msghdr msg, int flags) @trusted @nogc {
+        return fd.blockingCall!(.sendmsg)(&msg, flags);
+    }
 }
 
 /// Reactor aware FD wrapper for pipes

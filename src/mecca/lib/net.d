@@ -154,4 +154,8 @@ struct SockAddr {
         SockAddrIPv6 ipv6;
         SockAddrUnix unix;
     }
+
+    @property sa_family_t family() const pure @safe @nogc {
+        return base.sa_family;
+    }
 }
