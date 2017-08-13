@@ -56,7 +56,7 @@ auto toStringzNGC(string dString) nothrow @trusted @nogc {
             this.length = length;
             inUse = true;
         }
-        
+
         ~this() nothrow @safe @nogc {
             release();
         }
@@ -76,3 +76,42 @@ auto toStringzNGC(string dString) nothrow @trusted @nogc {
 
     return toStringzNGCContext(cast(toStringzNGCContext.LengthType)cString.length);
 }
+
+
+struct ToStringz(size_t N) {
+    char[N] buffer;
+
+    @disable this();
+    @disable this(this);
+
+    this(string str) nothrow @trusted @nogc {
+        opAssign(str);
+    }
+    ref ToStringz opAssign(string str) nothrow @trusted @nogc {
+        assert (str.length < buffer.length, "Input string too long");
+        buffer[0 .. str.length] = str;
+        buffer[str.length] = '\0';
+        return this;
+    }
+    @property const(char)* ptr() const nothrow @trusted @nogc {
+        return buffer.ptr;
+    }
+    alias ptr this;
+}
+
+unittest {
+    import core.stdc.string: strlen;
+
+    assert (strlen(ToStringz!64("hello")) == 5);
+    assert (strlen(ToStringz!64("kaki")) == 4);
+    {
+        auto s = ToStringz!64("0123456789");
+        assert (strlen(s) == 10);
+        s = "moshe";
+        assert (strlen(s) == 5);
+    }
+    assert (strlen(ToStringz!64("mishmish")) == 8);
+}
+
+
+
