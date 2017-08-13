@@ -2,11 +2,13 @@
 module mecca.reactor.io;
 
 import core.stdc.errno;
+import core.sys.posix.netinet.in_;
+import core.sys.posix.netinet.tcp;
 import unistd = core.sys.posix.unistd;
 import fcntl = core.sys.posix.fcntl;
-import core.sys.posix.sys.types;
 import core.sys.posix.sys.ioctl;
 import core.sys.posix.sys.socket;
+import core.sys.posix.sys.types;
 import std.algorithm;
 import std.traits;
 
@@ -18,6 +20,8 @@ import mecca.lib.time;
 import mecca.log;
 import mecca.reactor.subsystems.epoll;
 
+enum LISTEN_BACKLOG = 10;
+
 private extern(C) nothrow @trusted @nogc {
     int pipe2(ref int[2], int flags);
 }
@@ -25,7 +29,94 @@ private extern(C) nothrow @trusted @nogc {
 struct DatagramSocket {
 }
 
+/**
+ * Wrapper for connection oriented datagram sockets.
+ */
 struct ConnectedDatagramSocket {
+    Socket sock;
+
+    alias sock this;
+
+    /**
+     * Create a stream socket and connect, as client, to the address supplied
+     *
+     * This creates a SOCK_SEQPACKET socket. It connects it to the designated server specified in sa, and waits, through the reactor, for
+     * the connection to be established.
+     *
+     * Params:
+     *  sa = a socket address for the server to connect to.
+     *  timeout = the timeout for the connection. Throws ReactorTimeout if the timeout expires
+     *  nodelay = by default, Nagle algorithm is disabled for TCP connections. Setting this parameter to false reverts to the system-wide
+     *         configuration.
+     *
+     * Returns:
+     *  Returns the connected socket.
+     *
+     * Throws:
+     * ReactorTimeout if the timeout expires
+     *
+     * ErrnoException if the connection fails (e.g. - ECONNREFUSED if connecting to a non-listening port). Also throws this if one of the
+     *                  system calls fails.
+     *
+     * Anything else: May throw any exception injected using throwInFiber.
+     */
+    static ConnectedDatagramSocket connect(SockAddr sa, Timeout timeout = Timeout.infinite) @safe @nogc {
+        ConnectedDatagramSocket ret = ConnectedDatagramSocket( Socket.socket(sa.family, SOCK_SEQPACKET, 0) );
+
+        connectHelper(ret, sa, timeout);
+
+        return ret;
+    }
+
+    /**
+     * Create a datagram stream socket and bind, as a listening server, to the address supplied
+     *
+     * This creates a SOCK_SEQPACKET socket. It binds it to the designated address specified in sa and puts it in listening mode.
+     *
+     * Params:
+     *  sa = a socket address for the server to listen on.
+     *
+     * Returns:
+     *  Returns the listening socket.
+     *
+     * Throws:
+     * ErrnoException if the connection fails (e.g. - EADDRINUSE if binding to a used port). Also throws this if one of the
+     *                  system calls fails.
+     */
+    static ConnectedDatagramSocket listen(SockAddr sa) @trusted @nogc {
+        ConnectedDatagramSocket sock = ConnectedDatagramSocket( Socket.socket(sa.family, SOCK_SEQPACKET, 0) );
+
+        sock.osCallErrno!(.bind)(&sa.base, SockAddr.sizeof);
+        sock.osCallErrno!(.listen)(LISTEN_BACKLOG);
+
+        return sock;
+    }
+
+    /**
+     * draws a new client connection from a listening socket
+     *
+     * This function waits for a client to connect to the socket. Once that happens, it returns with a ConnectedSocket for the new client.
+     *
+     * Params:
+     *  sa = an out parameter that receives the socket address of the client that connected.
+     *
+     * Returns:
+     *  Returns the connected socket.
+     *
+     * Throws:
+     * ErrnoException if the connection fails (e.g. - EINVAL if accepting from a non-listening socket, or ECONNABORTED if a connection was
+     *                                         aborted). Also throws this if one of the system calls fails.
+     *
+     * Anything else: May throw any exception injected using throwInFiber.
+     */
+    ConnectedDatagramSocket accept(out SockAddr clientAddr) @trusted @nogc {
+        socklen_t len = SockAddr.sizeof;
+        int clientFd = sock.blockingCall!(.accept)(&clientAddr.base, &len);
+
+        auto clientSock = ConnectedDatagramSocket( Socket( ReactorFD( clientFd ) ) );
+
+        return clientSock;
+    }
 }
 
 /**
@@ -36,50 +127,243 @@ struct ConnectedSocket {
 
     alias sock this;
 
-    static ConnectedSocket connect(SockAddr sa, Timeout timeout = Timeout.infinite, bool nodelay = true) @trusted @nogc {
+    /**
+     * Create a stream socket and connect, as client, to the address supplied
+     *
+     * This creates a TCP socket (or equivalent for the address family). It connects it to the designated server specified in sa, and
+     * waits, through the reactor, for the connection to be established.
+     *
+     * Params:
+     *  sa = a socket address for the server to connect to.
+     *  timeout = the timeout for the connection. Throws ReactorTimeout if the timeout expires
+     *  nodelay = by default, Nagle algorithm is disabled for TCP connections. Setting this parameter to false reverts to the system-wide
+     *         configuration.
+     *
+     * Returns:
+     *  Returns the connected socket.
+     *
+     * Throws:
+     * ReactorTimeout if the timeout expires
+     *
+     * ErrnoException if the connection fails (e.g. - ECONNREFUSED if connecting to a non-listening port). Also throws this if one of the
+     *                  system calls fails.
+     *
+     * Anything else: May throw any exception injected using throwInFiber.
+     */
+    static ConnectedSocket connect(SockAddr sa, Timeout timeout = Timeout.infinite, bool nodelay = true) @safe @nogc {
         ConnectedSocket ret = ConnectedSocket( Socket.socket(sa.family, SOCK_STREAM, 0) );
 
-        int result = ret.osCall!(.connect)(&sa.base, SockAddr.sizeof);
-        ASSERT!"connect returned unexpected value %s errno %s"(result<0 && errno == EINPROGRESS, result, errno);
+        connectHelper(ret, sa, timeout);
 
-        // Wait for connect to finish
-        epoller.waitForEvent(ret.ctx);
-
-        socklen_t reslen = result.sizeof;
-        ret.osCallErrno!(.getsockopt)( SOL_SOCKET, SO_ERROR, &result, &reslen);
-
-        if( result!=0 ) {
-            errno = result;
-            errnoEnforceNGC(false, "connect");
+        // Nagle is only defined for TCP/IPv*
+        if( (sa.family == AF_INET || sa.family == AF_INET6) && nodelay ) {
+            ret.setNagle(true);
         }
 
         return ret;
     }
+
+    /**
+     * Create a stream socket and bind, as a listening server, to the address supplied
+     *
+     * This creates a TCP socket (or equivalent for the address family). It binds it to the designated address specified in sa, and
+     * puts it in listening mode.
+     *
+     * Params:
+     *  sa = a socket address for the server to listen on.
+     *
+     * Returns:
+     *  Returns the listening socket.
+     *
+     * Throws:
+     * ErrnoException if the connection fails (e.g. - EADDRINUSE if binding to a used port). Also throws this if one of the
+     *                  system calls fails.
+     */
+    static ConnectedSocket listen(SockAddr sa) @trusted @nogc {
+        ConnectedSocket sock = ConnectedSocket( Socket.socket(sa.family, SOCK_STREAM, 0) );
+
+        sock.osCallErrno!(.bind)(&sa.base, SockAddr.sizeof);
+        sock.osCallErrno!(.listen)(LISTEN_BACKLOG);
+
+        return sock;
+    }
+
+    /**
+     * draws a new client connection from a listening socket
+     *
+     * This function waits for a client to connect to the socket. Once that happens, it returns with a ConnectedSocket for the new client.
+     *
+     * Params:
+     *  sa = an out parameter that receives the socket address of the client that connected.
+     *  nodelay = by default, Nagle algorithm is disabled for TCP connections. Setting this parameter to false reverts to the system-wide
+     *         configuration.
+     *
+     * Returns:
+     *  Returns the connected socket.
+     *
+     * Throws:
+     * ErrnoException if the connection fails (e.g. - EINVAL if accepting from a non-listening socket, or ECONNABORTED if a connection was
+     *                                         aborted). Also throws this if one of the system calls fails.
+     *
+     * Anything else: May throw any exception injected using throwInFiber.
+     */
+    ConnectedSocket accept(out SockAddr clientAddr, bool nodelay = true) @trusted @nogc {
+        socklen_t len = SockAddr.sizeof;
+        int clientFd = sock.blockingCall!(.accept)(&clientAddr.base, &len);
+
+        auto clientSock = ConnectedSocket( Socket( ReactorFD( clientFd ) ) );
+        if( nodelay && (clientAddr.family == AF_INET || clientAddr.family == AF_INET6) )
+            clientSock.setNagle(true);
+
+        return clientSock;
+    }
+
+    /**
+     * Enables or disables Nagle on a TCP socket
+     *
+     * Nagle is a packet aggregation algorithm employed over TCP. When enabled, under certain conditions, data sent gets delayed, hoping to
+     * combine it with future data into less packets. The problem is that for request/response type protocols (such as HTTP), this algorithm
+     * might result in increased latency.
+     *
+     * This function allows selectively enabling/disabling Nagle on TCP sockets.
+     */
+    void setNagle(bool on) @trusted @nogc {
+        int flag = cast(int) on;
+        sock.osCallErrno!(.setsockopt)( IPPROTO_TCP, TCP_NODELAY, &flag, flag.sizeof );
+    }
 }
 
+private void connectHelper(ref Socket sock, SockAddr sa, Timeout timeout) @trusted @nogc {
+    int result = sock.osCall!(.connect)(&sa.base, SockAddr.sizeof);
+    ASSERT!"connect returned unexpected value %s errno %s"(result<0 && errno == EINPROGRESS, result, errno);
+
+    // Wait for connect to finish
+    epoller.waitForEvent(sock.ctx, timeout);
+
+    socklen_t reslen = result.sizeof;
+    sock.osCallErrno!(.getsockopt)( SOL_SOCKET, SO_ERROR, &result, &reslen);
+
+    if( result!=0 ) {
+        errno = result;
+        errnoEnforceNGC(false, "connect");
+    }
+}
+
+/**
+ * Base class for the different types of sockets
+ */
 struct Socket {
     ReactorFD fd;
 
     alias fd this;
 
+    /**
+     * send data over a connected socket
+     */
+    ssize_t send(const void[] data, int flags) @trusted @nogc {
+        return fd.blockingCall!(.send)(data.ptr, data.length, flags);
+    }
+
+    /**
+     * send data over an unconnected socket
+     */
+    ssize_t sendto(const void[] data, int flags, const ref SockAddr destAddr) @trusted @nogc {
+        return fd.blockingCall!(.sendto)(data.ptr, data.length, flags, &destAddr.base, SockAddr.sizeof); 
+    }
+
+    /**
+     * Implementation of sendmsg.
+     */
+    ssize_t sendmsg(const ref msghdr msg, int flags) @trusted @nogc {
+        return fd.blockingCall!(.sendmsg)(&msg, flags);
+    }
+
+    /**
+     * Get the name of the current socket.
+     */
+    SockAddr getSockName() @trusted @nogc {
+        SockAddr sa;
+        socklen_t saLen = sa.sizeof;
+        fd.osCallErrno!(.getsockname)(&sa.base, &saLen);
+
+        return sa;
+    }
+
+    /**
+     * get the name of the socket's peer (for connected sockets only)
+     *
+     * Throws: ErrnoException (ENOTCONN) if called on an unconnected socket.
+     */
+    SockAddr getPeerName() @trusted @nogc {
+        SockAddr sa;
+        socklen_t saLen = sa.sizeof;
+        fd.osCallErrno!(.getpeername)(&sa.base, &saLen);
+
+        return sa;
+    }
+
+private:
     static Socket socket(sa_family_t domain, int type, int protocol) @trusted @nogc {
         int fd = .socket(domain, type, protocol);
         errnoEnforceNGC( fd>=0, "socket creation failed" );
 
         return Socket( ReactorFD(fd) );
     }
+}
 
-    ssize_t send(const void[] data, int flags) @trusted @nogc {
-        return fd.blockingCall!(.send)(data.ptr, data.length, flags);
+unittest {
+    import mecca.reactor.reactor;
+    import mecca.reactor.sync.event;
+
+    theReactor.setup();
+    scope(exit) theReactor.teardown();
+
+    openReactorEpoll();
+    scope(exit) closeReactorEpoll();
+
+    enum BUF_SIZE = 128;
+    enum NUM_BUFFERS = 16384;
+    SockAddr sa;
+    Event evt;
+
+    void server() {
+        ConnectedSocket sock = ConnectedSocket.listen( SockAddr(SockAddrIPv4.any()) );
+        sa = sock.getSockName();
+        INFO!"Listening socket on %s"(sa);
+        evt.set();
+
+        SockAddr clientAddr;
+        ConnectedSocket clientSock = sock.accept(clientAddr);
+
+        char[BUF_SIZE] buffer;
+
+        uint last;
+        while( clientSock.read(buffer)==BUF_SIZE ) {
+            assertEQ( *cast(uint*)buffer.ptr, last, "Got incorrect value from socket" );
+            last++;
+        }
+
+        assertEQ( last, NUM_BUFFERS, "Did not get the expected number of buffers" );
+
+        theReactor.stop();
     }
 
-    ssize_t sendto(const void[] data, int flags, const ref SockAddr destAddr) @trusted @nogc {
-        return fd.blockingCall!(.sendto)(data.ptr, data.length, flags, &destAddr.base, SockAddr.sizeof); 
+    void client() {
+        evt.wait();
+        INFO!"Connecting to %s"(sa);
+        ConnectedSocket sock = ConnectedSocket.connect( sa );
+
+        char[BUF_SIZE] buffer;
+        foreach( uint i; 0..NUM_BUFFERS ) {
+            (cast(uint*)buffer.ptr)[0] = i;
+            sock.write( buffer );
+        }
     }
 
-    ssize_t sendmsg(const ref msghdr msg, int flags) @trusted @nogc {
-        return fd.blockingCall!(.sendmsg)(&msg, flags);
-    }
+    theReactor.spawnFiber(&server);
+    theReactor.spawnFiber(&client);
+
+    theReactor.start();
 }
 
 /// Reactor aware FD wrapper for pipes
@@ -91,7 +375,7 @@ struct Pipe {
     /**
      * create an unnamed pipe pair
      *
-     * Parameters:
+     * Params:
      *  readEnd = `Pipe` struct to receive the reading (output) end of the pipe
      *  writeEnd = `Pipe` struct to receive the writing (input) end of the pipe
      */
@@ -150,7 +434,7 @@ public:
     /**
      * Constructor from existing mecca.lib.FD
      *
-     * Parameters:
+     * Params:
      * fd = bare OS fd. Ownership is handed to the ReactorFD.
      * alreadyNonBlocking = whether the OS fd has NONBLOCKING already set on it. Setting to true saves a call to fcntl, but will hang the
      *             reactor in some cases.
@@ -162,7 +446,7 @@ public:
     /**
      * Constructor from existing mecca.lib.FD
      *
-     * Parameters:
+     * Params:
      * fd = an FD rvalue
      * alreadyNonBlocking = whether the OS fd has NONBLOCKING already set on it. Setting to true saves a call to fcntl, but will hang the
      *             reactor in some cases.
@@ -290,7 +574,6 @@ unittest {
         // Send 2MB over the pipe
         ssize_t res;
         while((res = pipeRead.read(buffer))>0) {
-            DEBUG!"Received %s bytes"(res);
             assert(res==BUFF_SIZE, "Short read from pipe");
             assert(buffer[0] == ++lastNum, "Read incorrect value from buffer");
         }
@@ -306,7 +589,6 @@ unittest {
 
         // Send 2MB over the pipe
         while(buffer[0] < (2*MB/BUFF_SIZE)) {
-            DEBUG!"Sending %s bytes"(BUFF_SIZE);
             ssize_t res = pipeWrite.write(buffer);
             errnoEnforceNGC( res>=0, "Write failed on pipe");
             assert( res==BUFF_SIZE, "Short write to pipe" );

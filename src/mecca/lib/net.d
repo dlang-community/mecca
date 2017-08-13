@@ -145,6 +145,22 @@ unittest {
 
 struct SockAddrUnix {
     sockaddr_un unix;
+
+    string toString() @trusted {
+        import std.string;
+
+        if( unix.sun_family != AF_UNIX )
+            return "<Invalid Unix domain address>";
+
+        if( unix.sun_path[0] == '\0' )
+            return "<Anonymous Unix domain address>";
+
+        auto idx = indexOf(cast(char[])(unix.sun_path[]), cast(byte)'\0');
+        if( idx<0 )
+            idx = unix.sun_path.length;
+
+        return to!string(unix.sun_path[0..idx]);
+    }
 }
 
 struct SockAddr {
@@ -155,7 +171,38 @@ struct SockAddr {
         SockAddrUnix unix;
     }
 
+    this(SockAddrIPv4 sa) {
+        ipv4 = sa;
+        ASSERT!"Called with mismatching address family. Expected IPv4(%s), got %s"( AF_INET == family, AF_INET, family );
+    }
+
+    this(SockAddrIPv6 sa) {
+        ipv6 = sa;
+        ASSERT!"Called with mismatching address family. Expected IPv6(%s), got %s"( AF_INET6 == family, AF_INET6, family );
+    }
+
+    this(SockAddrUnix sa) {
+        unix = sa;
+        ASSERT!"Called with mismatching address family. Expected Unix domain(%s), got %s"( AF_UNIX == family, AF_UNIX, family );
+    }
+
     @property sa_family_t family() const pure @safe @nogc {
         return base.sa_family;
+    }
+
+    string toString() @safe {
+        switch( family ) {
+        case AF_UNSPEC:
+            return "<Uninitialized socket address>";
+        case AF_INET:
+            return ipv4.toString();
+        case AF_INET6:
+            return ipv6.toString();
+        case AF_UNIX:
+            return unix.toString();
+
+        default:
+            return "<Unsupported socket address family>";
+        }
     }
 }

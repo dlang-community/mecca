@@ -23,7 +23,7 @@ import mecca.lib.exception;
  *
  * `fileNameC.release();`
  *
- * Parameters:
+ * Params:
  *   dString = the D string to be converted to zero terminated format.
  *
  * Returns:

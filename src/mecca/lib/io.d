@@ -22,7 +22,7 @@ public:
     /**
      * Initialize from an OS file descriptor.
      *
-     * Parameters:
+     * Params:
      *  fd = OS handle of file to wrap.
      */
     this(int fd) nothrow @safe @nogc {
