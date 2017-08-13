@@ -465,7 +465,7 @@ public:
     }
 
     void start() {
-        INFO!"Starting reactor"();
+        META!"Starting reactor"();
         assert( idleFiber !is null, "Reactor started without calling \"setup\" first" );
         mainloop();
     }
@@ -480,7 +480,7 @@ public:
             }
             yieldThisFiber(); // Let everyone else die
 
-            INFO!"Stopping reactor"();
+            META!"Stopping reactor"();
             _running = false;
             if (thisFiber !is mainFiber) {
                 resumeSpecialFiber(mainFiber);

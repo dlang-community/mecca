@@ -22,6 +22,7 @@ enum LEVEL_INFO      = FG.green;
 enum LEVEL_WARN      = FG.iyellow;
 enum LEVEL_ERROR     = FG.ired;
 enum LEVEL_EXCEPTION = FG.iwhite | BG.red;
+enum LEVEL_META = FG.iwhite | BG.magenta;
 enum LEVEL_BT        = FG.red;
 
 private void internalLogOutput(ANSI level, T...)(string fmt, string file, size_t line, T args) nothrow @trusted @nogc {
@@ -56,6 +57,10 @@ void LOG_EXCEPTION(Throwable ex) nothrow @trusted @nogc {
             as!"nothrow @nogc"({ writefln("\t0x%x", ptr); });
         }
     }
+}
+
+void META(string fmt, string file = __FILE__, int line = __LINE__, T...)(T args) nothrow @safe @nogc {
+    internalLogOutput!LEVEL_META(fmt, file, line, args);
 }
 
 void LOG_TRACEBACK(string fmt, string file = __FILE__, size_t line = __LINE__, T...) (void*[] bt, T args) nothrow @trusted @nogc {

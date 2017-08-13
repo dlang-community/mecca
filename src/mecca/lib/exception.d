@@ -316,7 +316,7 @@ void DIE(string msg, string file = __FILE__, size_t line = __LINE__, bool doAbor
 
     __gshared static ExcBuf excBuf;
     as!"nothrow @nogc"({
-        //ERROR!"Assertion failure(%s:%s) %s"(file, line, msg);
+        //META!"Assertion failure(%s:%s) %s"(file, line, msg);
         auto ex = excBuf.construct!AssertError(file, line, true, msg);
         ex.toString((text){write(2, text.ptr, text.length);});
         if (doAbort) {
@@ -342,7 +342,7 @@ void ASSERT(string fmt, string file = __FILE__, size_t line = __LINE__, T...)(bo
     }
 
     scope f = () {
-        ERROR!(fmt, file, line)(args);
+        META!("Assertion failure: " ~ fmt, file, line)(args);
     };
     as!"@nogc pure nothrow"(f);
     version(unittest ){
