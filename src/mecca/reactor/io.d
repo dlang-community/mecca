@@ -397,7 +397,8 @@ unittest {
     void client() {
         evt.wait();
         INFO!"Connecting to %s"(sa);
-        ConnectedSocket sock = ConnectedSocket.connect( sa );
+        SockAddr serverAddr = SockAddrIPv4.loopback(sa.ipv4.port);
+        ConnectedSocket sock = ConnectedSocket.connect( serverAddr );
 
         char[BUF_SIZE] buffer;
         foreach( uint i; 0..NUM_BUFFERS ) {
