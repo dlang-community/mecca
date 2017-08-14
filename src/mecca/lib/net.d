@@ -19,9 +19,7 @@ struct IPv4 {
 
     union {
         in_addr inaddr = in_addr(0xffffffff);
-        struct {
-            ubyte[4] bytes;
-        }
+        ubyte[4] bytes;
     }
 
     this(uint netOrder) nothrow @safe @nogc {
@@ -162,6 +160,10 @@ struct SockAddrIPv4 {
         this.sa = *cast(sockaddr_in*)sa;
     }
 
+    this(IPv4 addr, ushort port = PORT_ANY) nothrow @safe @nogc {
+        this(addr.inaddr, port);
+    }
+
     @property void port(ushort newPort) nothrow @safe @nogc {
         sa.sin_port = htons(newPort);
     }
@@ -181,15 +183,15 @@ struct SockAddrIPv4 {
     }
 
     static SockAddrIPv4 loopback(ushort port = PORT_ANY) nothrow @safe @nogc {
-        return SockAddrIPv4(in_addr(htonl(INADDR_LOOPBACK)), port);
+        return SockAddrIPv4(IPv4.loopback, port);
     }
 
     static SockAddrIPv4 any(ushort port = PORT_ANY) nothrow @safe @nogc {
-        return SockAddrIPv4(in_addr(htonl(INADDR_ANY)), port);
+        return SockAddrIPv4(IPv4.any, port);
     }
 
-    static SockAddrIPv4 bcast(ushort port = PORT_ANY) nothrow @safe @nogc {
-        return SockAddrIPv4(in_addr(htonl(INADDR_BROADCAST)), port);
+    static SockAddrIPv4 broadcast(ushort port = PORT_ANY) nothrow @safe @nogc {
+        return SockAddrIPv4(IPv4.broadcast, port);
     }
 }
 
@@ -328,6 +330,10 @@ struct SockAddrIPv6 {
         this.sa = *cast(sockaddr_in6*)sa;
     }
 
+    this(IPv6 addr, ushort port = PORT_ANY) nothrow @safe @nogc {
+        this(addr.inaddr, port);
+    }
+
     @property void port(ushort newPort) nothrow @safe @nogc {
         sa.sin6_port = htons(newPort);
     }
@@ -347,11 +353,11 @@ struct SockAddrIPv6 {
     }
 
     static SockAddrIPv6 loopback(ushort port = PORT_ANY) nothrow @safe @nogc {
-        return SockAddrIPv6(in6addr_loopback, port);
+        return SockAddrIPv6(IPv6.loopback, port);
     }
 
     static SockAddrIPv6 any(ushort port = PORT_ANY) nothrow @safe @nogc {
-        return SockAddrIPv6(in6addr_any, port);
+        return SockAddrIPv6(IPv6.any, port);
     }
 }
 
@@ -378,6 +384,11 @@ struct SockAddrUnix {
         ASSERT!"Wrong address family for Unix domain sockets. %s instead of %s"(sa.sa_family == AF_UNIX, sa.sa_family, AF_UNIX);
         ASSERT!"Unix domain sockaddr too short. %s<%s"(length < sockaddr_un.sizeof, length, sockaddr_un.sizeof);
         this.unix = *cast(sockaddr_un*)sa;
+    }
+
+    this(string path) nothrow @trusted @nogc {
+        unix.sun_family = AF_UNIX;
+        unix.sun_path[0..path.length][] = cast(immutable(byte)[])path[];
     }
 
     string toString() @trusted {
