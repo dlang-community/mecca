@@ -1034,8 +1034,22 @@ private:
         thisFiber = mainFiber;
         scope(exit) thisFiber = null;
 
+        bool needGcCollect;
+        static void gcEnabler(bool* needGcCollect) {
+            *needGcCollect = true;
+            if( theReactor.runningFiberId != MainFiberId )
+                theReactor.resumeSpecialFiber(theReactor.mainFiber);
+        }
+
+        TimerHandle gcTimer = registerRecurringTimer!gcEnabler(options.gcInterval, &needGcCollect);
+
         while (_running) {
             runTimedCallbacks();
+            if( needGcCollect ) {
+                needGcCollect = false;
+                GC.collect();
+            }
+
             switchToNext();
         }
     }
