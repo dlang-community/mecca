@@ -26,7 +26,31 @@ private extern(C) nothrow @trusted @nogc {
     int pipe2(ref int[2], int flags);
 }
 
+/**
+  Wrapper for datagram oriented socket (such as UDP)
+ */
 struct DatagramSocket {
+    Socket sock;
+
+    alias sock this;
+
+    /**
+     * Create a datagram socket
+     *
+     * This creates a SOCK_DATAGRAM socket.
+     *
+     * Params:
+     *  sa = a socket address for the server to connect to.
+     *
+     * Returns:
+     *  Returns the newly created socket.
+     *
+     * Throws:
+     * ErrnoException if the connection fails. Also throws this if one of the system calls fails.
+     */
+    static DatagramSocket create(SockAddr bindAddr) @safe @nogc {
+        return DatagramSocket( Socket.socket(bindAddr.family, SOCK_SEQPACKET, 0) );
+    }
 }
 
 /**
@@ -276,6 +300,28 @@ struct Socket {
      */
     ssize_t sendmsg(const ref msghdr msg, int flags) @trusted @nogc {
         return fd.blockingCall!(.sendmsg)(&msg, flags);
+    }
+
+    /**
+     * recv data from a connected socket
+     *
+     * Can be used on unconnected sockets as well, but then it is not possible to know who the sender was.
+     */
+    ssize_t recv(void[] buffer, int flags) @trusted @nogc {
+        return fd.blockingCall!(.recv)(buffer.ptr, buffer.length, flags);
+    }
+
+    /**
+     * recv data from an unconnected socket
+     */
+    ssize_t recvfrom(void[] buffer, int flags, out SockAddr srcAddr) @trusted @nogc {
+        socklen_t addrLen = SockAddr.sizeof;
+        return fd.blockingCall!(.recvfrom)(buffer.ptr, buffer.length, flags, &srcAddr.base, &addrLen);
+    }
+
+    /// Implement the recvmsg system call in a reactor friendly way.
+    ssize_t recvmsg(ref msghdr msg, int flags) @trusted @nogc {
+        return fd.blockingCall!(.recvmsg)(&msg, flags);
     }
 
     /**
