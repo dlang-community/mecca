@@ -1,3 +1,4 @@
+/// Various utilities for hacking the D type system
 module mecca.lib.reflection;
 
 public import std.traits;
@@ -501,8 +502,78 @@ template StaticRegex(string exp, string flags = "") {
     }
 }
 
+/**
+ * A class wrapper inside a struct.
+ *
+ * Please note that your class has all of the limitations of a struct. In particular, it must not self reference, and you assume
+ * responsibility over managing its lifetime and avoiding dangling references.
+ */
+struct ClassStruct(T : Object) {
+private:
+    char[T.sizeof] _objectMemory;
+    bool _initialized;
 
+public:
+    @disable this(this);
 
+    this(ARGS...)(ARGS args) {
+        construct(args);
+    }
+
+    void construct(ARGS...)(ARGS args) {
+        assert( !_initialized, "construct called on an already constructed object" );
+        (cast(T)_objectMemory.ptr).__ctor(args);
+        _initialized = true;
+    }
+
+    static if( __traits(hasMember, T, "__dtor") ) {
+        ~this() {
+            if( _initialized )
+                get.__dtor();
+
+            _initialized = false;
+        }
+    }
+
+    @property inout(T) get() inout @trusted @nogc {
+        if( !_initialized )
+            return null;
+
+        return cast(T)_objectMemory.ptr;
+    }
+
+    alias get this;
+}
+
+unittest {
+    import mecca.lib.exception;
+
+    class A {
+        int a;
+
+        this(int a) {
+            this.a = a+1;
+        }
+    }
+
+    class B : A {
+        int b;
+
+        this(int b) {
+            super(b-1);
+            this.b = b+2;
+        }
+    }
+
+    void func(A a) {
+        B b = cast(B) a;
+        assert( b.b - b.a ==3 );
+    }
+
+    auto b = ClassStruct!B(17);
+
+    func(b.get);
+}
 
 
 
