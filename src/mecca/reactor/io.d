@@ -40,7 +40,7 @@ struct DatagramSocket {
      * This creates a SOCK_DATAGRAM socket.
      *
      * Params:
-     *  sa = a socket address for the server to connect to.
+     *  bindAddr = a socket address for the server to connect to.
      *
      * Returns:
      *  Returns the newly created socket.
@@ -70,8 +70,6 @@ struct ConnectedDatagramSocket {
      * Params:
      *  sa = a socket address for the server to connect to.
      *  timeout = the timeout for the connection. Throws ReactorTimeout if the timeout expires
-     *  nodelay = by default, Nagle algorithm is disabled for TCP connections. Setting this parameter to false reverts to the system-wide
-     *         configuration.
      *
      * Returns:
      *  Returns the connected socket.
@@ -122,7 +120,7 @@ struct ConnectedDatagramSocket {
      * This function waits for a client to connect to the socket. Once that happens, it returns with a ConnectedSocket for the new client.
      *
      * Params:
-     *  sa = an out parameter that receives the socket address of the client that connected.
+     *  clientAddr = an out parameter that receives the socket address of the client that connected.
      *
      * Returns:
      *  Returns the connected socket.
@@ -218,7 +216,7 @@ struct ConnectedSocket {
      * This function waits for a client to connect to the socket. Once that happens, it returns with a ConnectedSocket for the new client.
      *
      * Params:
-     *  sa = an out parameter that receives the socket address of the client that connected.
+     *  clientAddr = an out parameter that receives the socket address of the client that connected.
      *  nodelay = by default, Nagle algorithm is disabled for TCP connections. Setting this parameter to false reverts to the system-wide
      *         configuration.
      *

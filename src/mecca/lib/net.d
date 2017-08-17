@@ -86,7 +86,7 @@ struct IPv4 {
             return 0;
         }
         import core.bitop: bsf;
-        ASSERT!"not a mask"(isMask);
+        assert(isMask, "not a mask");
         int leastSignificantSetBit = bsf(cast(uint)hostOrder);
         auto maskBits = (leastSignificantSetBit.sizeof * 8) - leastSignificantSetBit;
         return cast(byte)maskBits;

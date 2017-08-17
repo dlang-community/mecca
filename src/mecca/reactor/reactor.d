@@ -16,6 +16,7 @@ import mecca.containers.lists;
 import mecca.containers.arrays;
 import mecca.containers.pools;
 import mecca.lib.concurrency;
+import mecca.lib.consts;
 import mecca.lib.exception;
 import mecca.lib.time;
 import mecca.lib.reflection;
@@ -298,14 +299,47 @@ private:
     enum MainFiberId = FiberId(0);
     enum IdleFiberId = FiberId(1);
 
+    /// The options control aspects of the reactor's operation
     struct Options {
+        /// Maximum number of fibers.
         uint     numFibers = 256;
-        size_t   fiberStackSize = 32*1024;
+        /// Stack size of each fiber (except the main fiber). The reactor will allocate numFiber*fiberStackSize during startup
+        size_t   fiberStackSize = 32*KB;
+        /**
+          How often does the GC's collection run.
+
+          The reactor uses unconditional periodic collection, rather than lazy evaluation one employed by the default GC settings. This
+          setting sets how often the collection cycle should run.
+         */
         Duration gcInterval = 30.seconds;
+        /**
+          Base granularity of the reactor's timer.
+
+          Any scheduled task is scheduled at no better accuracy than timerGranularity. $(B In addition to) the fact that a timer task may
+          be delayed. As such, with a 1ms granularity, a task scheduled for 1.5ms from now is the same as a task scheduled for 2ms from now,
+          which may run 3ms from now.
+         */
         Duration timerGranularity = 1.msecs;
+        /**
+          Hogger detection threshold.
+
+          A hogger is a fiber that does not release the CPU to run other tasks for a long period of time. Often, this is a result of a bug
+          (i.e. - calling the OS's `sleep` instead of the reactor's).
+
+          Hogger detection works by measuring how long each fiber took until it allows switching away. If the fiber took more than
+          hoggerWarningThreshold, a warning is logged.
+         */
         Duration hoggerWarningThreshold = 200.msecs;
+        /**
+          Hard hang detection.
+
+          This is a similar safeguard to that used by the hogger detection. If activated (disabled by default), it premptively prompts the
+          reactor every set time to see whether fibers are still being switched in/out. If it finds that the same fiber is running, without
+          switching out, for too long, it terminates the entire program.
+         */
         Duration hangDetectorTimeout = Duration.zero;
-        size_t   numTimers = 10000;
+        /// Maximal number of timers that can be simultaneously registered.
+        size_t   numTimers = 10_000;
     }
 
     bool _open;
@@ -344,10 +378,16 @@ private:
     CascadingTimeQueue!(TimedCallback*, TIMER_NUM_BINS, TIMER_NUM_LEVELS, true) timeQueue;
 
 public:
+    /// Report whether the reactor has been properly opened (i.e. - setup has been called).
     @property bool isOpen() const pure nothrow @safe @nogc {
         return _open;
     }
 
+    /**
+      Set the reactor up for doing work.
+
+      All options must be set before calling this function.
+     */
     void setup() {
         assert (!_open, "reactor.setup called twice");
         _open = true;
@@ -393,6 +433,9 @@ public:
         registerFaultHandlers();
     }
 
+    /**
+      Shut the reactor down.
+     */
     void teardown() {
         assert(_open, "reactor teardown called on non-open reactor");
         assert(!_running, "reactor teardown called on still running reactor");
@@ -423,33 +466,75 @@ public:
         _open = false;
     }
 
+    /**
+      Register an idle handler callback.
+
+      The reactor handles scheduling and fibers switching, but has no built-in mechanism for scheduling sleeping fibers back to execution
+      (except fibers sleeping on a timer, of course). Mechanisms such as file descriptor watching are external, and are registered using
+      this function.
+
+      The idler callback should receive a timeout variable. This indicates the time until the closest timer expires. If no other event comes
+      in, the idler should strive to wake up after that long. Waking up sooner will, likely, cause the idler to be called again. Waking up
+      later will delay timer tasks (which is allowed by the API contract).
+
+      It is allowed to register more than one idler callback. Doing so, however, will cause $(B all) of them to be called with a timeout of
+      zero (i.e. - don't sleep), resulting in a busy wait for events.
+     */
     void registerIdleCallback(IdleCallbackDlg dg) nothrow @safe @nogc {
         // You will notice our deliberate lack of function to unregister
         idleCallbacks ~= dg;
         DEBUG!"%s idle callbacks registered"(idleCallbacks.length);
     }
 
+    /**
+     * Spawn a new fiber for execution.
+     *
+     * Parameters:
+     *  The first argument must be the function/delegate to call inside the new fiber. If said callable accepts further arguments, then
+     *  they must be provided as further arguments to spawnFiber.
+     *
+     * Returns:
+     *  A FiberHandle to the newly created fiber.
+     */
     FiberHandle spawnFiber(T...)(T args) nothrow @safe @nogc {
+        static assert(T.length>=1, "Must pass at least the function/delegate to spawnFiber");
         auto fib = _spawnFiber(false);
         fib.params.fiberBody.set(args);
         return FiberHandle(fib);
     }
 
+    /**
+     * Spawn a new fiber for execution.
+     *
+     * Params:
+     *  F = The function or delegate to call inside the fiber.
+     *  args = The arguments for F
+     *
+     * Returns:
+     *  A FiberHandle to the newly created fiber.
+     */
     FiberHandle spawnFiber(alias F)(Parameters!F args) {
         auto fib = _spawnFiber(false);
         fib.params.fiberBody.set!F(args);
         return FiberHandle(fib);
     }
 
+    /// Returns whether currently running fiber is the idle fiber.
     @property bool isIdle() pure const nothrow @safe @nogc {
         return thisFiber is idleFiber;
     }
+
+    /// Returns whether currently running fiber is the main fiber.
     @property bool isMain() pure const nothrow @safe @nogc {
         return thisFiber is mainFiber;
     }
+
+    /// Returns whether currently running fiber is a special (i.e. - non-user) fiber
     @property bool isSpecialFiber() const nothrow @safe @nogc {
         return thisFiber.flag!"SPECIAL";
     }
+
+    /// Returns a FiberHandle to the currently running fiber
     @property FiberHandle runningFiberHandle() nothrow @safe @nogc {
         // XXX This assert may be incorrect, but it is easier to remove an assert than to add one
         assert(!isSpecialFiber, "Should not blindly get fiber handle of special fibers");
@@ -460,16 +545,32 @@ public:
         assert(!isSpecialFiber, "Should not blindly get fiber handle of special fibers");
         return thisFiber;
     }
+    /**
+      Returns the FiberId of the currently running fiber.
+
+      You should almost never store the FiberId for later comparison or pass it to another fiber. Doing so risks having the current fiber
+      die and another one spawned with the same FiberId. If that's what you want to do, use runningFiberHandle instead.
+     */
     @property FiberId runningFiberId() const nothrow @safe @nogc {
         return thisFiber.identity;
     }
 
+    /**
+      Starts up the reactor.
+
+      The reactor should already have at least one user fiber at that point, or it will start, but sit there and do nothing.
+
+      This function "returns" only after the reactor is stopped and no more fibers are running.
+     */
     void start() {
         META!"Starting reactor"();
         assert( idleFiber !is null, "Reactor started without calling \"setup\" first" );
         mainloop();
     }
 
+    /**
+      Stop the reactor, killing all fibers.
+     */
     void stop() {
         if (_running) {
             Throwable reactorExit = mkEx!ReactorExit("Reactor is quitting");
@@ -491,20 +592,64 @@ public:
         }
     }
 
+    /**
+      enter a no-fiber switch piece of code.
+
+      If the code tries to switch away from the current fiber before leaveCriticalSection is called, the reactor will throw an assert.
+      This helps writing code that does interruption sensitive tasks without locks and making sure future changes don't break it.
+
+      Critical sections are nestable.
+
+      Also see `criticalSection` below.
+     */
     void enterCriticalSection() pure nothrow @safe @nogc {
         pragma(inline, true);
         criticalSectionNesting++;
     }
 
+    /// leave the innermost critical section.
     void leaveCriticalSection() pure nothrow @safe @nogc {
         pragma(inline, true);
         assert (criticalSectionNesting > 0);
         criticalSectionNesting--;
     }
+
+    /// Reports whether execution is currently within a critical section
     @property bool isInCriticalSection() const pure nothrow @safe @nogc {
         return criticalSectionNesting > 0;
     }
 
+    /**
+     * Return a RAII object handling a critical section
+     *
+     * The function enters a critical section. Unlike enterCriticalSection, however, there is no need to explicitly call
+     * leaveCriticalSection. Instead, the function returns a variable that calls leaveCriticalSection when it goes out of scope.
+     *
+     * There are two advantages for using criticalSection over enter/leaveCriticalSection. The first is for nicer scoping:
+     * ---
+     * with(theReactor.criticalSection) {
+     *   // Code in critical section goes here
+     * }
+     * ---
+     *
+     * The second case is if you need to switch, within the same code, between critical section and none:
+     * ---
+     * auto cs = theReactor.criticalSection;
+     *
+     * // Some code
+     * cs.leave();
+     * // Some code that sleeps
+     * cs.enter();
+     *
+     * // The rest of the critical section code
+     * ---
+     *
+     * The main advantage over enter/leaveCriticalSection is that this way, the critical section never leaks. Any exception thrown, either
+     * from the code inside the critical section or the code temporary out of it, will result in the correct number of leaveCriticalSection
+     * calls to zero out the effect.
+     *
+     * Also note that there is no need to call leave at the end of the code. Cs's destructor will do it for us $(B if necessary).
+     */
     @property auto criticalSection() nothrow @safe @nogc {
         pragma(inline, true);
         static struct CriticalSection {
@@ -533,22 +678,52 @@ public:
         enterCriticalSection();
         return CriticalSection();
     }
+    unittest {
+        testWithReactor({
+                {
+                    with( theReactor.criticalSection ) {
+                        assertThrows!AssertError( theReactor.yieldThisFiber() );
+                    }
+                }
 
+                theReactor.yieldThisFiber();
+                });
+    }
+
+    /**
+     * Temporarily surrender the CPU for other fibers to run.
+     *
+     * Unlike suspend, the current fiber will automatically resume running after any currently scheduled fibers are finished.
+     */
     void yieldThisFiber() @safe @nogc {
         resumeFiber(thisFiber);
         suspendThisFiber();
     }
 
+    /// Handle used to manage registered timers
     struct TimerHandle {
     private:
         TimedCallback* callback;
 
     public:
-        bool isValid() const @safe @nogc {
+        /// Returns whether the handle describes a currently registered task
+        @property bool isValid() const @safe @nogc {
+            // XXX Make sure this does what it is supposed to do
             return callback !is null;
         }
     }
 
+    /**
+     * Registers a timer task.
+     *
+     * Params:
+     * F = the callable to be invoked when the timer expires
+     * timeout = when the timer is be called
+     * params = the parameters to call F with
+     *
+     * Returns:
+     * A handle to the just registered timer.
+     */
     TimerHandle registerTimer(alias F)(Timeout timeout, Parameters!F params) nothrow @safe @nogc {
         TimedCallback* callback = timedCallbacksPool.alloc();
         callback.closure.set(&F, params);
@@ -560,6 +735,11 @@ public:
         return TimerHandle(callback);
     }
 
+    /**
+     * Register a timer callback
+     *
+     * Same as `registerTimer!F`, except with the callback as an argument. Callback cannot accept parameters.
+     */
     TimerHandle registerTimer(T)(Timeout timeout, T dg) nothrow @safe @nogc {
         TimedCallback* callback = timedCallbacksPool.alloc();
         callback.closure.set(dg);
@@ -578,29 +758,43 @@ public:
         return callback;
     }
 
-
+    /**
+     * registers a timer that will repeatedly trigger at set intervals.
+     *
+     * Params:
+     *  interval = the frequency with which the callback will be called.
+     *  dg = the callback to invoke
+     */
     TimerHandle registerRecurringTimer(Duration interval, void delegate() dg) nothrow @safe @nogc {
         TimedCallback* callback = _registerRecurringTimer(interval);
         callback.closure.set(dg);
         return TimerHandle(callback);
     }
 
+    /**
+     * registers a timer that will repeatedly trigger at set intervals.
+     *
+     * different form of the same function.
+     */
     TimerHandle registerRecurringTimer(alias F)(Duration interval, Parameters!F params) nothrow @safe @nogc {
         TimedCallback* callback = _registerRecurringTimer(interval);
         callback.closure.set(&F, params);
         return TimerHandle(callback);
     }
 
+    // Cancel a currently registered timer
     void cancelTimer(TimerHandle handle) @safe @nogc {
         if( !handle.isValid )
             return;
         timeQueue.cancel(handle.callback);
     }
 
+    /// Suspend the current fiber for a specified amount of time
     void sleep(Duration duration) @safe @nogc {
         sleep(Timeout(duration));
     }
 
+    /// ditto
     void sleep(Timeout until) @safe @nogc {
         assert(until != Timeout.init, "sleep argument uninitialized");
         auto timerHandle = registerTimer!resumeFiber(until, runningFiberHandle, false);
@@ -609,6 +803,18 @@ public:
         suspendThisFiber();
     }
 
+    /**
+     * forward an exception to another fiber
+     *
+     * This function throws an exception in another fiber. The fiber will be scheduled to run.
+     *
+     * There is a difference in semantics between the two forms. The first form throws an identical copy of the exception in the target
+     * fiber. The second form forms a new exception to be thrown in that fiber.
+     *
+     * One place where this difference matters is with the stack trace the thrown exception will have. With the first form, the stack trace
+     * will be the stack trace `ex` has, wherever it is (usually not in the fiber in which the exception was thrown). With the second form,
+     * the stack trace will be of the target fiber, which means it will point back to where the fiber went to sleep.
+     */
     bool throwInFiber(FiberHandle fHandle, Throwable ex) nothrow @safe @nogc {
         ExcBuf* fiberEx = prepThrowInFiber(fHandle, false);
 
@@ -621,6 +827,7 @@ public:
         return true;
     }
 
+    /// ditto
     bool throwInFiber(T : Throwable, string file = __FILE__, size_t line = __LINE__, A...)(FiberHandle fHandle, auto ref A args) nothrow @safe @nogc {
         pragma(inline, true);
         ExcBuf* fiberEx = prepThrowInFiber(fHandle, true);
@@ -641,6 +848,7 @@ private:
 
     void switchToNext() @safe @nogc {
         //DEBUG!"SWITCH out of %s"(thisFiber.identity);
+        ASSERT!"Context switch while inside a critical section"(!isInCriticalSection);
 
         // in source fiber
         {
@@ -718,7 +926,7 @@ private:
         if (timeout == Timeout.infinite)
             return suspendThisFiber();
 
-        assert (!isInCriticalSection);
+        ASSERT!"suspendThisFiber called while inside a critical section"(!isInCriticalSection);
 
         TimerHandle timeoutHandle;
         scope(exit) cancelTimer( timeoutHandle );
@@ -755,7 +963,6 @@ private:
     }
 
     package void suspendThisFiber() @safe @nogc {
-         assert (!isInCriticalSection);
          switchToNext();
     }
 
@@ -1078,12 +1285,18 @@ package FiberId to(T : FiberId)(const ReactorFiber* rfp) nothrow @safe @nogc {
 private __gshared Reactor _theReactor;
 private bool /* thread local */ _isReactorThread;
 
-// Lots of code can be @safe if it didn't need to access "theReactor". This wrapper allows it to be
+/**
+ * return a reference to the Reactor singleton
+ *
+ * In theory, @safe code must not access global variables. Since theReactor is only meant to be used by a single thread, however, this
+ * function is @trusted. If it were not, practically no code could be @safe.
+ */
 @property ref Reactor theReactor() nothrow @trusted @nogc {
     //DBG_ASSERT!"not main thread"(_isReactorThread);
     return _theReactor;
 }
 
+/// Returns whether the current thread is the thread in which theReactor is running
 @property bool isReactorThread() nothrow @safe @nogc {
     return _isReactorThread;
 }
