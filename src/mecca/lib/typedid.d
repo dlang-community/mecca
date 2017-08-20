@@ -76,7 +76,6 @@ public:
 
 alias AlgebraicTypedIdentifier(string name, T, T invalid = T.max, T init = invalid) = TypedIdentifier!(name, T, invalid, init, true);
 
-
 unittest {
     import std.string;
 

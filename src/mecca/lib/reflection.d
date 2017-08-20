@@ -3,6 +3,7 @@ module mecca.lib.reflection;
 
 public import std.traits;
 public import std.meta;
+import std.conv;
 import std.stdint: intptr_t;
 
 
@@ -508,9 +509,9 @@ template StaticRegex(string exp, string flags = "") {
  * Please note that your class has all of the limitations of a struct. In particular, it must not self reference, and you assume
  * responsibility over managing its lifetime and avoiding dangling references.
  */
-struct ClassStruct(T : Object) {
+struct ClassStruct(Class : Object) {
 private:
-    char[T.sizeof] _objectMemory;
+    align(classInstanceAlignment!Class) void[__traits(classInstanceSize, Class)] _objectMemory;
     bool _initialized;
 
 public:
@@ -522,11 +523,12 @@ public:
 
     void construct(ARGS...)(ARGS args) {
         assert( !_initialized, "construct called on an already constructed object" );
-        (cast(T)_objectMemory.ptr).__ctor(args);
+        auto constructed = emplace!Class(_objectMemory, args);
+        assert( cast(void*)(constructed) == _objectMemory.ptr );
         _initialized = true;
     }
 
-    static if( __traits(hasMember, T, "__dtor") ) {
+    static if( __traits(hasMember, Class, "__dtor") ) {
         ~this() {
             if( _initialized )
                 get.__dtor();
@@ -535,13 +537,15 @@ public:
         }
     }
 
-    @property inout(T) get() inout @trusted @nogc {
+    /// get a reference to Class
+    @property inout(Class) get() inout @trusted @nogc {
         if( !_initialized )
             return null;
 
-        return cast(T)_objectMemory.ptr;
+        return cast(Class)_objectMemory.ptr;
     }
 
+    /// ditto
     alias get this;
 }
 
@@ -567,7 +571,7 @@ unittest {
 
     void func(A a) {
         B b = cast(B) a;
-        assert( b.b - b.a ==3 );
+        assert( b.b - b.a ==2 );
     }
 
     auto b = ClassStruct!B(17);
