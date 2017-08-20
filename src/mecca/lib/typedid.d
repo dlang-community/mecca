@@ -8,6 +8,8 @@ struct TypedIdentifier(string _name, T, T _invalid = T.max, T _init=_invalid, bo
 private:
     T _value = _init;
 
+    enum Algebraic = algebraic;
+
 public:
     alias UnderlyingType = T;
     enum TypedIdentifier invalid = TypedIdentifier(_invalid);
@@ -99,4 +101,41 @@ unittest {
 
     static assert( is( typeof(newval) == typeof(val) ) );
     assert( newval.value == 18 );
+}
+
+enum isTypedIdentifier(T) = isInstanceOf!(TypedIdentifier, T);
+enum isAlgebricTypedIdentifier(T) = isTypedIdentifier!T && T.Algebraic;
+
+auto iota(T)(const T start, const T end) nothrow @safe @nogc if (isAlgebricTypedIdentifier!T) {
+    import std.range : iota;
+    import std.algorithm : map;
+    return iota(start.value, end.value).map!(x => T(x));
+}
+
+auto iota(T)(const T end) nothrow @safe @nogc if (isAlgebricTypedIdentifier!T) {
+    return iota(T(0), end);
+}
+
+unittest {
+    import std.range : iota;
+
+    alias UTiD = AlgebraicTypedIdentifier!("UTiD", uint);
+
+    uint counter;
+    foreach( i; iota(12) ) {
+        counter++;
+    }
+    assert(counter==12);
+
+    counter = 0;
+    foreach( i; iota(UTiD(12)) ) {
+        counter++;
+    }
+    assert(counter==12);
+
+    counter = 0;
+    foreach( i; iota(UTiD(3), UTiD(12)) ) {
+        counter++;
+    }
+    assert(counter == 9);
 }
