@@ -3,6 +3,7 @@ module mecca.lib.typedid;
 import std.traits;
 import std.conv;
 
+import mecca.lib.exception;
 
 struct TypedIdentifier(string _name, T, T _invalid = T.max, T _init=_invalid, bool algebraic=false) if (isIntegral!T) {
 private:
@@ -66,6 +67,10 @@ public:
         T opBinary(string op : "-")(in TypedIdentifier rhs) const pure nothrow @safe @nogc {
             return value - rhs.value;
         }
+    }
+
+    U opCast(U)() const pure @safe nothrow if (isImplicitlyConvertible!(T, U)) {
+        return value;
     }
 
     // toString is not @nogc
@@ -138,4 +143,286 @@ unittest {
         counter++;
     }
     assert(counter == 9);
+}
+
+import std.range : isInputRange, ElementType;
+import std.array : empty, front, popFront;
+
+struct TypedIndexArray(KEY, VALUE, size_t LENGTH) if (isAlgebricTypedIdentifier!KEY) {
+private:
+    VALUE[LENGTH] _array;
+
+public:
+    alias Key = KEY;
+
+    this(R)(R values) if(isInputRange!R) {
+        // DMDBUG Work around: https://issues.dlang.org/show_bug.cgi?id=16301
+        // Allowing TypedIndexArray to be used in more CTFE contexts:
+        auto arr = &this._array;
+        uint count = 0;
+        foreach(ref item; values) {
+            (*arr)[count] = item;
+            count++;
+        }
+        ASSERT!("TypedIndexArray initialize from range of wrong length (%s != " ~ LENGTH.stringof ~ ")") (LENGTH == count, count);
+    }
+    this()(VALUE value) {
+        _array[] = value;
+    }
+
+    this()(ref VALUE[LENGTH] value) {
+        _array[] = value[];
+    }
+
+    alias Slice = TypedIndexSlice!(KEY, VALUE);
+    ref inout(VALUE) opIndex(KEY index) inout {
+        DBG_ASSERT!"opIndex called with invalid index"(index.isValid);
+        return _array[index.value];
+    }
+
+    inout(Slice) opIndex() inout {
+        return inout(Slice)(_array[]);
+    }
+
+    inout(Slice) opSlice(KEY begin, KEY end) inout {
+        return inout(Slice)(_array[begin.value .. end.value], begin.value);
+    }
+
+    @property KEY opDollar() const { return KEY(LENGTH); }
+    @property static KEY length() { return KEY(LENGTH); }
+    static size_t intLength() { return LENGTH; }
+
+    int opApply(scope int delegate(ref VALUE value) dg) {
+        return this[].opApply(dg);
+    }
+
+    int opApply(scope int delegate(ref const(VALUE) value) dg) const {
+        return this[].opApply(dg);
+    }
+
+    int opApply(scope int delegate(KEY key, ref VALUE value) dg) {
+        return this[].opApply(dg);
+    }
+
+    int opApply(scope int delegate(KEY key, ref const(VALUE) value) dg) const {
+        return this[].opApply(dg);
+    }
+
+    ref TypedIndexArray opAssign()(VALUE value) @nogc {
+        _array[] = value;
+
+        return this;
+    }
+
+    ref TypedIndexArray opAssign()(ref VALUE[LENGTH] value) {
+        _array[] = value[];
+
+        return this;
+    }
+
+    ref TypedIndexArray opOpAssign(string OP)(VALUE value) {
+        this[].opOpAssign!OP(value);
+
+        return this;
+    }
+
+    ref TypedIndexArray opIndexAssign()(VALUE value, KEY key) {
+        _array[key.value] = value;
+
+        return this;
+    }
+
+    ref TypedIndexArray opIndexAssign()(VALUE value) {
+        this[].opIndexAssign(value);
+
+        return this;
+    }
+
+    ref TypedIndexArray opIndexAssign()(VALUE value, Slice slice) {
+        slice.opIndexAssign(value);
+
+        return this;
+    }
+
+    ref TypedIndexArray opIndexOpAssign(string OP, T)(T value, KEY key) {
+        this[].opIndexOpAssign!OP(value, key);
+
+        return this;
+    }
+
+    ref TypedIndexArray opIndexOpAssign(string OP, T)(T value) {
+        this[].opIndexOpAssign!OP(value);
+
+        return this;
+    }
+
+    ref TypedIndexArray opIndexOpAssign(string OP, T)(T value, Slice slice) {
+        slice.opIndexOpAssign!OP(value);
+
+        return this;
+    }
+
+    @property ref inout(VALUE[LENGTH]) range() inout {
+        return _array;
+    }
+}
+
+auto mapTypedArray(alias _func, KEY, VALUE, size_t LENGTH)(ref TypedIndexArray!(KEY, VALUE, LENGTH) arr) {
+    import std.functional : unaryFun;
+    import std.traits;
+    alias func = unaryFun!_func;
+    alias RetType = typeof(func(arr._array[0]));
+    TypedIndexArray!(KEY, Unqual!RetType, LENGTH) result;
+    foreach(KEY idx, ref VALUE oldVal; arr) {
+        result[idx] = func(oldVal);
+    }
+    return result;
+}
+
+// Similar to std.array : array
+auto typedIndexArray(KEY, size_t LENGTH, R)(R items) if(isInputRange!R)
+{
+    alias Array = TypedIndexArray!(KEY, ElementType!R, LENGTH);
+    return Array(items);
+}
+
+unittest {
+    import std.range : iota, take;
+    import std.array : array;
+    int[10] x = iota(10).array;
+    alias Meters = AlgebraicTypedIdentifier!("Meters", uint);
+    auto meters = typedIndexArray!(Meters, 10)(x[]);
+    assert(meters[Meters(0)] == 0);
+    assert(meters[Meters(9)] == 9);
+    assert(meters.length == Meters(10));
+
+    import std.algorithm : map, equal;
+    assert(meters[].map!(x => x*2).take(5).equal([0, 2, 4, 6, 8]));
+}
+
+struct TypedIndexSlice(KEY, VALUE) if (isAlgebricTypedIdentifier!KEY) {
+private:
+    VALUE[] _slice;
+    KEY.UnderlyingType _offset = 0;
+
+public:
+    alias Key = KEY;
+
+    ref inout(VALUE) opIndex(KEY index) inout {
+        DBG_ASSERT!"opIndex called with invalid index"(index.isValid);
+        return _slice[index.value - _offset];
+    }
+
+    ref inout(TypedIndexSlice) opIndex() inout {
+        return this;
+    }
+
+    inout(TypedIndexSlice) opSlice(KEY begin, KEY end) inout {
+        return inout(TypedIndexSlice)(_slice[begin.value - _offset .. end.value - _offset], begin.value);
+    }
+
+    @property KEY opDollar() const { return KEY(cast(KEY.UnderlyingType)(length + _offset)); }
+    @property size_t length() const { return _slice.length; }
+
+    // DMDBUG: Yes, it is a direct dupliate of the opApply below. Yes, this is precisely what inout was invented
+    // for. No, inout doesn't work here. This is because opApply inference is special-cased and doesn't have the full
+    // delegate type, but rather must select the overloaded method via "ref" or "const" syntax in the foreach and decl.
+    int opApply(scope int delegate(KEY key, ref const(VALUE) value) dg) const {
+        foreach( KEY i; iota(KEY(_offset), opDollar) ) {
+            int result = dg(i, _slice[i.value - _offset]);
+            if (result) return result;
+        }
+        return 0;
+    }
+
+    int opApply(scope int delegate(KEY key, ref VALUE value) dg) {
+        foreach( KEY i; iota(KEY(_offset), opDollar) ) {
+            int result = dg(i, _slice[i.value - _offset]);
+            if (result) return result;
+        }
+        return 0;
+    }
+
+    int opApply(scope int delegate(ref const(VALUE) value) dg) const {
+        return opApply((KEY key, ref const(VALUE) val) => dg(val));
+    }
+
+    int opApply(scope int delegate(ref VALUE value) dg) {
+        return opApply((KEY key, ref VALUE val) => dg(val));
+    }
+
+    @property bool empty() { return _slice.empty; }
+    @property ref inout(VALUE) front() inout { return _slice.front; }
+    void popFront() { _slice.popFront(); _offset++; }
+
+    // TODO: Rename to slice
+    @property inout(VALUE)[] range() inout {
+        return _slice;
+    }
+
+    ref TypedIndexSlice opAssign()(VALUE value) @nogc {
+        _slice[] = value;
+
+        return this;
+    }
+
+    ref TypedIndexSlice opOpAssign(string OP)(VALUE value) @nogc {
+        import std.format : format;
+        mixin( q{_slice[] %s= value;}.format(OP) );
+
+        return this;
+    }
+
+    ref TypedIndexSlice opIndexAssign()(VALUE value, KEY key) @nogc {
+        _slice[key.value - _offset] = value;
+
+        return this;
+    }
+
+    ref TypedIndexSlice opIndexAssign()(VALUE value) @nogc {
+        _slice[] = value;
+
+        return this;
+    }
+
+    ref TypedIndexSlice opIndexOpAssign(string OP, T)(T value, KEY key) @nogc {
+        import std.format : format;
+        mixin(q{_slice[key.value - _offset] %s= value;}.format(OP));
+
+        return this;
+    }
+
+    ref TypedIndexSlice opIndexOpAssign(string OP, T)(T value) @nogc {
+        import std.format : format;
+        mixin(q{_slice[] %s= value}.format(OP));
+
+        return this;
+    }
+}
+
+
+unittest {
+    import std.stdio;
+    import std.conv;
+
+    alias XXNodeId = AlgebraicTypedIdentifier!("XXNodeId", int);
+    alias XXBucketId = TypedIdentifier!("XXBucketId", ushort, 0);
+    alias MoisheId = TypedIdentifier!("MoisheId", ulong);
+
+    auto x = XXNodeId(5);
+    auto y = XXBucketId(17);
+    MoisheId z = 19;
+
+    assert(to!string(x) == "XXNodeId<5>");
+    assert(cast(int)y == 17);
+    // assert(z == 19);
+    static assert (XXNodeId.invalid == XXNodeId(int.max));
+    static assert (XXBucketId.invalid == XXBucketId(0));
+
+    static assert(!__traits(compiles, x=y));
+
+    static assert(isTypedIdentifier!XXNodeId);
+    static assert(isTypedIdentifier!XXBucketId);
+    static assert(isTypedIdentifier!MoisheId);
+    static assert(!isTypedIdentifier!int);
 }
