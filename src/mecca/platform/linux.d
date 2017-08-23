@@ -339,7 +339,7 @@ unittest {
     assert (gettid() == getpid());
 }
 
-enum OsSignal: uint {
+enum OSSignal: uint {
     SIGNONE        = 0,       /// Invalid signal
     SIGHUP         = 1,       /// Hangup (POSIX).
     SIGINT         = 2,       /// Interrupt (ANSI).
@@ -380,7 +380,7 @@ enum NUM_SIGS = 65;
 public import core.sys.posix.signal: SIGRTMIN, SIGRTMAX;
 
 unittest {
-    assert (SIGRTMIN > OsSignal.SIGSYS);
+    assert (SIGRTMIN > OSSignal.SIGSYS);
     assert (SIGRTMAX < NUM_SIGS);
 }
 

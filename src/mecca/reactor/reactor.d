@@ -359,7 +359,7 @@ private:
     ReactorFiber* idleFiber;
     alias IdleCallbackDlg = void delegate(Duration);
     FixedArray!(IdleCallbackDlg, MAX_IDLE_CALLBACKS) idleCallbacks;
-    __gshared OsSignal hangDetectorSig;
+    __gshared OSSignal hangDetectorSig;
     posix_time.timer_t hangDetectorTimerId = null;
 
     SignalHandlerValue!TscTimePoint fiberRunStartTime;
@@ -1107,9 +1107,9 @@ private:
     }
 
     void registerHangDetector() @trusted @nogc {
-        DBG_ASSERT!"registerHangDetector called twice"( hangDetectorSig == OsSignal.SIGNONE );
-        hangDetectorSig = cast(OsSignal)SIGRTMIN;
-        scope(failure) hangDetectorSig = OsSignal.init;
+        DBG_ASSERT!"registerHangDetector called twice"( hangDetectorSig == OSSignal.SIGNONE );
+        hangDetectorSig = cast(OSSignal)SIGRTMIN;
+        scope(failure) hangDetectorSig = OSSignal.init;
 
         posix_signal.sigaction_t sa;
         sa.sa_flags = posix_signal.SA_RESTART | posix_signal.SA_ONSTACK | posix_signal.SA_SIGINFO;
@@ -1147,12 +1147,12 @@ private:
     }
 
     void deregisterHangDetector() nothrow @trusted @nogc {
-        if( hangDetectorSig is OsSignal.SIGNONE )
+        if( hangDetectorSig is OSSignal.SIGNONE )
             return; // Hang detector was not initialized
 
         posix_time.timer_delete(hangDetectorTimerId);
         posix_signal.signal(hangDetectorSig, posix_signal.SIG_DFL);
-        hangDetectorSig = OsSignal.init;
+        hangDetectorSig = OSSignal.init;
     }
 
     extern(C) static void hangDetectorHandler(int signum, siginfo_t* info, void *ctx) nothrow @trusted @nogc {
@@ -1175,29 +1175,29 @@ private:
         action.sa_sigaction = &faultHandler;
         action.sa_flags = posix_signal.SA_SIGINFO | posix_signal.SA_RESETHAND | posix_signal.SA_ONSTACK;
 
-        errnoEnforceNGC( posix_signal.sigaction(OsSignal.SIGSEGV, &action, null)==0, "Failed to register SIGSEGV handler" );
-        errnoEnforceNGC( posix_signal.sigaction(OsSignal.SIGILL, &action, null)==0, "Failed to register SIGILL handler" );
-        errnoEnforceNGC( posix_signal.sigaction(OsSignal.SIGBUS, &action, null)==0, "Failed to register SIGBUS handler" );
+        errnoEnforceNGC( posix_signal.sigaction(OSSignal.SIGSEGV, &action, null)==0, "Failed to register SIGSEGV handler" );
+        errnoEnforceNGC( posix_signal.sigaction(OSSignal.SIGILL, &action, null)==0, "Failed to register SIGILL handler" );
+        errnoEnforceNGC( posix_signal.sigaction(OSSignal.SIGBUS, &action, null)==0, "Failed to register SIGBUS handler" );
     }
 
     void deregisterFaultHandlers() nothrow @trusted @nogc {
-        posix_signal.signal(OsSignal.SIGBUS, posix_signal.SIG_DFL);
-        posix_signal.signal(OsSignal.SIGILL, posix_signal.SIG_DFL);
-        posix_signal.signal(OsSignal.SIGSEGV, posix_signal.SIG_DFL);
+        posix_signal.signal(OSSignal.SIGBUS, posix_signal.SIG_DFL);
+        posix_signal.signal(OSSignal.SIGILL, posix_signal.SIG_DFL);
+        posix_signal.signal(OSSignal.SIGSEGV, posix_signal.SIG_DFL);
     }
 
     extern(C) static void faultHandler(int signum, siginfo_t* info, void *ctx) nothrow @trusted @nogc {
-        OsSignal sig = cast(OsSignal)signum;
+        OSSignal sig = cast(OSSignal)signum;
         string faultName;
 
         switch(sig) {
-        case OsSignal.SIGSEGV:
+        case OSSignal.SIGSEGV:
             faultName = "Segmentation fault";
             break;
-        case OsSignal.SIGILL:
+        case OSSignal.SIGILL:
             faultName = "Illegal instruction";
             break;
-        case OsSignal.SIGBUS:
+        case OSSignal.SIGBUS:
             faultName = "Bus error";
             break;
         default:

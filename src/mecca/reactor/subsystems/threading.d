@@ -5,7 +5,7 @@ import core.thread;
 import core.sys.posix.signal;
 import std.exception;
 
-import mecca.platform.linux: gettid, OsSignal;
+import mecca.platform.linux: gettid, OSSignal;
 import mecca.lib.reflection;
 import mecca.lib.exception;
 import mecca.lib.time;
@@ -21,17 +21,17 @@ import mecca.reactor.reactor: theReactor, FiberHandle, TimerHandle;
 
 class WorkerThread: Thread {
     __gshared static immutable BLOCKED_SIGNALS = [
-        OsSignal.SIGHUP, OsSignal.SIGINT, OsSignal.SIGQUIT,
-        //OsSignal.SIGILL, OsSignal.SIGTRAP, OsSignal.SIGABRT,
-        //OsSignal.SIGBUS, OsSignal.SIGFPE, OsSignal.SIGKILL,
-        //OsSignal.SIGUSR1, OsSignal.SIGSEGV, OsSignal.SIGUSR2,
-        OsSignal.SIGPIPE, OsSignal.SIGALRM, OsSignal.SIGTERM,
-        //OsSignal.SIGSTKFLT, OsSignal.SIGCONT, OsSignal.SIGSTOP,
-        OsSignal.SIGCHLD, OsSignal.SIGTSTP, OsSignal.SIGTTIN,
-        OsSignal.SIGTTOU, OsSignal.SIGURG, OsSignal.SIGXCPU,
-        OsSignal.SIGXFSZ, OsSignal.SIGVTALRM, OsSignal.SIGPROF,
-        OsSignal.SIGWINCH, OsSignal.SIGIO, OsSignal.SIGPWR,
-        //OsSignal.SIGSYS,
+        OSSignal.SIGHUP, OSSignal.SIGINT, OSSignal.SIGQUIT,
+        //OSSignal.SIGILL, OSSignal.SIGTRAP, OSSignal.SIGABRT,
+        //OSSignal.SIGBUS, OSSignal.SIGFPE, OSSignal.SIGKILL,
+        //OSSignal.SIGUSR1, OSSignal.SIGSEGV, OSSignal.SIGUSR2,
+        OSSignal.SIGPIPE, OSSignal.SIGALRM, OSSignal.SIGTERM,
+        //OSSignal.SIGSTKFLT, OSSignal.SIGCONT, OSSignal.SIGSTOP,
+        OSSignal.SIGCHLD, OSSignal.SIGTSTP, OSSignal.SIGTTIN,
+        OSSignal.SIGTTOU, OSSignal.SIGURG, OSSignal.SIGXCPU,
+        OSSignal.SIGXFSZ, OSSignal.SIGVTALRM, OSSignal.SIGPROF,
+        OSSignal.SIGWINCH, OSSignal.SIGIO, OSSignal.SIGPWR,
+        //OSSignal.SIGSYS,
     ];
 
     __gshared static void delegate(WorkerThread) preThreadFunc;

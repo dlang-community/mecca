@@ -85,7 +85,7 @@ public:
         }
     }
 
-    void registerSignal(OsSignal signum, SignalHandler handler) @trusted @nogc {
+    void registerSignal(OSSignal signum, SignalHandler handler) @trusted @nogc {
         verifyOpen();
         ASSERT!"registerSignal called with invalid signal %s"(signum<NUM_SIGS || signum<=0, signum);
         ASSERT!"signal %s registered twice"(handlers[signum] is null, signum);
@@ -103,7 +103,7 @@ public:
         handlers[signum] = handler;
     }
 
-    void unregisterSignal(OsSignal signum) @trusted @nogc {
+    void unregisterSignal(OSSignal signum) @trusted @nogc {
         verifyOpen();
         ASSERT!"registerSignal called with invalid signal %s"(signum<NUM_SIGS || signum<=0, signum);
         ASSERT!"signal %s not registered"(handlers[signum] !is null, signum);
@@ -145,7 +145,7 @@ private:
                 bool[NUM_SIGS] handleMask;
                 size_t numElements = readSize / signalfd_siginfo.sizeof;
                 foreach( ref siginfo; info[0..numElements] ) {
-                    auto signum = cast(OsSignal)siginfo.ssi_signo;
+                    auto signum = cast(OSSignal)siginfo.ssi_signo;
                     if( handleMask[signum] ) {
                         INFO!"Squelching repeated signal %s that happened multiple times"(signum); // That's temporal, not spatial, squelching
                         continue;
@@ -188,7 +188,7 @@ unittest {
         import core.sys.posix.sys.time;
         import mecca.lib.time;
 
-        reactorSignal.registerSignal(OsSignal.SIGALRM, &sigHandler);
+        reactorSignal.registerSignal(OSSignal.SIGALRM, &sigHandler);
 
         itimerval it;
         it.it_interval.tv_usec = 500; // Wake up every half millisecond. More accurate than our reactor timers ;-)
