@@ -378,7 +378,7 @@ unittest {
 }
 
 struct SockAddrUnix {
-    sockaddr_un unix;
+    sockaddr_un unix = void;
 
     this(const sockaddr* sa, socklen_t length) nothrow @trusted @nogc {
         ASSERT!"Wrong address family for Unix domain sockets. %s instead of %s"(sa.sa_family == AF_UNIX, sa.sa_family, AF_UNIX);
