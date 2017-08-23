@@ -547,6 +547,7 @@ public:
 
     alias fcntl = osCallErrno!(.fcntl.fcntl);
     alias ioctl = osCallErrno!(.ioctl);
+
 package:
     auto blockingCall(alias F)(Parameters!F[1 .. $] args) @system @nogc {
         static assert (is(Parameters!F[0] == int));

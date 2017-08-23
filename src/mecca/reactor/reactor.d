@@ -1302,9 +1302,15 @@ private bool /* thread local */ _isReactorThread;
 }
 
 version (unittest) {
-    void testWithReactor(void delegate() dg) {
+    void testWithReactor(bool withEpoller = false)(void delegate() dg) {
         theReactor.setup();
         scope(exit) theReactor.teardown();
+        static if( withEpoller ) {
+            import mecca.reactor.io;
+            openReactorEpoll();
+            scope(exit) closeReactorEpoll();
+        }
+
         bool succ = false;
 
         void wrapper() {
