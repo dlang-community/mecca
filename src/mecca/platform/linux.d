@@ -330,6 +330,9 @@ extern(C) nothrow @system @nogc {
     int gettid() {
         return syscall(Syscall.NR_gettid);
     }
+    int tgkill(int tgid, int tid, int sig) {
+        return syscall(Syscall.NR_tgkill, tgid, tid, sig);
+    }
 }
 
 unittest {
