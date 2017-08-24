@@ -41,7 +41,7 @@ struct Inotifier {
             return WatchDescriptor( event.wd );
         }
 
-        @property string name() const pure @nogc {
+        @property string name() const @nogc {
             if( event.len==0 )
                 return null;
 
