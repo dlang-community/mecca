@@ -1,4 +1,4 @@
-module mecca.ut_harness;
+module mecca.services.ut_main;
 
 version(unittest):
 
