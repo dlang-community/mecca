@@ -327,10 +327,10 @@ enum Syscall: int {
 extern(C) nothrow @system @nogc {
     int syscall(int number, ...);
 
-    int gettid() {
+    int gettid() @trusted {
         return syscall(Syscall.NR_gettid);
     }
-    int tgkill(int tgid, int tid, int sig) {
+    int tgkill(int tgid, int tid, int sig) @trusted {
         return syscall(Syscall.NR_tgkill, tgid, tid, sig);
     }
 }
