@@ -708,8 +708,7 @@ public:
     public:
         /// Returns whether the handle describes a currently registered task
         @property bool isValid() const @safe @nogc {
-            // XXX Make sure this does what it is supposed to do
-            return callback !is null;
+            return callback !is null && callback._owner !is null;
         }
     }
 
@@ -787,6 +786,7 @@ public:
         if( !handle.isValid )
             return;
         timeQueue.cancel(handle.callback);
+        timedCallbacksPool.release(handle.callback);
     }
 
     /// Suspend the current fiber for a specified amount of time

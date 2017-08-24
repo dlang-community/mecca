@@ -251,7 +251,7 @@ struct SimplePool(T) {
         return e.value;
     }
 
-    void release(ref T* obj) nothrow @nogc {
+    void release(ref T* obj) nothrow @trusted @nogc {
         assert (!closed);
         assert (used > 0);
         static if (__traits(hasMember, T, "_poolElementFini")) {

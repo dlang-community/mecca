@@ -148,6 +148,8 @@ struct _LinkedList(T, string nextAttr, string prevAttr, string ownerAttr, bool w
         static if (withOwner) {
             auto owner = getOwnerOf(node);
             if (owner is null) {
+                assert (!isValid(getNextOf(node)), "no owner but next is linked");
+                assert (!isValid(getPrevOf(node)), "no owner but prev is linked");
                 return false;
             }
             ASSERT!"Trying to remove node that doesn't belong to list. Owner %s, this %s" (owner is &this, owner, &this);
@@ -190,8 +192,8 @@ struct _LinkedList(T, string nextAttr, string prevAttr, string ownerAttr, bool w
                 return owner.remove(node);
             }
             else {
-                assert (!isValid(getNextOf(node)), "next is linked");
-                assert (!isValid(getPrevOf(node)), "prev is linked");
+                assert (!isValid(getNextOf(node)), "no owner but next is linked");
+                assert (!isValid(getPrevOf(node)), "no owner but prev is linked");
                 return false;
             }
         }
