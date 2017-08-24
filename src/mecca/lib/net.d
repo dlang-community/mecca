@@ -389,6 +389,8 @@ struct SockAddrUnix {
     this(string path) nothrow @trusted @nogc {
         unix.sun_family = AF_UNIX;
         unix.sun_path[0..path.length][] = cast(immutable(byte)[])path[];
+        if( path.length < unix.sun_path.length )
+            unix.sun_path[path.length] = '\0';
     }
 
     string toString() @trusted {
