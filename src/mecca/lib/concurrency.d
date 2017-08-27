@@ -14,19 +14,19 @@ private:
 public:
     @disable this(this);
 
-    this(T value) {
+    this(T value) nothrow @safe @nogc {
         values[0] = value;
         index = 0;
     }
 
-    void opAssign(T value) {
+    void opAssign(T value) nothrow @trusted @nogc {
         // Since we only write from outside the handler, there is no need to do atomic reads of the index, only atomic writes.
         uint nextIndex = (index + 1) % 2;
         values[nextIndex] = value;
         atomicStore(index, nextIndex);
     }
 
-    @property T get() const {
+    @property T get() const nothrow @safe @nogc {
         return values[index];
     }
 

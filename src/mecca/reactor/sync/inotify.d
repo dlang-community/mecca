@@ -69,7 +69,7 @@ struct Inotifier {
     enum IN_DELETE = .IN_DELETE; /// ditto
     enum IN_DELETE_SELF = .IN_DELETE_SELF; /// ditto
     enum IN_MOVE_SELF = .IN_MOVE_SELF; /// ditto
-    enum IN_UNMOUNT = .IN_UNMOUNT; /// ditto
+    //enum IN_UNMOUNT = .IN_UNMOUNT; /// ditto
     enum IN_Q_OVERFLOW = .IN_Q_OVERFLOW; /// ditto
     enum IN_IGNORED = .IN_IGNORED; /// ditto
     enum IN_CLOSE = .IN_CLOSE; /// ditto

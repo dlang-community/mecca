@@ -99,7 +99,7 @@ public:
     }
 
     FiberHandle spawnFiber(void delegate() dg) nothrow @safe @nogc {
-        static void wrapper(void delegate() dg) {
+        static void wrapper(void delegate() dg) @system {
             dg();
         }
         return spawnFiber!wrapper(dg);

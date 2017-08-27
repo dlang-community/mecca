@@ -360,7 +360,7 @@ private:
     alias IdleCallbackDlg = void delegate(Duration);
     FixedArray!(IdleCallbackDlg, MAX_IDLE_CALLBACKS) idleCallbacks;
     __gshared OSSignal hangDetectorSig;
-    posix_time.timer_t hangDetectorTimerId = null;
+    posix_time.timer_t hangDetectorTimerId;
 
     SignalHandlerValue!TscTimePoint fiberRunStartTime;
 
@@ -1132,7 +1132,7 @@ private:
 
         errnoEnforceNGC(posix_time.timer_create(posix_time.CLOCK_MONOTONIC, &sev, &hangDetectorTimerId) == 0,
                 "timer_create for hang detector");
-        ASSERT!"hangDetectorTimerId is null"(hangDetectorTimerId !is null);
+        ASSERT!"hangDetectorTimerId is null"(hangDetectorTimerId !is posix_time.timer_t.init);
         scope(failure) posix_time.timer_delete(hangDetectorTimerId);
 
         posix_time.itimerspec its;
