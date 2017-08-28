@@ -34,19 +34,19 @@ private void internalLogOutput(ANSI level, T...)(string fmt, string file, size_t
     });
 }
 
-void DEBUG(string fmt, string file = __FILE__, int line = __LINE__, T...)(T args) nothrow @safe @nogc {
+void DEBUG(string fmt, string file = __FILE__, string mod = __MODULE__, int line = __LINE__, T...)(T args) nothrow @safe @nogc {
     internalLogOutput!LEVEL_DEBUG(fmt, file, line, args);
 }
 
-void INFO(string fmt, string file = __FILE__, int line = __LINE__, T...)(T args) nothrow @safe @nogc {
+void INFO(string fmt, string file = __FILE__, string mod = __MODULE__, int line = __LINE__, T...)(T args) nothrow @safe @nogc {
     internalLogOutput!LEVEL_INFO(fmt, file, line, args);
 }
 
-void WARN(string fmt, string file = __FILE__, int line = __LINE__, T...)(T args) nothrow @safe @nogc {
+void WARN(string fmt, string file = __FILE__, string mod = __MODULE__, int line = __LINE__, T...)(T args) nothrow @safe @nogc {
     internalLogOutput!LEVEL_WARN(fmt, file, line, args);
 }
 
-void ERROR(string fmt, string file = __FILE__, int line = __LINE__, T...)(T args) nothrow @safe @nogc {
+void ERROR(string fmt, string file = __FILE__, string mod = __MODULE__, int line = __LINE__, T...)(T args) nothrow @safe @nogc {
     internalLogOutput!LEVEL_ERROR(fmt, file, line, args);
 }
 
@@ -59,12 +59,13 @@ void LOG_EXCEPTION(Throwable ex) nothrow @trusted @nogc {
     }
 }
 
-void META(string fmt, string file = __FILE__, int line = __LINE__, T...)(T args) nothrow @safe @nogc {
+void META(string fmt, string file = __FILE__, string mod = __MODULE__, int line = __LINE__, T...)(T args) nothrow @safe @nogc {
     internalLogOutput!LEVEL_META(fmt, file, line, args);
 }
 
-void LOG_TRACEBACK(string fmt, string file = __FILE__, size_t line = __LINE__, T...) (void*[] bt, T args) nothrow @trusted @nogc {
-    internalLogOutput!LEVEL_BT(fmt, file, line, args);
+void LOG_TRACEBACK(void*[] bt, string msg, string file = __FILE__, size_t line = __LINE__) nothrow @trusted @nogc
+{
+    internalLogOutput!LEVEL_BT(msg, file, line);
     foreach( ptr; bt ) {
         as!"nothrow @nogc"({ writefln("\t0x%x", ptr); });
     }
@@ -72,9 +73,9 @@ void LOG_TRACEBACK(string fmt, string file = __FILE__, size_t line = __LINE__, T
 
 /* thread local */ static void*[128] btBuffer = void;
 
-void LOG_STACK(string fmt, string file = __FILE__, size_t line = __LINE__, T...)(T args) nothrow @trusted @nogc {
+void dumpStackTrace(string msg = "Backtrace:", string file = __FILE__, size_t line = __LINE__) nothrow @trusted @nogc {
     auto bt = extractStack(btBuffer);
-    LOG_TRACEBACK!(fmt, file, line, T)(bt, args);
+    LOG_TRACEBACK(bt, msg, file, line);
 }
 
 void flushLog() nothrow @trusted @nogc {
@@ -86,7 +87,7 @@ unittest {
     INFO!"Event worthy of run time mention %s"(100);
     WARN!"Take heed, %s traveller, for something strange is a%s"("weary", "foot");
     ERROR!"2b || !2b == %s"('?');
-    LOG_STACK!"Where am I?"();
+    dumpStackTrace("Where am I?");
     try {
         throw new Exception("inception");
     }

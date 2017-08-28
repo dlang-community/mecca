@@ -50,6 +50,8 @@ class ReactorExit : Throwable {
 }
 
 struct ReactorFiber {
+    private enum MaintainLogSource = __traits(compiles, logSource);
+
     struct OnStackParams {
         Closure                 fiberBody;
         GCStackDescriptor       stackDescriptor;
@@ -207,17 +209,19 @@ private:
             FLSArea.switchToNone();
         }
         auto id = identity.value;
-        if (id == 0) {
-            logSource = "MAIN";
-        }
-        else if (id == 1) {
-            logSource = "IDLE";
-        }
-        else {
-            logSource[0] = "0123456789abcdef"[(id >> 12) & 0xf];
-            logSource[1] = "0123456789abcdef"[(id >> 8) & 0xf];
-            logSource[2] = "0123456789abcdef"[(id >> 4) & 0xf];
-            logSource[3] = "0123456789abcdef"[id & 0xf];
+        static if(MaintainLogSource) {
+            if (id == 0) {
+                logSource = "MAIN";
+            }
+            else if (id == 1) {
+                logSource = "IDLE";
+            }
+            else {
+                logSource[0] = "0123456789abcdef"[(id >> 12) & 0xf];
+                logSource[1] = "0123456789abcdef"[(id >> 8) & 0xf];
+                logSource[2] = "0123456789abcdef"[(id >> 4) & 0xf];
+                logSource[3] = "0123456789abcdef"[id & 0xf];
+            }
         }
 
         if (flag!"HAS_EXCEPTION") {
@@ -1165,7 +1169,8 @@ private:
         long seconds, usecs;
         delay.split!("seconds", "usecs")(seconds, usecs);
 
-        LOG_STACK!"Hang detector triggered for %s after %s.%06s seconds"(theReactor.runningFiberId, seconds, usecs);
+        ERROR!"Hang detector triggered for %s after %s.%06s seconds"(theReactor.runningFiberId, seconds, usecs);
+        dumpStackTrace();
 
         ABORT("Hang detector killed process");
     }
@@ -1205,7 +1210,8 @@ private:
             break;
         }
 
-        LOG_STACK!"#OSSIGNAL %s"(faultName);
+        ERROR!"#OSSIGNAL %s"(faultName);
+        dumpStackTrace();
         flushLog(); // There is a certain chance the following lines themselves fault. Flush the logs now so that we have something
 
         posix_ucontext.ucontext_t* contextPtr = cast(posix_ucontext.ucontext_t*)ctx;

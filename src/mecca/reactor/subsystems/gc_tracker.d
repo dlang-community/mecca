@@ -45,10 +45,11 @@ extern (C) void logGCMallocCalls(void* p, size_t size) nothrow {
         return;
     }
     if (!isReactorThread) {
-        LOG_STACK!"#GC allocating from a thread"();
+        dumpStackTrace("#GC allocating from a thread");
     }
     else if ( theReactor.runningFiberPtr.flag!"GC_ENABLED") {
-        LOG_STACK!"#GC allocating from a fiber (size=%s addr=%s)"(size, p);
+        WARN!"#GC allocating from a fiber (size=%s addr=%s)"(size, p);
+        dumpStackTrace();
     }
 }
 

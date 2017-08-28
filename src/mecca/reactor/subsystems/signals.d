@@ -136,8 +136,8 @@ private:
                 // XXX Consider placing the array in the struct, so it's not on the stack
                 signalfd_siginfo[BATCH_SIZE] info;
                 ssize_t readSize = signalFd.blockingCall!(read)(&info, typeof(info).sizeof);
-                ASSERT!"read from signalfd returned misaligned size %s, expected a multiple of %s"( (readSize%signalfd_siginfo.sizeof) == 0,
-                        signalfd_siginfo.sizeof);
+                ASSERT!"read from signalfd returned misaligned size %s, expected a multiple of %s"(
+                        (readSize%signalfd_siginfo.sizeof) == 0, readSize, signalfd_siginfo.sizeof);
 
                 theReactor.enterCriticalSection();
                 scope(exit) theReactor.leaveCriticalSection();

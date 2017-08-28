@@ -27,8 +27,8 @@ struct OnDemandWorkerFunc(alias F) {
         this(FiberGroup* group) { this.group = group; }
     }
 
-    void DEBUG(string fmt, string file = __FILE__, uint line = __LINE__, Args...)(Args args) {
-        .DEBUG!("#ONDEMAND(%s) worker: " ~ fmt, file, line)(&this, args);
+    void DEBUG(string fmt, string file = __FILE__, string mod = __MODULE__, uint line = __LINE__, Args...)(Args args) {
+        .DEBUG!("#ONDEMAND(%s) worker: " ~ fmt, file, mod, line)(&this, args);
     }
     void run() {
         if(defunct) {
