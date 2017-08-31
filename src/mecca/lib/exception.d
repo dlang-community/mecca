@@ -371,7 +371,7 @@ else {
 }
 
 unittest {
-    ASSERT!"oh no"(true, "foobar");
+    ASSERT!"oh no: %s"(true, "foobar");
 }
 
 
