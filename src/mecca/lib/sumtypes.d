@@ -1,8 +1,9 @@
 module mecca.lib.sumtypes;
 
 import mecca.lib.reflection;
+import mecca.log;
 
-struct SumType(CASES_...) {
+@notrace struct SumType(CASES_...) {
     static if (is(typeof(CASES_[$-1]): int)) {
         enum ubyte default_ = CASES_[$-1];
         alias CASES = CASES_[0 .. $-1];

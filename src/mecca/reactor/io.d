@@ -105,7 +105,7 @@ struct ConnectedDatagramSocket {
      * ErrnoException if the connection fails (e.g. - EADDRINUSE if binding to a used port). Also throws this if one of the
      *                  system calls fails.
      */
-    static ConnectedDatagramSocket listen(SockAddr sa) @trusted @nogc {
+    @notrace static ConnectedDatagramSocket listen(SockAddr sa) @trusted @nogc {
         ConnectedDatagramSocket sock = ConnectedDatagramSocket( Socket.socket(sa.family, SOCK_SEQPACKET, 0) );
 
         sock.osCallErrno!(.bind)(&sa.base, SockAddr.sizeof);
@@ -131,7 +131,7 @@ struct ConnectedDatagramSocket {
      *
      * Anything else: May throw any exception injected using throwInFiber.
      */
-    ConnectedDatagramSocket accept(out SockAddr clientAddr) @trusted @nogc {
+    @notrace ConnectedDatagramSocket accept(out SockAddr clientAddr) @trusted @nogc {
         socklen_t len = SockAddr.sizeof;
         int clientFd = sock.blockingCall!(.accept)(&clientAddr.base, &len);
 
@@ -201,7 +201,7 @@ struct ConnectedSocket {
      * ErrnoException if the connection fails (e.g. - EADDRINUSE if binding to a used port). Also throws this if one of the
      *                  system calls fails.
      */
-    static ConnectedSocket listen(SockAddr sa) @trusted @nogc {
+    @notrace static ConnectedSocket listen(SockAddr sa) @trusted @nogc {
         ConnectedSocket sock = ConnectedSocket( Socket.socket(sa.family, SOCK_STREAM, 0) );
 
         sock.osCallErrno!(.bind)(&sa.base, SockAddr.sizeof);
@@ -229,7 +229,7 @@ struct ConnectedSocket {
      *
      * Anything else: May throw any exception injected using throwInFiber.
      */
-    ConnectedSocket accept(out SockAddr clientAddr, bool nodelay = true) @trusted @nogc {
+    @notrace ConnectedSocket accept(out SockAddr clientAddr, bool nodelay = true) @trusted @nogc {
         socklen_t len = SockAddr.sizeof;
         int clientFd = sock.blockingCall!(.accept)(&clientAddr.base, &len);
 
@@ -347,7 +347,7 @@ struct Socket {
     }
 
 private:
-    static Socket socket(sa_family_t domain, int type, int protocol) @trusted @nogc {
+    @notrace static Socket socket(sa_family_t domain, int type, int protocol) @trusted @nogc {
         int fd = .socket(domain, type, protocol);
         errnoEnforceNGC( fd>=0, "socket creation failed" );
 

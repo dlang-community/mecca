@@ -22,13 +22,13 @@ struct _LinkedList(T, string nextAttr, string prevAttr, string ownerAttr, bool w
     private enum MAY_PREFETCH = __traits(compiles, {T t; prefetch(t);});
 
     static if(isPointer!T) pure nothrow @nogc {
-        private static bool isValid(const T t) {
+        private static bool isValid(const T t) pure nothrow @safe @nogc {
             return t !is null;
         }
 
         enum invalid = null;
     } else {
-        private static bool isValid(const T t) {
+        private static bool isValid(const T t) pure nothrow @safe @nogc {
             return t.isValid;
         }
 
@@ -37,24 +37,24 @@ struct _LinkedList(T, string nextAttr, string prevAttr, string ownerAttr, bool w
 
     static assert (!isValid(invalid), "invalid is valid for type " ~ T.stringof);
 
-    static T getNextOf(T node) nothrow {
+    static T getNextOf(T node) nothrow @safe @nogc {
         pragma(inline, true);
         T tmp = mixin("node." ~ nextAttr);
         static if(MAY_PREFETCH) prefetch(tmp);
         return tmp;
     }
-    static void setNextOf(T node, T val) nothrow {
+    static void setNextOf(T node, T val) nothrow @safe @nogc {
         pragma(inline, true);
         mixin("node." ~ nextAttr ~ " = val;");
     }
 
-    static T getPrevOf(T node) nothrow {
+    static T getPrevOf(T node) nothrow @safe @nogc {
         pragma(inline, true);
         T tmp = mixin("node." ~ prevAttr);
         static if (MAY_PREFETCH) prefetch(tmp);
         return tmp;
     }
-    static void setPrevOf(T node, T val) nothrow {
+    static void setPrevOf(T node, T val) nothrow @safe @nogc {
         pragma(inline, true);
         mixin("node." ~ prevAttr ~ " = val;");
     }
@@ -64,7 +64,7 @@ struct _LinkedList(T, string nextAttr, string prevAttr, string ownerAttr, bool w
             pragma(inline, true);
             mixin("return cast(_LinkedList*)(node." ~ ownerAttr ~ ");");
         }
-        private static void clearOwnerOf(T node) nothrow {
+        private static void clearOwnerOf(T node) nothrow @safe @nogc {
             pragma(inline, true);
             mixin("node." ~ ownerAttr ~ " = null;");
         }
@@ -79,7 +79,7 @@ struct _LinkedList(T, string nextAttr, string prevAttr, string ownerAttr, bool w
         return isValid(head) ? getPrevOf(head) : invalid;
     }
 
-    bool _insert(bool after)(T anchor, T node) nothrow {
+    bool _insert(bool after)(T anchor, T node) nothrow @safe @nogc {
         assert (isValid(node), "appending null");
 
         static if (withOwner) {
@@ -127,21 +127,21 @@ struct _LinkedList(T, string nextAttr, string prevAttr, string ownerAttr, bool w
         return true;
     }
 
-    bool insertAfter(T anchor, T node) nothrow {pragma(inline, true);
+    bool insertAfter(T anchor, T node) nothrow @safe @nogc {pragma(inline, true);
         return _insert!true(anchor, node);
     }
-    bool insertBefore(T anchor, T node) nothrow {pragma(inline, true);
+    bool insertBefore(T anchor, T node) nothrow @safe @nogc {pragma(inline, true);
         return _insert!false(anchor, node);
     }
 
-    bool append(T node) nothrow {pragma(inline, true);
+    bool append(T node) nothrow @safe @nogc {pragma(inline, true);
         return insertAfter(tail, node);
     }
-    bool prepend(T node) nothrow {pragma(inline, true);
+    bool prepend(T node) nothrow @safe @nogc {pragma(inline, true);
         return insertBefore(head, node);
     }
 
-    bool remove(T node) nothrow {
+    bool remove(T node) nothrow @safe @nogc {
         assert (isValid(node));
         assert (!empty);
 
@@ -187,7 +187,7 @@ struct _LinkedList(T, string nextAttr, string prevAttr, string ownerAttr, bool w
             return getOwnerOf(node) is &this;
         }
 
-        static bool discard(T node) {
+        static bool discard(T node) nothrow @safe @nogc {
             if (auto owner = getOwnerOf(node)) {
                 return owner.remove(node);
             }
@@ -199,14 +199,14 @@ struct _LinkedList(T, string nextAttr, string prevAttr, string ownerAttr, bool w
         }
     }
 
-    T popHead() nothrow {
+    T popHead() nothrow @safe @nogc {
         auto node = head;
         if (isValid(node)) {
             remove(node);
         }
         return node;
     }
-    T popTail() nothrow {
+    T popTail() nothrow @safe @nogc {
         auto node = tail;
         if (isValid(node)) {
             remove(node);
@@ -377,17 +377,17 @@ unittest {
         ubyte nextIdx = ubyte.max;
         ubyte prevIdx = ubyte.max;
 
-        @property Node* _next() nothrow {
+        @property Node* _next() nothrow @safe @nogc {
             return nextIdx == ubyte.max ? null : &theNodes[nextIdx];
         }
-        @property void _next(Node* n) nothrow {
+        @property void _next(Node* n) nothrow @safe @nogc {
             nextIdx = n is null ? ubyte.max : cast(ubyte)(n - theNodes.ptr);
         }
 
-        @property Node* _prev() nothrow {
+        @property Node* _prev() nothrow @safe @nogc {
             return prevIdx == ubyte.max ? null : &theNodes[prevIdx];
         }
-        @property void _prev(Node* n) nothrow {
+        @property void _prev(Node* n) nothrow @safe @nogc {
             prevIdx = n is null ? ubyte.max : cast(ubyte)(n - theNodes.ptr);
         }
     }
@@ -434,22 +434,22 @@ unittest {
         static struct Ptr {
             ubyte index = ubyte.max;
 
-            @property Node* node() nothrow @nogc {
+            @property Node* node() nothrow @safe @nogc {
                 if (index==ubyte.max)
                     return null;
 
                 return &theNodes[index];
             }
 
-            @property ref Ptr _prev() nothrow @nogc {
+            @property ref Ptr _prev() nothrow @safe @nogc {
                 return node._prev;
             }
 
-            @property ref Ptr _next() nothrow @nogc {
+            @property ref Ptr _next() nothrow @safe @nogc {
                 return node._next;
             }
 
-            bool isValid() const pure nothrow @nogc {
+            bool isValid() const pure nothrow @safe @nogc {
                 return index != ubyte.max;
             }
 
@@ -552,7 +552,7 @@ struct _LinkedQueue(T, string nextAttr, bool withLength) {
         prefetch(tmp);
         return tmp;
     }
-    static void setNextOf(T node, T val) nothrow {
+    static void setNextOf(T node, T val) nothrow @safe @nogc {
         pragma(inline, true);
         mixin("node." ~ nextAttr ~ " = val;");
     }
@@ -567,7 +567,7 @@ struct _LinkedQueue(T, string nextAttr, bool withLength) {
         return head is null;
     }
 
-    void append(T node) nothrow {
+    void append(T node) nothrow @safe @nogc {
         assert (getNextOf(node) is null, "Appending non-free node to list");
         assert (node !is head && node !is tail, "Appending an invalid node to list");
 
@@ -593,7 +593,7 @@ struct _LinkedQueue(T, string nextAttr, bool withLength) {
         static if (withLength) length++;
     }
 
-    T popHead() nothrow {
+    T popHead() nothrow @safe @nogc {
         assert (!empty);
 
         auto node = head;
@@ -772,7 +772,7 @@ unittest {
         @property void _prev(S rhs) pure nothrow @nogc @safe {
         }
         OurList* owner;
-        bool isValid() const pure nothrow @nogc {
+        bool isValid() const pure nothrow @safe @nogc {
             return false;
         }
         enum invalid = S.init;

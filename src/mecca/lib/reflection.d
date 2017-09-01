@@ -6,6 +6,8 @@ public import std.meta;
 import std.conv;
 import std.stdint: intptr_t;
 
+// Disable tracing instrumentation for the whole file
+@("notrace") void traceDisableCompileTimeInstrumentation();
 
 template CapacityType(size_t n) {
     static if (n <= ubyte.max) {

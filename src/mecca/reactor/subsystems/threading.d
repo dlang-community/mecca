@@ -102,7 +102,7 @@ struct DeferredTask {
         return DeferredTaskCookie(timeAdded.cycles);
     }
 
-    void set(alias F)(Parameters!F args) {
+    @notrace void set(alias F)(Parameters!F args) {
         alias R = ReturnType!F;
         static if (is(R == void)) {
             closure.set!F(args);

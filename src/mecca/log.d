@@ -10,6 +10,13 @@ import mecca.lib.reflection: as;
 import mecca.lib.console;
 import mecca.lib.exception: extractStack, DefaultTraceInfoABI;
 
+/**
+ * UDA for disabling auto tracing of a specific function
+ *
+ * Decorate functions that should not be traced with @notrace.
+ */
+enum notrace = "notrace";
+
 /*
    These functions are mostly placeholders. Since we'd sometimes want to replace them with functions that
    do binary logging, the format is part of the function's template.

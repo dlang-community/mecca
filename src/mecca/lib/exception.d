@@ -10,6 +10,8 @@ import core.runtime: Runtime, defaultTraceHandler;
 import mecca.log;
 import mecca.lib.reflection: as;
 
+// Disable tracing instrumentation for the whole file
+@("notrace") void traceDisableCompileTimeInstrumentation();
 
 private extern(C) nothrow @nogc {
     int backtrace(void** buffer, int size);
@@ -378,7 +380,9 @@ unittest {
 //
 // useful assert variants
 //
-void assertOp(string op, L, R, string file = __FILE__, string mod = __MODULE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") {
+void assertOp(string op, L, R, string file = __FILE__, string mod = __MODULE__, size_t line = __LINE__)(L lhs, R rhs, string msg="")
+    nothrow @nogc
+{
     import std.meta: staticIndexOf;
     enum idx = staticIndexOf!(op, "==", "!=", ">", "<", ">=", "<=");
     static assert (idx >= 0);

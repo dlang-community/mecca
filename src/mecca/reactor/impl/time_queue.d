@@ -85,7 +85,7 @@ public:
     }
 
     static if( hasOwner ) {
-        void cancel(T entry) {
+        void cancel(T entry) nothrow @safe @nogc {
             ListType.discard(entry);
         }
     }
@@ -99,7 +99,7 @@ public:
         return TscTimePoint.toDuration(cycles);
     }
 
-    long cyclesTillNextEntry(TscTimePoint now) {
+    long cyclesTillNextEntry(TscTimePoint now) nothrow @safe @nogc {
         ulong binsToGo = binsTillNextEntry();
 
         if( binsToGo == ulong.max )
@@ -158,7 +158,7 @@ private:
         }
     }
 
-    private ulong binsTillNextEntry() {
+    private ulong binsTillNextEntry() nothrow @safe @nogc {
         ulong binsToGo;
         foreach(level; IOTA!numLevels) {
             enum ResPerBin = numBins ^^ level; // Number of resolution units in a single level bin

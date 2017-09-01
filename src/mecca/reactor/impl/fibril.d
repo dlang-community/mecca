@@ -1,5 +1,7 @@
 module mecca.reactor.impl.fibril;
 
+// Disable tracing instrumentation for the whole file
+@("notrace") void traceDisableCompileTimeInstrumentation();
 
 version (D_InlineAsm_X86_64) version (Posix) {
     private pure nothrow @trusted @nogc:
