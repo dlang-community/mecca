@@ -381,14 +381,14 @@ unittest {
             return nextIdx == ubyte.max ? null : &theNodes[nextIdx];
         }
         @property void _next(Node* n) nothrow @safe @nogc {
-            nextIdx = n is null ? ubyte.max : cast(ubyte)(n - theNodes.ptr);
+            nextIdx = n is null ? ubyte.max : cast(ubyte)(n - &theNodes[0]);
         }
 
         @property Node* _prev() nothrow @safe @nogc {
             return prevIdx == ubyte.max ? null : &theNodes[prevIdx];
         }
         @property void _prev(Node* n) nothrow @safe @nogc {
-            prevIdx = n is null ? ubyte.max : cast(ubyte)(n - theNodes.ptr);
+            prevIdx = n is null ? ubyte.max : cast(ubyte)(n - &theNodes[0]);
         }
     }
 

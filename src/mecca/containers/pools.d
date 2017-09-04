@@ -76,7 +76,7 @@ struct FixedPool(T, size_t N) {
         return N - used;
     }
 
-    void open() nothrow @safe @nogc {
+    void open() nothrow @trusted @nogc {
         foreach(i, ref e; elems[0..$-1]) {
             e.nextIdx = cast(IdxType)(i+1);
         }
@@ -121,7 +121,7 @@ struct FixedPool(T, size_t N) {
         return elems[idx].value;
     }
 
-    void release(ref T* obj) nothrow @safe @nogc {
+    void release(ref T* obj) nothrow @trusted @nogc {
         auto idx = indexOf(obj);
         static if (__traits(hasMember, T, "_poolElementFini")) {
             obj._poolElementFini();
