@@ -992,6 +992,9 @@ private:
         fib._nextId = FiberId.invalid;
         fib._owner = null;
         fib.params.flsBlock.reset();
+        static if( !is(LogsFiberSavedContext == void) ) {
+            fib.params.logsSavedContext = LogsFiberSavedContext.init;
+        }
         resumeFiber(fib, immediate);
         return fib;
     }
