@@ -9,6 +9,7 @@ import std.datetime;
 import mecca.lib.reflection: as;
 import mecca.lib.console;
 import mecca.lib.exception: extractStack, DefaultTraceInfoABI;
+import mecca.log.impl;
 
 /**
  * UDA for disabling auto tracing of a specific function
@@ -21,8 +22,6 @@ enum notrace = "notrace";
    These functions are mostly placeholders. Since we'd sometimes want to replace them with functions that
    do binary logging, the format is part of the function's template.
  */
-
-/* thread local */ char[4] logSource = "MAIN";
 
 enum LEVEL_DEBUG     = FG.grey;
 enum LEVEL_INFO      = FG.green;

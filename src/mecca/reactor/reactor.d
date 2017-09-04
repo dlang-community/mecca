@@ -21,43 +21,32 @@ import mecca.lib.exception;
 import mecca.lib.time;
 import mecca.lib.reflection;
 import mecca.lib.memory;
-import mecca.lib.typedid;
 import mecca.log;
+import mecca.log.impl;
 import mecca.platform.linux;
 import mecca.reactor.fiber_group;
 import mecca.reactor.impl.time_queue;
 import mecca.reactor.impl.fibril: Fibril;
 import mecca.reactor.impl.fls;
 import mecca.reactor.subsystems.gc_tracker;
+public import mecca.reactor.types;
 
 import std.stdio;
 
 /// Handle for manipulating registered timers.
 alias TimerHandle = Reactor.TimerHandle;
-/// Fibers' ID type
-alias FiberId = TypedIdentifier!("FiberId", ushort);
 alias FiberIncarnation = ushort;
 
-/// Exception thrown when a fiber is suspended for too long.
-class ReactorTimeout : Exception {
-    this(string file = __FILE__, size_t line = __LINE__, Throwable next = null) @safe pure nothrow @nogc {
-        super("Reactor timed out on a timed suspend", file, line, next);
-    }
-}
-
-class ReactorExit : Throwable {
-    mixin ExceptionBody;
-}
-
 struct ReactorFiber {
-    private enum MaintainLogSource = __traits(compiles, logSource);
-
     struct OnStackParams {
         Closure                 fiberBody;
         GCStackDescriptor       stackDescriptor;
         FiberGroup.Chain        fgChain;
         FLSArea                 flsBlock;
         ExcBuf                  currExcBuf;
+        static if( !is(LogsFiberSavedContext == void) ) {
+            LogsFiberSavedContext       logsSavedContext;
+        }
     }
     enum Flags: ubyte {
         // XXX Do we need CALLBACK_SET?
@@ -208,20 +197,10 @@ private:
         } else {
             FLSArea.switchToNone();
         }
-        auto id = identity.value;
-        static if(MaintainLogSource) {
-            if (id == 0) {
-                logSource = "MAIN";
-            }
-            else if (id == 1) {
-                logSource = "IDLE";
-            }
-            else {
-                logSource[0] = "0123456789abcdef"[(id >> 12) & 0xf];
-                logSource[1] = "0123456789abcdef"[(id >> 8) & 0xf];
-                logSource[2] = "0123456789abcdef"[(id >> 4) & 0xf];
-                logSource[3] = "0123456789abcdef"[id & 0xf];
-            }
+        static if( !is(LogsFiberSavedContext == void) ) {
+            logSwitchFiber(&params.logsSavedContext, identity);
+        } else {
+            logSwitchFiber(identity);
         }
 
         if (flag!"HAS_EXCEPTION") {
