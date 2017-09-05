@@ -8,9 +8,9 @@ version(MeccaAlternateLogger) {
 import mecca.reactor.types;
 
 /* thread local */ char[4] logSource = "MAIN";
-alias LogsFiberSavedContext = void;
+alias LogsFiberSavedContext = void[0];
 
-void logSwitchFiber( FiberId newFiberId ) nothrow @safe @nogc {
+void logSwitchFiber( LogsFiberSavedContext* ctx, FiberId newFiberId ) nothrow @safe @nogc {
     pragma(inline, true);
 
     auto id = newFiberId.value;

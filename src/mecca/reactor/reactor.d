@@ -11,6 +11,7 @@ import core.thread: thread_isMainThread;
 
 import std.exception;
 import std.string;
+import std.traits;
 
 import mecca.containers.lists;
 import mecca.containers.arrays;
@@ -44,9 +45,7 @@ struct ReactorFiber {
         FiberGroup.Chain        fgChain;
         FLSArea                 flsBlock;
         ExcBuf                  currExcBuf;
-        static if( !is(LogsFiberSavedContext == void) ) {
-            LogsFiberSavedContext       logsSavedContext;
-        }
+        LogsFiberSavedContext   logsSavedContext;
     }
     enum Flags: ubyte {
         // XXX Do we need CALLBACK_SET?
@@ -197,11 +196,7 @@ private:
         } else {
             FLSArea.switchToNone();
         }
-        static if( !is(LogsFiberSavedContext == void) ) {
-            logSwitchFiber(&params.logsSavedContext, identity);
-        } else {
-            logSwitchFiber(identity);
-        }
+        logSwitchFiber(&params.logsSavedContext, cast( Parameters!logSwitchFiber[1] )identity);
 
         if (flag!"HAS_EXCEPTION") {
             Throwable ex = params.currExcBuf.get();
@@ -992,9 +987,7 @@ private:
         fib._nextId = FiberId.invalid;
         fib._owner = null;
         fib.params.flsBlock.reset();
-        static if( !is(LogsFiberSavedContext == void) ) {
-            fib.params.logsSavedContext = LogsFiberSavedContext.init;
-        }
+        fib.params.logsSavedContext = LogsFiberSavedContext.init;
         resumeFiber(fib, immediate);
         return fib;
     }
