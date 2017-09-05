@@ -1,3 +1,4 @@
+/// Mecca main entrypoint
 module mecca.runtime.main;
 
 import std.stdio;
@@ -107,13 +108,10 @@ struct ServiceManager {
 
 __gshared ServiceManager serviceManager;
 
-version (unittest) {
+/**
+ * main entrance function for the mecca reactor
+ */
+int meccaMain(string[] argv) {
+    serviceManager.main(argv);
+    return 0;
 }
-else {
-    int main(string[] argv) {
-        serviceManager.main(argv);
-        return 0;
-    }
-}
-
-
