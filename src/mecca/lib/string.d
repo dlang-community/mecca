@@ -1,9 +1,14 @@
 /// Utility functions for handling strings
 module mecca.lib.string;
 
+import std.ascii;
+import std.conv;
+import std.string;
 import std.traits;
+import std.typetuple;
 
 import mecca.lib.exception;
+import mecca.log;
 
 /**
  * Convert a D string to a C style null terminated pointer
@@ -113,5 +118,634 @@ unittest {
     assert (strlen(ToStringz!64("mishmish")) == 8);
 }
 
+
+private enum FMT: ubyte {
+    STR,
+    CHR,
+    DEC,
+    HEX,
+    PTR,
+    FLT,
+}
+
+@notrace
+ulong getNextNonDigitFrom(string fmt){
+    ulong idx;
+    foreach(c; fmt){
+        if ("0123456789+-.".indexOf(c) < 0) {
+            return idx;
+        }
+        ++idx;
+    }
+    return idx;
+}
+
+template splitFmt(string fmt) {
+    template pair(int j, FMT f) {
+        enum size_t pair = (j << 8) | (cast(ubyte)f);
+    }
+
+    template helper(int from, int j) {
+        enum idx = fmt[from .. $].indexOf('%');
+        static if (idx < 0) {
+            enum helper = TypeTuple!(fmt[from .. $]);
+        }
+        else {
+            enum idx1 = idx + from;
+            static if (idx1 >= fmt.length - 1) {
+                static assert (false, "Expected formatter after %");
+            }else{
+                enum idx2 = idx1 + getNextNonDigitFrom(fmt [idx1+1 .. $]);
+                //pragma(msg, fmt);
+                //pragma(msg, idx2);
+                static if (fmt[idx2+1] == 's') {
+                    enum helper = TypeTuple!(fmt[from .. idx2], pair!(j, FMT.STR), helper!(idx2+2, j+1));
+                }
+                else static if (fmt[idx2+1] == 'c') {
+                    enum helper = TypeTuple!(fmt[from .. idx2], pair!(j, FMT.CHR), helper!(idx2+2, j+1));
+                }
+                else static if (fmt[idx2+1] == 'n') {
+                    enum helper = TypeTuple!(fmt[from .. idx2], pair!(j, FMT.STR), helper!(idx2+2, j+1));
+                }
+                else static if (fmt[idx2+1] == 'd') {
+                    enum helper = TypeTuple!(fmt[from .. idx2], pair!(j, FMT.DEC), helper!(idx2+2, j+1));
+                }
+                else static if (fmt[idx2+1] == 'x') {
+                    enum helper = TypeTuple!(fmt[from .. idx2], pair!(j, FMT.HEX), helper!(idx2+2, j+1));
+                }
+                else static if (fmt[idx2+1] == 'b') {  // should be binary, but use hex for now
+                    enum helper = TypeTuple!(fmt[from .. idx2], pair!(j, FMT.HEX), helper!(idx2+2, j+1));
+                }
+                else static if (fmt[idx2+1] == 'p') {
+                    enum helper = TypeTuple!(fmt[from .. idx2], pair!(j, FMT.PTR), helper!(idx2+2, j+1));
+                }
+                else static if (fmt[idx2+1] == 'f' || fmt[idx2+1] == 'g') {
+                    enum helper = TypeTuple!(fmt[from .. idx2], pair!(j, FMT.FLT), helper!(idx2+2, j+1));
+                }
+                else static if (fmt[idx2+1] == '%') {
+                    enum helper = TypeTuple!(fmt[from .. idx2+1], helper!(idx2+2, j));
+                }
+                else {
+                    static assert (false, "Invalid formatter '"~fmt[idx2+1]~"'");
+                }
+            }
+        }
+    }
+
+    template countFormatters(tup...) {
+        static if (tup.length == 0) {
+            enum countFormatters = 0;
+        }
+        else static if (is(typeof(tup[0]) == size_t)) {
+            enum countFormatters = 1 + countFormatters!(tup[1 .. $]);
+        }
+        else {
+            enum countFormatters = countFormatters!(tup[1 .. $]);
+        }
+    }
+
+    alias tokens = helper!(0, 0);
+    alias numFormatters = countFormatters!tokens;
+}
+
+@notrace @nogc char[] formatDecimal(size_t W = 0, char fillChar = ' ', T)(char[] buf, T val) pure nothrow if (is(typeof({ulong v = val;}))) {
+    const neg = (isSigned!T) && (val < 0);
+    size_t len = neg ? 1 : 0;
+    ulong v = neg ? -val : val;
+
+    auto tmp = v;
+    while (tmp) {
+        tmp /= 10;
+        len++;
+    }
+    static if (W > 0) {
+        if (W > len) {
+            buf[0 .. W - len] = fillChar;
+            len = W;
+        }
+    }
+
+    if (v == 0) {
+        static if (W > 0) {
+            buf[len-1] = '0';
+        }
+        else {
+            buf[len++] = '0';
+        }
+    }
+    else {
+        auto idx = len;
+        while (v) {
+            buf[--idx] = "0123456789"[v % 10];
+            v /= 10;
+        }
+        if (neg) {
+            buf[--idx] = '-';
+        }
+    }
+    return buf[0 .. len];
+}
+
+@notrace @nogc char[] formatDecimal(char[] buf, bool val) pure nothrow {
+    if (val) {
+        return cast(char[])"1";
+    }
+    return cast(char[])"0";
+}
+
+unittest {
+    char[100] buf;
+    assert (formatDecimal!10(buf, -1234) == "     -1234");
+    assert (formatDecimal!10(buf, 0)     == "         0");
+    assert (formatDecimal(buf, -1234)    == "-1234");
+    assert (formatDecimal(buf, 0)        == "0");
+    assert (formatDecimal!3(buf, 1234)   == "1234");
+    assert (formatDecimal!3(buf, -1234)  == "-1234");
+    assert (formatDecimal!3(buf, 0)      == "  0");
+    assert (formatDecimal!(3,'0')(buf, 0)      == "000");
+    assert (formatDecimal!(3,'a')(buf, 0)      == "aa0");
+    assert (formatDecimal!(10, '0')(buf, -1234) == "00000-1234");
+}
+
+@notrace @nogc char[] formatHex(size_t W=0)(char[] buf, ulong val) pure nothrow {
+    size_t len = 0;
+    auto v = val;
+
+    while (v) {
+        v >>= 4;
+        len++;
+    }
+    static if (W > 0) {
+        if (W > len) {
+            buf[0 .. W - len] = '0';
+            len = W;
+        }
+    }
+
+    v = val;
+    if (v == 0) {
+        static if (W == 0) {
+            buf[0] = '0';
+            len = 1;
+        }
+    }
+    else {
+        auto idx = len;
+        while (v) {
+            buf[--idx] = "0123456789ABCDEF"[v & 0x0f];
+            v >>= 4;
+        }
+    }
+    return buf[0 .. len];
+}
+
+unittest {
+    import mecca.lib.exception;
+    char[100] buf;
+    assertEQ(formatHex(buf, 0x123), "123");
+    assertEQ(formatHex!10(buf, 0x123), "0000000123");
+    assertEQ(formatHex(buf, 0), "0");
+    assertEQ(formatHex!10(buf, 0), "0000000000");
+    assertEQ(formatHex!10(buf, 0x123456789), "0123456789");
+    assertEQ(formatHex!10(buf, 0x1234567890), "1234567890");
+    assertEQ(formatHex!10(buf, 0x1234567890a), "1234567890A");
+}
+
+@notrace @nogc char[] formatPtr(char[] buf, ulong p) pure nothrow {
+    return formatPtr(buf, cast(void*)p);
+}
+
+@notrace @nogc char[] formatPtr(char[] buf, const void* p) pure nothrow {
+    if (p is null) {
+        buf[0 .. 4] = "null";
+        return buf[0 .. 4];
+    }
+    else {
+        import std.stdint : intptr_t;
+        return formatHex!((void*).sizeof*2)(buf, cast(intptr_t)p);
+    }
+}
+
+@notrace @nogc char[] formatFloat(char[] buf, double val) pure nothrow {
+    assert (false, "Not implemented");
+}
+
+@notrace @nogc string enumToStr(E)(E value) pure nothrow {
+    switch (value) {
+        foreach(name; __traits(allMembers, E)) {
+            case __traits(getMember, E, name):
+                return name;
+        }
+        default:
+            return null;
+    }
+}
+
+unittest {
+    import mecca.lib.exception;
+    import std.string: format, toUpper;
+    char[100] buf;
+    int p;
+
+    assertEQ(formatPtr(buf, 0x123), "0000000000000123");
+    assertEQ(formatPtr(buf, 0), "null");
+    assertEQ(formatPtr(buf, null), "null");
+    assertEQ(formatPtr(buf, &p), format("%016x", &p).toUpper);
+}
+
+@notrace @nogc string nogcFormat(string fmt, T...)(char[] buf, T args) pure nothrow {
+    alias sfmt = splitFmt!fmt;
+    static assert (sfmt.numFormatters == T.length, "Expected " ~ text(sfmt.numFormatters) ~
+        " arguments, got " ~ text(T.length));
+
+    char[] p = buf;
+    @nogc pure nothrow
+    void advance(const(char[]) str) {
+        p = p[str.length..$];
+    }
+    @nogc pure nothrow
+    void write(const(char[]) str) {
+        p[0..str.length] = str;
+        advance(str);
+    }
+    foreach(tok; sfmt.tokens) {
+        static if (is(typeof(tok) == string)) {
+            static if (tok.length > 0) {
+                write(tok);
+            }
+        }
+        else static if (is(typeof(tok) == size_t)) {
+            enum j = tok >> 8;
+            enum f = cast(FMT)(tok & 0xff);
+            static if (__traits(hasMember, T[j], "UnderlyingType")) {
+                // TODO: Use the fmt attribute from the typed identifier
+                alias Typ = T[j].UnderlyingType;
+                auto val = args[j].value;
+            } else {
+                alias Typ = T[j];
+                auto val = args[j];
+            }
+
+            static if (f == FMT.STR) {
+                static if (is(Typ == string) || is(Typ == char[])) {
+                    write(val);
+                }
+                else static if (is(Typ == enum)) {
+                    auto tmp = enumToStr(val);
+                    if (tmp is null) {
+                        advance(nogcFormat!"%s(%d)"(p, Typ.stringof, val));
+                    } else {
+                        write(tmp);
+                    }
+                }
+                else static if (isPointer!(Typ)) {
+                    advance(formatPtr(p, val));
+                }
+                else static if (is(Typ : ulong)) {
+                    advance(formatDecimal(p, val));
+                } else {
+                    static assert (false, "Expected string, enum or integer, not " ~ Typ.stringof);
+                }
+            }
+            else static if (f == FMT.CHR) {
+                static assert (is(T[j] : char));
+                write((&val)[0..1]);
+            }
+            else static if (f == FMT.DEC) {
+                static assert (is(T[j] : ulong));
+                advance(formatDecimal(p, val));
+            }
+            else static if (f == FMT.HEX) {
+                static assert (is(T[j] : ulong));
+                write("0x");
+                advance(formatHex(p, val));
+            }
+            else static if (f == FMT.PTR) {
+                static assert (is(T[j] : ulong) || isPointer!(T[j]));
+                advance(formatPtr(p, val));
+            }
+            else static if (f == FMT.FLT) {
+                static assert (is(T[j] : double));
+                advance(formatFloat(p, val));
+            }
+        }
+        else {
+            static assert (false);
+        }
+    }
+
+    auto len = p.ptr - buf.ptr;
+    return cast(string)buf[0 .. len];
+}
+
+@notrace @nogc string nogcFormatTmp(string fmt, T...)(T args) nothrow {
+    // the lengths i have to go to fool `pure`
+    static __gshared char[1024] tmpBuf;
+
+    return nogcFormat!fmt(cast(char[])tmpBuf, args);
+}
+
+unittest {
+    char[100] buf;
+    assert (nogcFormat!"hello %s %% world %d %x %p"(buf, "moshe", -567, 7, 7) == "hello moshe % world -567 0x7 0000000000000007");
+}
+
+unittest {
+    import std.exception;
+    import core.exception : RangeError;
+
+    char[10] res;
+
+    assert(nogcFormat!"abcd abcd"(res) == "abcd abcd");
+    assert(nogcFormat!"123456789a"(res) == "123456789a");
+    version (D_NoBoundsChecks) {} else {
+        assertThrown!RangeError(nogcFormat!"123412341234"(res));
+    }
+
+    // literal escape
+    assert(nogcFormat!"123 %%"(res) == "123 %");
+    assert(nogcFormat!"%%%%"(res) == "%%");
+
+    // %d
+    assert(nogcFormat!"%d"(res, 1234) == "1234");
+    assert(nogcFormat!"ab%dcd"(res, 1234) == "ab1234cd");
+    assert(nogcFormat!"ab%d%d"(res, 1234, 56) == "ab123456");
+
+    // %x
+    assert(nogcFormat!"%x"(res, 0x1234) == "0x1234");
+
+    // %p
+    char[20] res2;
+    assert(nogcFormat!"%p"(res2, 0x1234) == "0000000000001234");
+
+    // %s
+    assert(nogcFormat!"12345%s"(res, "12345") == "1234512345");
+    assert(nogcFormat!"12345%s"(res, 12345) == "1234512345");
+    enum Floop {XXX, YYY, ZZZ}
+    assert(nogcFormat!"12345%s"(res, Floop.YYY) == "12345YYY");
+
+    // Arg num
+    static assert(!__traits(compiles, nogcFormat!"abc"(res, 5)));
+    static assert(!__traits(compiles, nogcFormat!"%d"(res)));
+    static assert(!__traits(compiles, nogcFormat!"%d a %d"(res, 5)));
+
+    // Format error
+    static assert(!__traits(compiles, nogcFormat!"%"(res)));
+    static assert(!__traits(compiles, nogcFormat!"abcd%d %"(res, 15)));
+    static assert(!__traits(compiles, nogcFormat!"%$"(res, 1)));
+    //static assert(!__traits(compiles, nogcFormat!"%s"(res, 1)));
+    static assert(!__traits(compiles, nogcFormat!"%d"(res, "hello")));
+    static assert(!__traits(compiles, nogcFormat!"%x"(res, "hello")));
+}
+
+@notrace @nogc nothrow pure
+string nogcRtFormat(T...)(char[] buf, string fmt, T args) {
+    size_t fmtIdx = 0;
+    size_t bufIdx = 0;
+
+    @notrace @nogc nothrow pure
+    char nextFormatter() {
+        while (true) {
+            long pctIdx = -1;
+            foreach(j, ch; fmt[fmtIdx .. $]) {
+                if (ch == '%') {
+                    pctIdx = fmtIdx + j;
+                    break;
+                }
+            }
+            if (pctIdx < 0) {
+                return 's';
+            }
+
+            auto fmtChar = (pctIdx < fmt.length - 1) ? fmt[pctIdx + 1] : 's';
+
+            auto tmp = fmt[fmtIdx .. pctIdx];
+            buf[bufIdx .. bufIdx + tmp.length] = tmp;
+            bufIdx += tmp.length;
+            fmtIdx = pctIdx + 2;
+
+            if (fmtChar == '%') {
+                buf[bufIdx++] = '%';
+                continue;
+            }
+            return fmtChar;
+        }
+    }
+
+    foreach(i, U; T) {
+        auto fmtChar = nextFormatter();
+
+        static if (is(U == string) || is(U: char[])) {
+            assert (fmtChar == 's'/*, text(fmtChar)*/);
+            buf[bufIdx .. bufIdx + args[i].length] = args[i];
+            bufIdx += args[i].length;
+        }
+        else static if (is(U == char*) || is(U == const(char)*) || is (U == const(char*))) {
+            if (fmtChar == 's') {
+                auto tmp = fromStringz(args[i]);
+                buf[bufIdx .. bufIdx + tmp.length] = tmp;
+                bufIdx += tmp.length;
+            }
+            else if (fmtChar == 'p') {
+                bufIdx += formatPtr(buf[bufIdx .. $], args[i]).length;
+            }
+            else {
+                assert (false /*, text(fmtChar)*/);
+            }
+        }
+        else static if (is(U == enum)) {
+            if (fmtChar == 's') {
+                auto tmp = enumToStr(args[i]);
+                if (tmp is null) {
+                    bufIdx += nogcFormat!"%s(%d)"(buf[bufIdx .. $], U.stringof, args[i]).length;
+                }
+                else {
+                    buf[bufIdx .. bufIdx + tmp.length] = tmp;
+                    bufIdx += tmp.length;
+                }
+            }
+            else if (fmtChar == 'x') {
+                buf[bufIdx .. bufIdx + 2] = "0x";
+                bufIdx += 2;
+                bufIdx += formatHex(buf[bufIdx .. $], args[i]).length;
+            }
+            else if (fmtChar == 'p') {
+                bufIdx += formatPtr(buf[bufIdx .. $], args[i]).length;
+            }
+            else if (fmtChar == 's' || fmtChar == 'd') {
+                bufIdx += formatDecimal(buf[bufIdx .. $], args[i]).length;
+            }
+            else {
+                assert (false /*, text(fmtChar)*/);
+            }
+        }
+        else static if (is(U : ulong)) {
+            if (fmtChar == 'x') {
+                buf[bufIdx .. bufIdx + 2] = "0x";
+                bufIdx += 2;
+                bufIdx += formatHex(buf[bufIdx .. $], args[i]).length;
+            }
+            else if (fmtChar == 'p') {
+                bufIdx += formatPtr(buf[bufIdx .. $], args[i]).length;
+            }
+            else if (fmtChar == 's' || fmtChar == 'd') {
+                bufIdx += formatDecimal(buf[bufIdx .. $], args[i]).length;
+            }
+            else {
+                assert (false /*, text(fmtChar)*/);
+            }
+        }
+        else static if (is(U == TypedIdentifier!X, X...)) {
+            bufIdx += nogcFormat!"%s(%d)"(buf[bufIdx .. $], U.name, args[i].value).length;
+        }
+        else static if (isPointer!U) {
+            bufIdx += formatPtr(buf[bufIdx .. $], args[i]).length;
+        }
+        else {
+            static assert (false, "Cannot format " ~ U.stringof);
+        }
+    }
+
+    // tail
+    if (fmtIdx < fmt.length) {
+        auto tmp = fmt[fmtIdx .. $];
+        buf[bufIdx .. bufIdx + tmp.length] = tmp;
+        bufIdx += tmp.length;
+    }
+
+    return cast(string)buf[0 .. bufIdx];
+}
+
+unittest {
+    import mecca.lib.exception;
+    char[100] buf;
+    assertEQ(nogcRtFormat(buf, "hello %% %s world %d", "moshe", 15), "hello % moshe world 15");
+}
+
+
+template HexFormat(T) if( isIntegral!T )
+{
+    static if( T.sizeof == 1 )
+        enum HexFormat = "%02x";
+    else static if( T.sizeof == 2 )
+        enum HexFormat = "%04x";
+    else static if( T.sizeof == 4 )
+        enum HexFormat = "%08x";
+    else static if( T.sizeof == 8 )
+        enum HexFormat = "%016x";
+    else
+        static assert(false);
+}
+
+@notrace static string hexArray(T)( const T[] array ) if( isIntegral!T ) {
+    import std.string;
+    auto res = "[";
+    foreach( i, element; array ) {
+        if( i==0 )
+            res ~= " ";
+        else
+            res ~= ", ";
+
+        res ~= format(HexFormat!T, element);
+    }
+    res ~= " ]";
+    return res;
+}
+
+
+@notrace string buildStructFormatCode(string fmt, string structName, string conversionFunction = "text") {
+    string iter = fmt[];
+    string result = "`";
+    while (0 < iter.length) {
+        auto phStart = iter.indexOf('{');
+        auto phEnd = iter.indexOf('}');
+
+        // End of format string
+        if (phStart < 0 && phEnd < 0) {
+            result ~= iter;
+            break;
+        }
+
+        assert (0 <= phStart, "single '}' in `" ~ fmt ~ "`");
+        assert (0 <= phEnd, "single '{' in `" ~ fmt ~ "`");
+        assert (phStart < phEnd, "single '}' in `" ~ fmt ~ "`");
+
+        result ~= iter[0 .. phStart];
+        result ~= "` ~ " ~ conversionFunction ~ "(" ~ structName ~ "." ~ iter[phStart + 1 .. phEnd] ~ ") ~ `";
+        iter = iter[phEnd + 1 .. $];
+    }
+    return result ~ "`";
+}
+
+unittest {
+    struct Foo {
+        int x;
+        string y;
+    }
+    string formatFoo(Foo foo) {
+        return mixin(buildStructFormatCode("x is {x} and y is {y}", "foo"));
+    }
+    assert (formatFoo(Foo(1, "a")) == "x is 1 and y is a");
+    assert (formatFoo(Foo(2, "b")) == "x is 2 and y is b");
+}
+
+struct StaticFormatter {
+    char[] buf;
+    size_t offset;
+
+    this(char[] buf) @nogc nothrow @safe {
+        this.buf = buf;
+        offset = 0;
+    }
+    @notrace void rewind() nothrow @nogc {
+        offset = 0;
+    }
+    @notrace void append(char ch) @nogc {
+        buf[offset .. offset + 1] = ch;
+        offset++;
+    }
+    @notrace void append(string s) @nogc {
+        buf[offset .. offset + s.length] = s;
+        offset += s.length;
+    }
+    @notrace void append(string FMT, T...)(T args) @nogc {
+        auto s = nogcFormat!FMT(buf[offset .. $], args);
+        offset += s.length;
+    }
+    @notrace void accumulate(const(char)[] function(char[]) @nogc dg) @nogc {
+        auto s = dg(remaining);
+        assert(cast(void*)s.ptr == remaining.ptr, "dg() returned wrong buffer");
+        skip(s.length);
+    }
+    @notrace void accumulate(const(char)[] delegate(char[]) @nogc dg) @nogc {
+        auto s = dg(remaining);
+        assert(cast(void*)s.ptr == remaining.ptr, "dg() returned wrong buffer");
+        skip(s.length);
+    }
+    @notrace void accumulate(alias F, T...)(T args) @nogc {
+        auto s = F(remaining, args);
+        assert(cast(void*)s.ptr == remaining.ptr, "dg() returned wrong buffer");
+        skip(s.length);
+    }
+
+    @property string text() @nogc {
+        return cast(string)buf[0 .. offset];
+    }
+    @property char[] remaining() @nogc {
+        return buf[offset .. $];
+    }
+    @notrace void skip(size_t count) @nogc {
+        assert (offset + count <= buf.length, "overflow");
+        offset += count;
+    }
+}
+
+unittest {
+    char[100] buf;
+    auto sf = StaticFormatter(buf);
+    sf.append!"a=%s b=%s "(1, 2);
+    sf.append!"c=%s d=%s"(3, 4);
+    assert(sf.text == "a=1 b=2 c=3 d=4", sf.text);
+}
 
 

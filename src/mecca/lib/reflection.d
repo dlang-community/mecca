@@ -505,3 +505,55 @@ template StaticRegex(string exp, string flags = "") {
     }
 }
 
+/// Replace std.traits.ForeachType with one that works when the item is copyable or not
+template ForeachTypeof (T) {
+    alias TU = Unqual!T;
+    static if(__traits(compiles, {foreach(x; TU.init) {}})) {
+        alias ForeachTypeof = ReturnType!({ foreach(x;TU.init) { return x; } assert(0); });
+    } else {
+        alias ForeachTypeof = PointerTarget!(ReturnType!({ foreach(ref x;TU.init) { return &x; } assert(0); }));
+    }
+}
+
+unittest {
+    struct A{ @disable this(this); }
+    struct B{ int opApply(int delegate(int x) dlg) { return 0; } }
+    alias AF = ForeachTypeof!(A[]);
+    alias BF = ForeachTypeof!B;
+    alias IF = ForeachTypeof!(int[5]);
+}
+
+template isIntegralDynamicArray (T) {
+    //pragma(msg, format("isIntegralDynamicArray!%s", T.stringof));
+    static if(isDynamicArray!T){
+        //pragma(msg, "Dynamic");
+        static if (is (T == void[]) || is (T == const(void[])) || is (T == const(void)[]) || is (T == enum)) {
+            enum bool isIntegralDynamicArray = false; //ForeachType explodes on void[]
+        }else{
+            alias TT = ForeachTypeof!T;
+            //pragma(msg, TT.stringof);
+            import mecca.lib.typedid : isTypedIdentifier;
+            static if (isTypedIdentifier!TT) {
+                alias TTT = const(TT.UnderlyingType);
+            } else {
+                alias TTT = const(TT);
+            }
+            enum bool isIntegralDynamicArray =
+                (is (TTT == const(byte))  || is (TTT == const(ubyte))  ||
+                 is (TTT == const(char))  || is (TTT == const(bool))   ||
+                 is (TTT == const(short)) || is (TTT == const(ushort)) ||
+                 is (TTT == const(int))   || is (TTT == const(uint))   ||
+                 is (TTT == const(long))  || is (TTT == const(ulong))  );
+        }
+    }else{
+        enum bool isIntegralDynamicArray = false;
+    }
+    //pragma(msg, format("isIntegralDynamicArray!%s = %s", T.stringof, isIntegralDynamicArray));
+}
+
+unittest {
+    enum E : string { e = "e" }
+    static assert(isDynamicArray!E);
+    static assert(!isIntegralDynamicArray!E);
+}
+

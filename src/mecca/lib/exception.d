@@ -31,9 +31,9 @@ shared static this() {
     }
 }
 
-void*[] extractStack(void*[] callstack) nothrow @trusted @nogc {
+void*[] extractStack(void*[] callstack, size_t skip = 0) nothrow @trusted @nogc {
     auto numFrames = backtrace(callstack.ptr, cast(int)callstack.length);
-    auto res = callstack[0 .. numFrames];
+    auto res = callstack[skip .. numFrames];
 
     // Adjust the locations by one byte so they point inside the function (as
     // required by backtrace_symbols) even if the call to _d_throw_exception
