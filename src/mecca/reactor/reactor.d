@@ -144,13 +144,14 @@ private:
         params.stackDescriptor.tstack = fibril.rsp;
     }
 
-    void wrapper() nothrow {
+    @notrace void wrapper() nothrow {
         while (true) {
             try {
                 switchInto();
             } catch(Throwable ex) {
                 ASSERT!"Fiber %s had exception at the very beginning of its run"(false, identity);
             }
+            params.logsSavedContext = LogsFiberSavedContext.init;
             INFO!"wrapper on %s flags=0x%0x"(identity, _flags);
 
             assert (theReactor.thisFiber is &this, "this is wrong");
@@ -987,7 +988,6 @@ private:
         fib._nextId = FiberId.invalid;
         fib._owner = null;
         fib.params.flsBlock.reset();
-        fib.params.logsSavedContext = LogsFiberSavedContext.init;
         resumeFiber(fib, immediate);
         return fib;
     }
