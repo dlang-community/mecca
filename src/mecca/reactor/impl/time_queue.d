@@ -112,7 +112,7 @@ public:
         return wait;
     }
 
-    T pop(TscTimePoint now) {
+    @notrace T pop(TscTimePoint now) {
         while (now >= poppedTime) {
             auto e = bins[0][offset % numBins].popHead();
             if (e !is null) {

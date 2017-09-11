@@ -101,7 +101,7 @@ align(1):
         _prevId = to!FiberId(newPrev);
     }
 
-    void setup(void[] stackArea) nothrow @nogc {
+    @notrace void setup(void[] stackArea) nothrow @nogc {
         fibril.set(stackArea[0 .. $ - OnStackParams.sizeof], &wrapper);
         params = cast(OnStackParams*)&stackArea[$ - OnStackParams.sizeof];
         setToInit(params);
@@ -542,9 +542,10 @@ public:
       This function "returns" only after the reactor is stopped and no more fibers are running.
      */
     void start() {
-        META!"Starting reactor"();
+        META!"Reactor started"();
         assert( idleFiber !is null, "Reactor started without calling \"setup\" first" );
         mainloop();
+        META!"Reactor stopped"();
     }
 
     /**

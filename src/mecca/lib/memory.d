@@ -8,6 +8,7 @@ import core.sys.posix.fcntl;
 import core.sys.posix.unistd;
 import core.sys.linux.sys.mman: MAP_ANONYMOUS, MAP_POPULATE;
 
+import mecca.log;
 
 enum SYS_PAGE_SIZE = 4096;
 
@@ -128,7 +129,7 @@ struct GCStackDescriptor {
     pragma(mangle, "_D4core6thread6Thread6_locksG2G72v") extern __gshared static void[__traits(classInstanceSize, Mutex)][2] _locks;
     pragma(mangle, "_D4core6thread6Thread7sm_cbegPS4core6thread6Thread7Context") extern __gshared static  GCStackDescriptor* sm_cbeg;
 
-    void add() nothrow @nogc {
+    @notrace void add() nothrow @nogc {
         auto slock = cast(Mutex)_locks[0].ptr;
         slock.lock_nothrow();
         scope(exit) slock.unlock_nothrow();
@@ -140,7 +141,7 @@ struct GCStackDescriptor {
         sm_cbeg = &this;
     }
 
-    void remove() nothrow @nogc {
+    @notrace void remove() nothrow @nogc {
         if (this.prev) {
             this.prev.next = this.next;
         }

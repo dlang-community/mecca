@@ -5,6 +5,7 @@ import core.thread: thread_isMainThread;
 import std.string;
 import std.stdint: intptr_t;
 
+import mecca.log;
 
 /******************************************************************************************************
  * Lock-free 1-to-many queue, either single consumer multi producers, or single producer multi
@@ -109,7 +110,7 @@ align(8) struct _OneToManyQueue(T, size_t _capacity, bool singleConsumerMultiPro
         }
     }
 
-    version(unittest) void sanity() nothrow @nogc {
+    version(unittest) @notrace void sanity() nothrow @nogc {
         static if (singleConsumerMultiProducers) {
             const ridx = atomicLoad!(MemoryOrder.raw)(readIndex);
             const widx = atomicLoad!(MemoryOrder.raw)(writeIndex);
@@ -117,7 +118,7 @@ align(8) struct _OneToManyQueue(T, size_t _capacity, bool singleConsumerMultiPro
         }
     }
 
-    bool pop(out T val) nothrow @nogc {
+    @notrace bool pop(out T val) nothrow @nogc {
         version (unittest) {
             sanity();
             scope(exit) sanity();
@@ -169,7 +170,7 @@ align(8) struct _OneToManyQueue(T, size_t _capacity, bool singleConsumerMultiPro
         return true;
     }
 
-    bool push(T val) nothrow @nogc {
+    @notrace bool push(T val) nothrow @nogc {
         assert (cast(U)val >> dataBits == 0, "MSB of val must be clear");
         assert (_effectiveCapacity < capacity - 1, "No producers have registered");
         U val2 = cast(U)((cast(U)val) << 1);
@@ -412,11 +413,11 @@ struct DuplexQueue(T, size_t capacity) {
     //
     // submit
     //
-    bool submitRequest(T val) nothrow @nogc {
+    @notrace bool submitRequest(T val) nothrow @nogc {
         pragma(inline, true);
         return inputs.push(val);
     }
-    bool pullResult(out T val) nothrow @nogc {
+    @notrace bool pullResult(out T val) nothrow @nogc {
         pragma(inline, true);
         return outputs.pop(val);
     }
@@ -424,11 +425,11 @@ struct DuplexQueue(T, size_t capacity) {
     //
     // worker-thread APIs
     //
-    bool pullRequest(out T val) nothrow @nogc {
+    @notrace bool pullRequest(out T val) nothrow @nogc {
         pragma(inline, true);
         return inputs.pop(val);
     }
-    bool submitResult(T val) nothrow @nogc {
+    @notrace bool submitResult(T val) nothrow @nogc {
         pragma(inline, true);
         return outputs.push(val);
     }

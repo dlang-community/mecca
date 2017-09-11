@@ -21,6 +21,7 @@ module mecca.containers.pools;
 import std.string;
 import mecca.lib.memory: MmapArray;
 import mecca.lib.reflection;
+import mecca.log;
 
 
 class PoolDepleted: Error {
@@ -121,7 +122,7 @@ struct FixedPool(T, size_t N) {
         return elems[idx].value;
     }
 
-    void release(ref T* obj) nothrow @trusted @nogc {
+    @notrace void release(ref T* obj) nothrow @trusted @nogc {
         auto idx = indexOf(obj);
         static if (__traits(hasMember, T, "_poolElementFini")) {
             obj._poolElementFini();

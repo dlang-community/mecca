@@ -10,12 +10,13 @@ import core.sys.posix.unistd: isatty;
 import core.runtime: Runtime;
 
 import mecca.lib.console;
+import mecca.log;
 
 shared static this() {
     Runtime.moduleUnitTester = (){return true;};
 }
 
-int main(string[] argv) {
+@notrace int main(string[] argv) {
     bool tty = isatty(1) != 0;
 
     void logLine(string text) {
@@ -70,6 +71,7 @@ int main(string[] argv) {
     bool failed = false;
     auto startTime = MonoTime.currTime();
 
+    META!"Started UT of %s (a total of %s found)"(buildNormalizedPath(argv[0].absolutePath()), totalUTs);
     logLine(FG.icyan("Started UT of %s (a total of %s found)".format(buildNormalizedPath(argv[0].absolutePath()), totalUTs)));
 
     foreach(m; ModuleInfo) {
@@ -85,11 +87,13 @@ int main(string[] argv) {
         }
 
         counter++;
+        META!"Running UT of %s"(m.name);
         logLine(FG.yellow("Running UT of ") ~ FG.iwhite(m.name));
         try {
             fp();
         }
         catch (Throwable ex) {
+            ERROR!"UT failed!"();
             logLine(FG.red("UT failed!"));
             auto seenSep = false;
             foreach(line; ex.toString().lineSplitter()) {
@@ -120,14 +124,17 @@ int main(string[] argv) {
     auto secs = (endTime - startTime).total!"msecs" / 1000.0;
 
     if (failed) {
+        META!"Failed. Ran %s unittests in %.2f seconds"(counter, secs);
         logLine(FG.ired("Failed. Ran %s unittests in %.2f seconds".format(counter, secs)));
         return 1;
     }
     else if (counter == 0) {
+        META!"Did not find any unittest to run"();
         logLine(FG.ired("Did not find any unittests to run"));
         return 2;
     }
     else {
+        META!"Success. Ran %s unittests in %.2f seconds"(counter, secs);
         logLine(FG.igreen("Success. Ran %s unittests in %.2f seconds".format(counter, secs)));
         return 0;
     }
