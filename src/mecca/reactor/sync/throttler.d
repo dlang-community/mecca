@@ -89,11 +89,11 @@ private:
             tokenBallance = burstSize;
     }
 
-    bool mayWithdraw(ulong tokens) {
+    bool mayWithdraw(ulong tokens) nothrow @safe @nogc {
         return tokenBallance >= (AllowOverdraft ? 0 : tokens);
     }
 
-    Duration calcSleepDuration(ulong tokens) {
+    Duration calcSleepDuration(ulong tokens) nothrow @safe @nogc {
         DBG_ASSERT!"calcSleepDuration called, but can withdraw right now"( !mayWithdraw(tokens) );
         long numMissingTokens = (AllowOverdraft ? 0 : tokens) - tokenBallance;
         DBG_ASSERT!"negative missing %s: requested %s have %s"(numMissingTokens>0, numMissingTokens, tokens, tokenBallance);
