@@ -1,3 +1,4 @@
+/// Manage signals as reactor callbacks
 module mecca.reactor.io.signal;
 
 import core.sys.posix.signal;
@@ -50,6 +51,9 @@ private {
     }
 }
 
+/**
+ * A singleton managing registered signals
+ */
 private struct ReactorSignal {
     alias SignalHandler = void delegate(const ref signalfd_siginfo siginfo) nothrow @safe @nogc;
 private:
@@ -62,6 +66,11 @@ private:
 
     SignalHandler[NUM_SIGS] handlers;
 public:
+    /**
+     * Must be called prior to registering any signals.
+     *
+     * Must be called after the reactor is open, and also after ReactorFS.openReactor has already been called.
+     */
     void open() @safe @nogc {
         ASSERT!"ReactorSignal.open called without first calling ReactorFD.openReactor"(epoller.isOpen);
         sigemptyset(signals);
@@ -74,6 +83,7 @@ public:
         fiberHandle = theReactor.spawnFiber(&fiberMainWrapper, &this);
     }
 
+    /// Call this when shutting down the reactor. Mostly necessary for unit tests
     void close() @safe @nogc {
         verifyOpen();
         signalFd.close();
@@ -85,6 +95,15 @@ public:
         }
     }
 
+    /**
+     * register a signal handler
+     *
+     * Register a handler for a specific signal. The signal must not already be handled, either through ReactorSignal or otherwise.
+     *
+     * params:
+     * signum = the signal to be handled
+     * handler = a delegate to be called when the signal arrives
+     */
     void registerSignal(OSSignal signum, SignalHandler handler) @trusted @nogc {
         verifyOpen();
         ASSERT!"registerSignal called with invalid signal %s"(signum<NUM_SIGS || signum<=0, signum);
@@ -166,6 +185,7 @@ private:
     }
 }
 
+/// ReactorSignal singleton
 __gshared ReactorSignal reactorSignal;
 
 unittest {
