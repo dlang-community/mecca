@@ -1,3 +1,4 @@
+/// allows throttling the rate at which operations are done
 module mecca.reactor.sync.throttler;
 
 import mecca.lib.division;
@@ -7,6 +8,22 @@ import mecca.log;
 import mecca.reactor;
 import mecca.reactor.sync.fiber_queue;
 
+/**
+ * Main throttler implementation
+ *
+ * Implements <a href="https://en.wikipedia.org/wiki/Token_bucket">Token Bucket</a> QoS. Tokens are deposited into a bucket at a fixed rate.
+ * Consumers request withdrawl of tokens from the bucket. If the bucket does not have enough tokens, the request to withdraw is paused until
+ * such time as the bucket, again, has enough to allow the request to move forward.
+ *
+ * The bucket size controls the burst rate, i.e. - the amount of tokens that can be withdrawn without wait after a long quiet period.
+ *
+ * The throttler is strict first-come first-serve.
+ *
+ * Params:
+ * AllowOverdraft = there are two variants to the throttler. In the first (and default) variant, the tokens ballance must be able to fully
+ * cover the current request. The second variant allows a request to proceed even if there is not enough tokens at the moment (overdraw),
+ * so long as all previous debt has been repayed.
+ */
 struct ThrottlerImpl(bool AllowOverdraft = false) {
 private:
     long tokenBallance = tokenBallance.min; // Can be negative IFF AllowOverdraft is true
@@ -18,6 +35,16 @@ private:
     ulong requestedTokens;
 
 public:
+    /**
+     * initialize a throttler for use.
+     *
+     * Params:
+     * tokensPerSecond = the rate at which new tokens are deposited at the bucket. Actual rate might vary slightly due to rounding errors.
+     * In general, the lower the number, the lower the error.
+     * burstSize = the maximal number of tokens that the bucket may hold. Unless overdraft is allowed, this is also the maximal amount
+     * that a single withdrawl may request.
+     * numInitialTokens = the number of tokens initially in the bucket. If unspecified, the bucket starts out as completely full.
+     */
     void open(size_t tokensPerSecond, ulong burstSize) nothrow @safe @nogc {
         open(tokensPerSecond, burstSize, burstSize);
     }
@@ -33,6 +60,7 @@ public:
         ticksPerTokenDivider = S64Divisor(ticksPerToken);
     }
 
+    /// Closes the throtller.
     void close() nothrow @safe @nogc {
         if( !isOpen )
             return;
@@ -46,10 +74,21 @@ public:
         ASSERT!"open throttler destructed"( !isOpen );
     }
 
+    /// reports whether open the throttler is open.
     @property bool isOpen() pure const nothrow @safe @nogc {
         return tokenBallance !is tokenBallance.min;
     }
 
+    /**
+     * Withdraw tokens from the bucket.
+     *
+     * Unless AllowOverdraft is true, the amount of tokens requested must be smaller than the burst size. If AllowOverdraft is false and
+     * there is insufficient ballance, or if AllowOverdraft is true but the ballance is negative, then the requester is paused until all
+     * prior reuqesters have been served $(B and) the ballance is high enough to serve the current request.
+     *
+     * Params:
+     * tokens = number of tokens to withdraw.
+     */
     void withdraw(ulong tokens) @safe @nogc {
         DBG_ASSERT!"Trying to withdraw from close throttler"(isOpen);
         ASSERT!"Trying to withdraw %s tokens from throttler that can only hold %s"(AllowOverdraft || tokens<burstSize, tokens, burstSize);
@@ -103,7 +142,9 @@ private:
     }
 }
 
+/// Standard throttler. Use this type when applicable.
 alias Throttler = ThrottlerImpl!false;
+/// Throttler allowing overdrawing tokens.
 alias ThrottlerOverdraft = ThrottlerImpl!true;
 
 unittest {
