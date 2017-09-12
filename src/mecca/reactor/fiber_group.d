@@ -1,3 +1,4 @@
+/// group related fibers so they can all be killed together, if needed
 module mecca.reactor.fiber_group;
 
 import std.traits;
@@ -8,9 +9,7 @@ import mecca.lib.time;
 import mecca.log;
 import mecca.reactor;
 
-//
-// AKA fiber tracker (renamed to fiber group like thread group)
-//
+/// group of related fiber that may need to be killed together
 struct FiberGroup {
 private:
     package class FiberGroupExtinction: Error {mixin ExceptionBody!"FiberGroup killer exception";}
@@ -30,18 +29,26 @@ private:
     State state;
 
 public:
+    /// Initialize a new fiber group
     void open() nothrow @safe @nogc {
         ASSERT!"FiberGroup.open called on already open group"(closed);
         DBG_ASSERT!"New FiberGroup has fibers registered"(fibersList.empty);
         state = State.Active;
     }
 
+    /// report whether a fiber group is closed
     @property closed() const pure nothrow @safe @nogc {
         return state == State.None;
     }
 
-    // close the group (killing all fibers). the function will wait for fibers to die. if the calling thread is part of the group, it will be
-    // killed only once the function is done waiting for the other fibers
+    /**
+     * close the group (killing all fibers).
+     *
+     * The function returns after all fibers have died.
+     *
+     * It is legal for the calling thread to be part of the group. In that case, it will be
+     * killed only once the function is done waiting for the other fibers to exit.
+     */
     void close() @safe @nogc {
         if( state!=State.Active )
             return;
@@ -86,10 +93,16 @@ public:
         }
     }
 
+    /// Return true if the current fiber is a member of the group
     bool isCurrentFiberMember() const nothrow @safe @nogc {
         return theReactor.runningFiberPtr in fibersList;
     }
 
+    /**
+     * Spawn a new fiber that will be a member of the group.
+     *
+     * Arguments and return value are the same as for theReactor.spawnFiber.
+     */
     FiberHandle spawnFiber(alias F)(ParameterTypeTuple!F args) nothrow @safe @nogc {
         ASSERT!"FiberGroup state not Active: %s"(state == State.Active, state);
         alias funcType = typeof(F);
@@ -98,6 +111,7 @@ public:
         return fib;
     }
 
+    /// ditto
     FiberHandle spawnFiber(void delegate() dg) nothrow @safe @nogc {
         static void wrapper(void delegate() dg) @system {
             dg();
@@ -105,6 +119,17 @@ public:
         return spawnFiber!wrapper(dg);
     }
 
+    /**
+     * Conditionally spawn a new fiber, only if the fiber group is currently open.
+     *
+     * This function is useful in certain racy cases, where the fiber group has been closed, but has not yet finished closing.
+     *
+     * Params:
+     * dg = the delegate to run inside the fiber
+     *
+     * Returns:
+     * The FiberHandle of the new fiber if successful, the invalid FiberHandle if the fiber group is closed or closing.
+     */
     FiberHandle spawnFiberIfOpen(void delegate() dg) nothrow @safe @nogc {
         if( state != State.Active )
             return FiberHandle.init;
@@ -119,6 +144,18 @@ public:
         }
     }
 
+    /**
+     * Perform a task inside the current fiber as part of the group.
+     *
+     * This function temporarily adds the current fiber to the group for the sake of performing a specific function. Once that function
+     * is done, the fiber leaves the group again.
+     *
+     * If the group is killed while inside this function, the function returns early and the return type has the member `completed` set to
+     * false. If the function ran to completion, `completed` is set to true, and `result` is set to the function's return value (if one
+     * exists).
+     *
+     * If the fiber is already a member of the group when this function is called, the function is simply executed normally.
+     */
     auto runTracked(alias F)(ParameterTypeTuple!F args) {
         alias R = ReturnType!F;
         ExecutionResult!R res;
@@ -147,6 +184,7 @@ public:
         return res;
     }
 
+    /// ditto
     auto runTracked(T)(scope T delegate() dg) {
         static T wrapper(scope T delegate() dg) {
             return dg();
