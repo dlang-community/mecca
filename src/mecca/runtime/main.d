@@ -3,7 +3,7 @@ module mecca.runtime.main;
 
 import std.stdio;
 import std.string;
-import mecca.reactor.reactor: theReactor;
+import mecca.reactor: theReactor;
 import mecca.runtime.services;
 
 

@@ -37,7 +37,7 @@ struct Barrier {
 
 /+
 unittest {
-    import mecca.reactor.reactor;
+    import mecca.reactor;
 
     testWithReactor({
         Barrier barrier;

@@ -6,7 +6,7 @@ module mecca.reactor.subsystems.gc_tracker;
 
 import mecca.lib.exception;
 import mecca.log;
-import mecca.reactor.reactor;
+import mecca.reactor;
 
 
 private __gshared bool gcTrackerEnabled = false;

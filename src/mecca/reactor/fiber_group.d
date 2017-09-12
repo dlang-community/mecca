@@ -6,7 +6,7 @@ import mecca.containers.lists;
 import mecca.lib.exception;
 import mecca.lib.time;
 import mecca.log;
-import mecca.reactor.reactor;
+import mecca.reactor;
 
 //
 // AKA fiber tracker (renamed to fiber group like thread group)

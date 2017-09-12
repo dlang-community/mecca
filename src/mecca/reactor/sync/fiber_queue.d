@@ -8,7 +8,7 @@ import mecca.containers.lists;
 import mecca.lib.exception;
 import mecca.lib.time;
 import mecca.log;
-import mecca.reactor.reactor;
+import mecca.reactor;
 
 /**
   Implementation of the fiber queue.

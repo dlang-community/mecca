@@ -1,6 +1,6 @@
 module mecca.reactor.sync.future;
 
-import mecca.reactor.reactor;
+import mecca.reactor;
 import mecca.log;
 
 

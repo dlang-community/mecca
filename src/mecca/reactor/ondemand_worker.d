@@ -6,7 +6,7 @@ import mecca.lib.time: Timeout;
 import mecca.log;
 import mecca.reactor.sync.event: Event;
 import mecca.reactor.fiber_group;
-import mecca.reactor.reactor;
+import mecca.reactor;
 
 struct OnDemandWorkerFunc(alias F) {
     private FiberHandle fiberHandle;

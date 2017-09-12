@@ -101,7 +101,7 @@ private:
 }
 
 unittest {
-    import mecca.reactor.reactor;
+    import mecca.reactor;
 
     theReactor.setup();
     scope(exit) theReactor.teardown();

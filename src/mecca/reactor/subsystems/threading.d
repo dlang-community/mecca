@@ -16,7 +16,7 @@ import mecca.containers.arrays: FixedString;
 import mecca.containers.pools: FixedPool;
 
 import mecca.log;
-import mecca.reactor.reactor: theReactor, FiberHandle, TimerHandle;
+import mecca.reactor: theReactor, FiberHandle, TimerHandle;
 
 
 class WorkerThread: Thread {
@@ -332,7 +332,7 @@ public:
 }
 
 unittest {
-    import mecca.reactor.reactor: testWithReactor;
+    import mecca.reactor: testWithReactor;
 
     __gshared static long sum;
     __gshared static long done;

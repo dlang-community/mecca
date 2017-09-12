@@ -148,7 +148,7 @@ template VerboseEvent(string Name, ExtraParam = void) {
 
 unittest {
     //import mecca.reactor.fd;
-    import mecca.reactor.reactor;
+    import mecca.reactor;
 
     theReactor.setup();
     scope(exit) theReactor.teardown();

@@ -10,7 +10,7 @@ import std.string;
 import unistd = core.sys.posix.unistd;
 import core.sys.posix.fcntl;
 
-import mecca.reactor.reactor;
+import mecca.reactor;
 import mecca.containers.pools;
 import mecca.lib.io;
 import mecca.lib.exception;

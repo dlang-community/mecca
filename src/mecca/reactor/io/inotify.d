@@ -1,5 +1,5 @@
 /// Reactor friendly interface for Linux's inotify
-module mecca.reactor.sync.inotify;
+module mecca.reactor.io.inotify;
 
 import core.sys.linux.sys.inotify;
 
@@ -7,8 +7,8 @@ import mecca.lib.exception;
 import mecca.lib.string;
 import mecca.lib.typedid;
 import mecca.log;
-import mecca.reactor.io;
-import mecca.reactor.reactor;
+import mecca.reactor.io.fd;
+import mecca.reactor;
 
 private extern(C) nothrow @nogc {
     int inotify_init1(int flags) @safe;

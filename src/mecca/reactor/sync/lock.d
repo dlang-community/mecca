@@ -62,7 +62,7 @@ public:
 }
 
 unittest {
-    import mecca.reactor.reactor;
+    import mecca.reactor;
     import mecca.reactor.sync.barrier;
 
     Lock lock;

@@ -1,5 +1,5 @@
-/// Reactor aware IO (file descriptor) operations
-module mecca.reactor.io;
+/// Reactor aware FD (file descriptor) operations
+module mecca.reactor.io.fd;
 
 import core.stdc.errno;
 import core.sys.posix.netinet.in_;
@@ -356,7 +356,7 @@ private:
 }
 
 unittest {
-    import mecca.reactor.reactor;
+    import mecca.reactor;
     import mecca.reactor.sync.event;
 
     theReactor.setup();
@@ -601,7 +601,7 @@ unittest {
     import core.sys.posix.sys.types;
 
     import mecca.lib.consts;
-    import mecca.reactor.reactor;
+    import mecca.reactor;
 
     theReactor.setup();
     scope(exit) theReactor.teardown();

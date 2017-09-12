@@ -110,7 +110,7 @@ unittest {
     import std.uuid;
     import std.string : format;
 
-    import mecca.reactor.reactor: testWithReactor, theReactor;
+    import mecca.reactor: testWithReactor, theReactor;
     import mecca.reactor.sync.barrier;
 
     Throttler budget;

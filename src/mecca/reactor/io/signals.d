@@ -1,4 +1,4 @@
-module mecca.reactor.subsystems.signal;
+module mecca.reactor.io.signal;
 
 import core.sys.posix.signal;
 import core.sys.posix.unistd;
@@ -8,8 +8,8 @@ import mecca.lib.exception;
 import mecca.lib.reflection;
 import mecca.log;
 import mecca.platform.linux;
-import mecca.reactor.io;
-import mecca.reactor.reactor;
+import mecca.reactor.io.fd;
+import mecca.reactor;
 import mecca.reactor.subsystems.epoll;
 
 // Definitions missing from the phobos headers or lacking nothrow @nogc
