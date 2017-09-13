@@ -1,3 +1,4 @@
+/// Reactor aware semaphore
 module mecca.reactor.sync.semaphore;
 
 import std.algorithm;
@@ -7,17 +8,25 @@ import mecca.lib.time;
 import mecca.log;
 import mecca.reactor.sync.fiber_queue;
 
+/// Reactor aware semaphore
 struct Semaphore {
 private:
     size_t _capacity;
     size_t available;
     size_t requestsPending;
     FiberQueue waiters;
-    bool resumePending;
+    bool resumePending; // Makes sure only one fiber gets woken up at any one time
 
 public:
     @disable this(this);
 
+    /**
+     * Call this function before using the semaphore.
+     *
+     * Params:
+     *  capacity = maximal value the semaphore can grow to.
+     *  used = initial number of obtained locks. Default of zero means that the semaphore is currently unused.
+     */
     void open(size_t capacity, size_t used = 0) nothrow @safe @nogc {
         ASSERT!"Semaphore.open called on already open semaphore"(_capacity==0);
         ASSERT!"Semaphore.open called with capacity 0"(capacity>0);
@@ -29,16 +38,37 @@ public:
         ASSERT!"open called with waiters in queue"( waiters.empty );
     }
 
+    /**
+     * Call this function when the semaphore is no longer needed.
+     *
+     * This function is mostly useful for unittests, where the same semaphore instance might be used multiple times.
+     */
     void close() nothrow @safe @nogc {
         ASSERT!"Semaphore.close called on a non-open semaphore"(_capacity > 0);
         ASSERT!"Semaphore.close called while fibers are waiting on semaphore"(waiters.empty);
         _capacity = 0;
     }
 
+    /// Report the capacity of the semaphore
     @property size_t capacity() const pure nothrow @safe @nogc {
         return _capacity;
     }
 
+    /**
+     * acquire a resource from the semaphore.
+     *
+     * Acquire one or more "resources" from the semaphore. Sleep if not enough are available. The semaphore guarantees a strict FIFO.
+     * A new request, even if satifiable, will not be granted until all older requests are granted.
+     *
+     * Params:
+     *  amount = the amount of resources to request.
+     *  timeout = how long to wait for resources to become available.
+     *
+     * Throws:
+     *  ReactorTimeout if timeout has elapsed without satisfying the request.
+     *
+     *  Also, any other exception may be thrown if injected using theReactor.throwInFiber.
+     */
     void acquire(size_t amount = 1, Timeout timeout = Timeout.infinite) @safe @nogc {
         ASSERT!"Semaphore tried to acquire %s, but total capacity is only %s"( amount<=capacity, amount, capacity );
         requestsPending += amount;
@@ -73,6 +103,9 @@ public:
         }
     }
 
+    /**
+     * Release resources acquired via acquire.
+     */
     void release(size_t amount = 1) nothrow @safe @nogc {
         ASSERT!"Semaphore.release called to release 0 coins"(amount>0);
 
