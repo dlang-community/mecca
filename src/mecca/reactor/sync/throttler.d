@@ -88,8 +88,14 @@ public:
      *
      * Params:
      * tokens = number of tokens to withdraw.
+     * timeout = sets a timeout for the wait.
+     *
+     * Throws:
+     * ReactorTimeout if the timeout expires.
+     *
+     * Any other exception injected to this fiber using Reactor.throwInFiber
      */
-    void withdraw(ulong tokens) @safe @nogc {
+    void withdraw(ulong tokens, Timeout timeout = Timeout.infinite) @safe @nogc {
         DBG_ASSERT!"Trying to withdraw from close throttler"(isOpen);
         ASSERT!"Trying to withdraw %s tokens from throttler that can only hold %s"(AllowOverdraft || tokens<burstSize, tokens, burstSize);
 
@@ -98,19 +104,29 @@ public:
 
         if( requestedTokens > tokens ) {
             // There are other waiters. Wait until this fiber is the next to withdraw
-            waiters.suspend();
+            waiters.suspend(timeout);
         }
 
-        // We are the first in line to withdraw. No matter why we exit, wake the next in line
-        scope(exit) waiters.resumeOne();
+        try {
+            // We are the first in line to withdraw. No matter why we exit, wake the next in line
+            scope(exit) waiters.resumeOne();
 
-        deposit();
-        while( !mayWithdraw(tokens) ) {
-            theReactor.sleep( calcSleepDuration(tokens) );
             deposit();
-        }
+            while( !mayWithdraw(tokens) ) {
+                theReactor.sleep( calcSleepDuration(tokens, timeout) );
+                deposit();
+            }
 
-        tokenBallance -= tokens;
+            tokenBallance -= tokens;
+        } catch(ReactorTimeout ex) {
+            // We know we won't make it even before the timeout actually passes. We delay throwing the reactor timeout until the timeout
+            // actually transpired (you never know who depends on this in some weird way), but we do release any other waiter in queue to
+            // get a chance at obtaining the lock immediately.
+            ERROR!"Fiber will not have enough tokens in time for timeout expirey %s. Wait until it actually expires before throwing"
+                    (timeout);
+            theReactor.sleep(timeout);
+            throw ex;
+        }
     }
 
 private:
@@ -132,12 +148,14 @@ private:
         return tokenBallance >= (AllowOverdraft ? 0 : tokens);
     }
 
-    Duration calcSleepDuration(ulong tokens) nothrow @safe @nogc {
+    Duration calcSleepDuration(ulong tokens, Timeout timeout) @safe @nogc {
         DBG_ASSERT!"calcSleepDuration called, but can withdraw right now"( !mayWithdraw(tokens) );
         long numMissingTokens = (AllowOverdraft ? 0 : tokens) - tokenBallance;
         DBG_ASSERT!"negative missing %s: requested %s have %s"(numMissingTokens>0, numMissingTokens, tokens, tokenBallance);
 
         auto sleepDuration = TscTimePoint.toDuration( numMissingTokens * ticksPerToken );
+        if( TscTimePoint.softNow + sleepDuration > timeout.expiry )
+            throw mkEx!ReactorTimeout;
         return sleepDuration;
     }
 }
