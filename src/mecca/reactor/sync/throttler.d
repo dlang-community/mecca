@@ -52,7 +52,8 @@ public:
     /// ditto
     void open(size_t tokensPerSecond, ulong burstSize, ulong numInitialTokens) nothrow @safe @nogc {
         ASSERT!"Throttler does not allowg overdraft but has no burst buffer to withdraw from"(burstSize>0 || AllowOverdraft);
-        ASSERT!"Can't deposit %s tokens to throttler with burst bucket of %s"(numInitialTokens<=burstSize, numInitialTokens, burstSize);
+        ASSERT!"Can't deposit %s tokens to throttler with burst bucket of %s"
+                (numInitialTokens<=cast(long)burstSize, numInitialTokens, burstSize);
         this.burstSize = burstSize;
         tokenBallance = numInitialTokens;
         lastDepositTime = TscTimePoint.now();
@@ -97,7 +98,7 @@ public:
      */
     void withdraw(ulong tokens, Timeout timeout = Timeout.infinite) @safe @nogc {
         DBG_ASSERT!"Trying to withdraw from close throttler"(isOpen);
-        ASSERT!"Trying to withdraw %s tokens from throttler that can only hold %s"(AllowOverdraft || tokens<burstSize, tokens, burstSize);
+        ASSERT!"Trying to withdraw %s tokens from throttler that can only hold %s"(AllowOverdraft || tokens<=burstSize, tokens, burstSize);
 
         requestedTokens += tokens;
         scope(exit) requestedTokens -= tokens;
@@ -140,12 +141,12 @@ private:
 
         lastDepositTime += cyclesPassed;
         tokenBallance += tokensEarned;
-        if( tokenBallance>burstSize )
+        if( tokenBallance>cast(long)(burstSize) )
             tokenBallance = burstSize;
     }
 
     bool mayWithdraw(ulong tokens) nothrow @safe @nogc {
-        return tokenBallance >= (AllowOverdraft ? 0 : tokens);
+        return tokenBallance >= (AllowOverdraft ? 0 : cast(long)(tokens));
     }
 
     Duration calcSleepDuration(ulong tokens, Timeout timeout) @safe @nogc {
