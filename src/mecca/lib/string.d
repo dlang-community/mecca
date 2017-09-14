@@ -8,6 +8,7 @@ import std.traits;
 import std.typetuple;
 
 import mecca.lib.exception;
+import mecca.lib.typedid;
 import mecca.log;
 
 /**
@@ -377,32 +378,42 @@ unittest {
         else static if (is(typeof(tok) == size_t)) {
             enum j = tok >> 8;
             enum f = cast(FMT)(tok & 0xff);
-            static if (__traits(hasMember, T[j], "UnderlyingType")) {
-                // TODO: Use the fmt attribute from the typed identifier
-                alias Typ = T[j].UnderlyingType;
-                auto val = args[j].value;
-            } else {
-                alias Typ = T[j];
-                auto val = args[j];
-            }
+
+            alias Typ = T[j];
+            auto val = args[j];
 
             static if (f == FMT.STR) {
-                static if (is(Typ == string) || is(Typ == char[])) {
-                    write(val);
-                }
-                else static if (is(Typ == enum)) {
+                static if (is(typeof(advance(val.nogcToString(p))))) {
+                    advance(val.nogcToString(p));
+                } else static if (is(Typ == string) || is(Typ == char[]) || is(Typ == char[Len], uint Len)) {
+                    write(val[]);
+                } else static if (is(Typ == enum)) {
                     auto tmp = enumToStr(val);
                     if (tmp is null) {
                         advance(nogcFormat!"%s(%d)"(p, Typ.stringof, val));
                     } else {
                         write(tmp);
                     }
-                }
-                else static if (isPointer!(Typ)) {
+                } else static if (isTypedIdentifier!Typ) {
+                    advance(nogcFormat!(Typ.name ~ "<%s>")(p, val.value));
+                } else static if (isPointer!Typ) {
                     advance(formatPtr(p, val));
-                }
-                else static if (is(Typ : ulong)) {
+                } else static if (is(Typ : ulong)) {
                     advance(formatDecimal(p, val));
+                } else static if (is(Typ == struct)) {
+                    {
+                        enum Prefix = Typ.stringof ~ "(";
+                        write(Prefix);
+                    }
+                    alias Names = FieldNameTuple!Typ;
+                    foreach(i, field; val.tupleof) {
+                        enum string Name = Names[i];
+                        enum Prefix = (i == 0 ? "" : ", ") ~ Name ~ " = ";
+                        write(Prefix);
+                        // TODO: Extract entire FMT.STR hangling to nogcToString and use that:
+                        advance(nogcFormat!"%s"(p, field));
+                    }
+                    write(")");
                 } else {
                     static assert (false, "Expected string, enum or integer, not " ~ Typ.stringof);
                 }
@@ -435,7 +446,8 @@ unittest {
     }
 
     auto len = p.ptr - buf.ptr;
-    return cast(string)buf[0 .. len];
+    import std.exception : assumeUnique;
+    return buf[0 .. len].assumeUnique;
 }
 
 @notrace @nogc string nogcFormatTmp(string fmt, T...)(T args) nothrow {
@@ -454,48 +466,57 @@ unittest {
     import std.exception;
     import core.exception : RangeError;
 
-    char[10] res;
+    auto fmt(string fmtStr, size_t size = 16, Args...)(Args args) {
+        auto buf = new char[size];
+        return nogcFormat!fmtStr(buf, args);
+    }
 
-    assert(nogcFormat!"abcd abcd"(res) == "abcd abcd");
-    assert(nogcFormat!"123456789a"(res) == "123456789a");
+    static assert(fmt!"abcd abcd" == "abcd abcd");
+    static assert(fmt!"123456789a" == "123456789a");
     version (D_NoBoundsChecks) {} else {
-        assertThrown!RangeError(nogcFormat!"123412341234"(res));
+        assertThrown!RangeError(fmt!("123412341234", 10));
     }
 
     // literal escape
-    assert(nogcFormat!"123 %%"(res) == "123 %");
-    assert(nogcFormat!"%%%%"(res) == "%%");
+    static assert(fmt!"123 %%" == "123 %");
+    static assert(fmt!"%%%%" == "%%");
 
     // %d
-    assert(nogcFormat!"%d"(res, 1234) == "1234");
-    assert(nogcFormat!"ab%dcd"(res, 1234) == "ab1234cd");
-    assert(nogcFormat!"ab%d%d"(res, 1234, 56) == "ab123456");
+    static assert(fmt!"%d"(1234) == "1234");
+    static assert(fmt!"ab%dcd"(1234) == "ab1234cd");
+    static assert(fmt!"ab%d%d"(1234, 56) == "ab123456");
 
     // %x
-    assert(nogcFormat!"%x"(res, 0x1234) == "0x1234");
+    static assert(fmt!"%x"(0x1234) == "0x1234");
 
     // %p
-    char[20] res2;
-    assert(nogcFormat!"%p"(res2, 0x1234) == "0000000000001234");
+    static assert(fmt!("%p", 20)(0x1234) == "0000000000001234");
 
     // %s
-    assert(nogcFormat!"12345%s"(res, "12345") == "1234512345");
-    assert(nogcFormat!"12345%s"(res, 12345) == "1234512345");
+    static assert(fmt!"12345%s"("12345") == "1234512345");
+    static assert(fmt!"12345%s"(12345) == "1234512345");
     enum Floop {XXX, YYY, ZZZ}
-    assert(nogcFormat!"12345%s"(res, Floop.YYY) == "12345YYY");
+    static assert(fmt!"12345%s"(Floop.YYY) == "12345YYY");
 
     // Arg num
-    static assert(!__traits(compiles, nogcFormat!"abc"(res, 5)));
-    static assert(!__traits(compiles, nogcFormat!"%d"(res)));
-    static assert(!__traits(compiles, nogcFormat!"%d a %d"(res, 5)));
+    static assert(!__traits(compiles, fmt!"abc"(5)));
+    static assert(!__traits(compiles, fmt!"%d"()));
+    static assert(!__traits(compiles, fmt!"%d a %d"(5)));
 
     // Format error
-    static assert(!__traits(compiles, nogcFormat!"%"(res)));
-    static assert(!__traits(compiles, nogcFormat!"abcd%d %"(res, 15)));
-    static assert(!__traits(compiles, nogcFormat!"%$"(res, 1)));
-    //static assert(!__traits(compiles, nogcFormat!"%s"(res, 1)));
-    static assert(!__traits(compiles, nogcFormat!"%d"(res, "hello")));
-    static assert(!__traits(compiles, nogcFormat!"%x"(res, "hello")));
+    static assert(!__traits(compiles, fmt!"%"()));
+    static assert(!__traits(compiles, fmt!"abcd%d %"(15)));
+    static assert(!__traits(compiles, fmt!"%$"(1)));
+    //static assert(!__traits(compiles, fmt!"%s"(1)));
+    static assert(!__traits(compiles, fmt!"%d"("hello")));
+    static assert(!__traits(compiles, fmt!"%x"("hello")));
+
+    static assert(fmt!"Hello %s"(5) == "Hello 5");
+    alias Moishe = TypedIdentifier!("Moishe", ushort);
+    static assert(fmt!"Hello %s"(Moishe(5)) == "Hello Moishe<5>");
+
+    struct Foo { int x, y; }
+    static assert(fmt!("Hello %s", 40)(Foo(1, 2)) == "Hello Foo(x = 1, y = 2)");
 }
 
 @notrace @nogc nothrow pure
