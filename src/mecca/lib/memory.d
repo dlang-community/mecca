@@ -3,10 +3,17 @@ module mecca.lib.memory;
 import std.exception;
 import std.string;
 import std.conv;
+import std.uuid;
+
+import core.atomic;
 import core.sys.posix.sys.mman;
+import core.stdc.errno;
 import core.sys.posix.fcntl;
 import core.sys.posix.unistd;
 import core.sys.linux.sys.mman: MAP_ANONYMOUS, MAP_POPULATE;
+
+import mecca.lib.exception;
+import mecca.lib.reflection: setToInit, abiSignatureOf;
 
 import mecca.log;
 
@@ -28,11 +35,18 @@ struct MmapArray(T) {
         auto size = T.sizeof * numElements;
         auto ptr = mmap(null, size, PROT_READ | PROT_WRITE,
             MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE, -1, 0);
-        errnoEnforce(ptr != MAP_FAILED, "mmap(%s) failed".format(size));
+        errnoEnforce(ptr != MAP_FAILED, "mmap(%s bytes) failed".format(size));
         arr = (cast(T*)ptr)[0 .. numElements];
         if (registerWithGC) {
             import core.memory;
             GC.addRange(ptr, size);
+        }
+        if (typeid(T).initializer.ptr !is null) {
+            // if the initializer is null, it means it's inited to zeros, which is already the case
+            // otherwise, we'll have to init it ourselves
+            foreach(ref a; arr) {
+                setToInit(a);
+            }
         }
     }
     void free() {
@@ -64,29 +78,63 @@ unittest {
     assert (arr is null);
 }
 
-struct MmapFile {
+struct SharedFile {
+    string filename;
+    int fd = -1;
     ubyte[] data;
 
     void open(string filename, size_t size, bool readWrite = true) {
         assert (data is null, "Already open");
-        enum PAGE_SIZE = 4096;
-        int fd = .open(filename.toStringz, O_CREAT | (readWrite ? O_RDWR : O_RDONLY), octal!644);
-        errnoEnforce(fd >= 0, "open(%s) failed".format(filename));
-        auto roundedSize = ((size + PAGE_SIZE - 1) / PAGE_SIZE) * PAGE_SIZE;
-        errnoEnforce(ftruncate(fd, roundedSize) == 0, "truncate(%s, %s) failed".format(filename, roundedSize));
+        assert (fd < 0, "Already open (fd)");
+
+        //fd = .open(filename.toStringz, O_EXCL | O_CREAT | (readWrite ? O_RDWR : O_RDONLY), octal!644);
+        //bool created = (fd >= 0);
+        //if (fd < 0 && errno == EEXIST) {
+        //    // this time without O_EXCL
+        //    fd = .open(filename.toStringz, O_CREAT | (readWrite ? O_RDWR : O_RDONLY), octal!644);
+        //}
+        //errnoEnforce(fd >= 0, "open(%s) failed".format(filename));
+
+        //fd = errnoCall!(.open)(filename.toStringz, O_CREAT | (readWrite ? O_RDWR : O_RDONLY), octal!644);
+        fd = .open(filename.toStringz, O_CREAT | (readWrite ? O_RDWR : O_RDONLY), octal!644);
+        scope(failure) {
+            .close(fd);
+            fd = -1;
+        }
+
+        auto roundedSize = ((size + SYS_PAGE_SIZE - 1) / SYS_PAGE_SIZE) * SYS_PAGE_SIZE;
+        errnoCall!ftruncate(fd, roundedSize);
+
         auto ptr = mmap(null, size, PROT_READ | (readWrite ? PROT_WRITE : 0), MAP_SHARED, fd, 0);
         errnoEnforce(ptr != MAP_FAILED, "mmap(%s) failed".format(size));
-        .close(fd);
+
         data = (cast(ubyte*)ptr)[0 .. size];
+        this.filename = filename;
     }
-    void close() {
+    void close() @nogc {
+        if (fd >= 0) {
+            .close(fd);
+        }
         if (data) {
             munmap(data.ptr, data.length);
             data = null;
         }
     }
-    @property bool closed() {
+    @property bool closed() @nogc @safe pure nothrow{
         return data is null;
+    }
+
+    void unlink() {
+        if (filename) {
+            errnoCall!(.unlink)(filename.toStringz);
+            filename = null;
+        }
+    }
+    void lock() {
+        errnoCall!lockf(fd, F_LOCK, 0);
+    }
+    void unlock() {
+        errnoCall!lockf(fd, F_ULOCK, 0);
     }
 
     alias data this;
@@ -94,14 +142,100 @@ struct MmapFile {
 
 unittest {
     enum fn = "/tmp/mapped_file_ut";
-    MmapFile mf;
+    SharedFile sf;
     scope(exit) {
-        mf.close();
-        unlink(fn);
+        sf.unlink();
+        sf.close();
     }
-    mf.open(fn, 7891);
-    mf[7890] = 8;
-    assert(mf[$-1] == 8);
+    sf.open(fn, 7891);
+    sf[7890] = 8;
+    assert(sf[$-1] == 8);
+}
+
+struct SharedFileStruct(T) {
+    import std.traits;
+    static assert (is(T == struct));
+    static assert (!hasIndirections!T, "Shared struct cannot hold pointers");
+
+    struct Wrapper {
+        shared size_t inited;
+        ulong abiSignature;  // make sure it's the same `T` in all users
+        UUID uuid;           // make sure it belongs to the same object in all users
+        align(64) T data;
+    }
+
+    SharedFile sharedFile;
+
+    void open(string filename, UUID uuid = UUID.init) {
+        sharedFile.open(filename, Wrapper.sizeof);
+        sharedFile.lock();
+        scope(exit) sharedFile.unlock();
+
+        if (atomicLoad(wrapper.inited) == 0) {
+            // we have the guarantee that the first time the file is opened, it's all zeros
+            // so let's init it here
+            setToInit(wrapper.data);
+            static if (__traits(hasMember, T, "sharedInit")) {
+                wrapper.data.sharedInit();
+            }
+            wrapper.abiSignature = abiSignatureOf!T;
+            wrapper.uuid = uuid;
+            atomicStore(wrapper.inited, 1UL);
+        }
+        else {
+            // already inited
+            assert (wrapper.uuid == uuid);
+            assert (wrapper.abiSignature == abiSignatureOf!T);
+        }
+    }
+    void close() @nogc {
+        sharedFile.close();
+    }
+    @property bool closed() @nogc {
+        return sharedFile.closed();
+    }
+    void unlink() {
+        sharedFile.unlink();
+    }
+
+    private @property ref Wrapper wrapper() @nogc {pragma(inline, true);
+        return *cast(Wrapper*)sharedFile.data.ptr;
+    }
+    @property ref T data() @nogc {pragma(inline, true);
+        return (cast(Wrapper*)sharedFile.data.ptr).data;
+    }
+
+    void lock() {
+        //import core.sys.posix.sched: sched_yield;
+        //while (!cas(&wrapper.locked, 0UL, 1UL)) {
+        //    sched_yield();
+        //}
+        sharedFile.lock();
+    }
+    void unlock() {
+        //assert (wrapper.locked);
+        //atomicStore(wrapper.locked, 0UL);
+        sharedFile.unlock();
+    }
+}
+
+unittest {
+    struct S {
+        ulong x = 17;
+        ulong y = 18;
+    }
+
+    SharedFileStruct!S sfs;
+    sfs.open("/tmp/mapped_file_ut");
+    scope(exit) {
+        sfs.unlink();
+        sfs.close();
+    }
+
+    sfs.data.x++;
+    sfs.data.y++;
+    assert (sfs.data.x == 18);
+    assert (sfs.data.y == 19);
 }
 
 
