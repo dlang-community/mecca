@@ -397,6 +397,85 @@ unittest {
     static assert(!isVersion!"slklfjsdkjfslk234r32c");
 }
 
+debug {
+    enum isDebug = true;
+}
+else {
+    enum isDebug = false;
+}
+
+private string signatureOf(Ts...)() if (Ts.length == 1) {
+    import std.conv;
+
+    alias T = Ts[0];
+    static if (isSomeFunction!T) {
+        string s = "(";
+        foreach(i, U; ParameterTypeTuple!T) {
+            s ~= signatureOf!U ~ " " ~ int(ParameterStorageClassTuple!T[i]).to!string() ~ ParameterIdentifierTuple!T[i] ~ ",";
+        }
+        return s ~ ")->" ~ signatureOf!(ReturnType!T);
+    }
+    else static if (is(T == struct) || is(T == union)) {
+        string s = T.stringof ~ "{";
+        foreach(i, U; typeof(T.tupleof)) {
+            s ~= signatureOf!U ~ " " ~ __traits(identifier, T.tupleof[i]);
+            static if (is(T == struct)) {
+                s ~= ",";
+            }
+            else {
+                s ~= "|";
+            }
+        }
+        return s ~ "}";
+    }
+    else static if (isBuiltinType!T) {
+        return T.stringof;
+    }
+    else static if (is(T == U*, U)) {
+        return U.stringof ~ "*";
+    }
+    else {
+        static assert (false, T.stringof);
+    }
+}
+
+ulong abiSignatureOf(Ts...)() if (Ts.length == 1) {
+    import mecca.lib.hashing: murmurHash3_64;
+    return murmurHash3_64(signatureOf!(Ts));
+}
+
+version (unittest) {
+    static struct WWW {
+        int x, y;
+    }
+
+    static struct SSS {
+        int a;
+        long b;
+        double c;
+        SSS* d;
+        WWW[2] e;
+        string f;
+    }
+
+    static int fxxx(int x, SSS s, const ref SSS t) {
+        return 7;
+    }
+}
+
+unittest {
+    import std.conv;
+
+    enum sig = signatureOf!fxxx;
+
+    enum expected = "(int 0x,SSS{int a,long b,double c,SSS* d,WWW[2] e,string f,} 0s,const(SSS){const(int) a," ~
+        "const(long) b,const(double) c,const(SSS)* d,const(WWW[2]) e,const(string) f,} 4t,)->int";
+    static assert (sig == expected, "\n" ~ sig ~ "\n" ~ expected);
+    enum hsig = abiSignatureOf!fxxx;
+
+    static assert (hsig == 2694514427802277758LU, text(hsig));
+}
+
 template callableMembersOf(T) {
     import std.typetuple: Filter;
     template isCallableMember(string memberName) {
