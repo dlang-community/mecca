@@ -2,10 +2,10 @@ module mecca.reactor.impl.time_queue;
 
 import std.string;
 
-import mecca.log;
 import mecca.lib.exception;
 import mecca.lib.time;
 import mecca.lib.reflection;
+import mecca.log;
 import mecca.containers.lists;
 import mecca.lib.division: S64Divisor;
 
@@ -158,7 +158,7 @@ private:
         }
     }
 
-    private ulong binsTillNextEntry() nothrow @safe @nogc {
+    @notrace private ulong binsTillNextEntry() nothrow @safe @nogc {
         ulong binsToGo;
         foreach(level; IOTA!numLevels) {
             enum ResPerBin = numBins ^^ level; // Number of resolution units in a single level bin
@@ -173,7 +173,7 @@ private:
         return ulong.max;
     }
 
-    void cascadeNextLevel(size_t level)() {
+    @notrace void cascadeNextLevel(size_t level)() {
         static if (level < numLevels) {
             version (unittest) {
                 stats[level]++;
@@ -392,7 +392,7 @@ unittest {
     entries[5] = Entry(now + L1Duration + 14, "e5 l2 b0 l0 b1");
 
     foreach( ref e; entries ) {
-        INFO!"Entry %s at %s"( e.name, e.timePoint - now );
+        INFO!"Entry %s at %s"( e.name, (e.timePoint - now).toString );
     }
 
     // Insert out of order
@@ -411,7 +411,7 @@ unittest {
     while(nextIdx<entries.length) {
         auto step = ctq.cyclesTillNextEntry(now);
         now += step;
-        DEBUG!"Setting time forward by %s to %s"(TscTimePoint.toDuration(step), now - base);
+        DEBUG!"Setting time forward by %s to %s"(TscTimePoint.toDuration(step).toString, (now - base).toString);
         Entry* e = ctq.pop(now);
 
         if( e !is null ) {

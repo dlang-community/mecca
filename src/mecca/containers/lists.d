@@ -4,6 +4,7 @@ import std.traits;
 
 import mecca.lib.memory: prefetch;
 import mecca.lib.exception;
+import mecca.log;
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -60,11 +61,11 @@ struct _LinkedList(T, string nextAttr, string prevAttr, string ownerAttr, bool w
     }
 
     static if (withOwner) {
-        private static _LinkedList* getOwnerOf(T node) nothrow @trusted @nogc {
+        @notrace private static _LinkedList* getOwnerOf(T node) nothrow @trusted @nogc {
             pragma(inline, true);
             mixin("return cast(_LinkedList*)(node." ~ ownerAttr ~ ");");
         }
-        private static void clearOwnerOf(T node) nothrow @safe @nogc {
+        @notrace private static void clearOwnerOf(T node) nothrow @safe @nogc {
             pragma(inline, true);
             mixin("node." ~ ownerAttr ~ " = null;");
         }

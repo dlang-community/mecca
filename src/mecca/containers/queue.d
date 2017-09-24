@@ -21,7 +21,9 @@ private:
     ushort count;
     @notrace Type[MaxSize] items;
 
-    enum Copyable = isCopyable!Type;
+    // enum Copyable = isCopyable!Type;
+    // XXX isCopyable not supported on all compilers:
+    enum Copyable = true;
 public:
     /// Alias for the item type used by the queue
     alias ItemType = Type;

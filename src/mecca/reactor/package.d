@@ -175,7 +175,10 @@ private:
                 params.fgChain.owner.remove(theReactor.thisFiber);
             }
 
-            INFO!"wrapper finished on %s, ex=%s"(identity, ex);
+            if( ex is null )
+                INFO!"wrapper finished on %s"(identity);
+            else
+                ERROR!"wrapper finished on %s with exception: %s"(identity, ex.msg);
 
             params.fiberBody.clear();
             flag!"CALLBACK_SET" = false;
@@ -836,7 +839,7 @@ private:
             if( !thisFiber.flag!"SPECIAL" ) {
                 auto fiberRunTime =  now - fiberRunStartTime;
                 if( fiberRunTime >= options.hoggerWarningThreshold ) {
-                    WARN!"#HOGGER detected: Fiber %s ran for %s"(thisFiber.identity, fiberRunTime);
+                    WARN!"#HOGGER detected: Fiber %s ran for %sms"(thisFiber.identity, fiberRunTime.total!"msecs");
                     // TODO: Add dumping of stack trace
                 }
             }
@@ -897,7 +900,7 @@ private:
             switchToNext();
         }
         catch (Throwable ex2) {
-            ERROR!"switchToNext on dead fiber failed with exception %s"(ex2);
+            ERROR!"switchToNext on dead fiber failed with exception %s"(ex2.msg);
             assert(false);
         }
     }
@@ -1286,7 +1289,7 @@ private bool /* thread local */ _isReactorThread;
 version (unittest) {
     void testWithReactor(bool withEpoller = false)(void delegate() dg) {
         theReactor.setup();
-        scope(exit) theReactor.teardown();
+        scope(success) theReactor.teardown();
         static if( withEpoller ) {
             import mecca.reactor.io.fd;
             openReactorEpoll();
@@ -1306,6 +1309,17 @@ version (unittest) {
         theReactor.spawnFiber(&wrapper);
         theReactor.start();
         assert (succ);
+    }
+
+    public import mecca.runtime.ut: mecca_ut;
+
+    mixin template TEST_FIXTURE_REACTOR(FIXTURE) {
+        import mecca.runtime.ut: runFixtureTestCases;
+        unittest {
+            testWithReactor({
+                    runFixtureTestCases!(FIXTURE)();
+                    });
+        }
     }
 }
 
@@ -1340,12 +1354,12 @@ unittest {
     TscTimePoint start;
 
     void fiberFunc(Duration duration) {
-        INFO!"Fiber %s sleeping for %s"(theReactor.runningFiberHandle, duration);
+        INFO!"Fiber %s sleeping for %s"(theReactor.runningFiberHandle, duration.toString);
         theReactor.sleep(duration);
         auto now = TscTimePoint.now;
         counter++;
-        INFO!"Fiber %s woke up after %s, overshooting by %s counter is %s"(theReactor.runningFiberHandle, now - start,
-                (now-start) - duration, counter);
+        INFO!"Fiber %s woke up after %s, overshooting by %s counter is %s"(theReactor.runningFiberHandle, (now - start).toString,
+                ((now-start) - duration).toString, counter);
     }
 
     void ender() {
@@ -1367,7 +1381,7 @@ unittest {
     start = TscTimePoint.now;
     theReactor.start();
     auto end = TscTimePoint.now;
-    INFO!"UT finished in %s"(end - start);
+    INFO!"UT finished in %s"((end - start).toString);
 
     assert(counter == 6, "Not all fibers finished");
 }
@@ -1500,7 +1514,7 @@ unittest {
 
 unittest {
     theReactor.options.hangDetectorTimeout = 20.msecs;
-    DEBUG!"sanity: %s"(theReactor.options.hangDetectorTimeout);
+    DEBUG!"sanity: %s"(theReactor.options.hangDetectorTimeout.toString);
 
     testWithReactor({
             theReactor.sleep(200.msecs);

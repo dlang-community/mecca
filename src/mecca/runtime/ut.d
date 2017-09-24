@@ -1,4 +1,5 @@
-module mecca.services.ut_main;
+/// Mecca UT support
+module mecca.runtime.ut;
 
 version(unittest):
 
@@ -16,6 +17,11 @@ shared static this() {
     Runtime.moduleUnitTester = (){return true;};
 }
 
+/**
+ * Automatic main for UT compilations.
+ *
+ * Special main for UT compilations. This main accepts arguments that limit (by module) the UTs to run.
+ */
 @notrace int main(string[] argv) {
     bool tty = isatty(1) != 0;
 
@@ -140,4 +146,43 @@ shared static this() {
     }
 }
 
+
+struct mecca_ut {}
+
+void runFixtureTestCases(FIXTURE, string mod = __MODULE__)() {
+    import std.stdio;
+    import std.traits;
+    writeln();
+    foreach(testCaseName; __traits(derivedMembers, FIXTURE)) {
+        static if ( __traits(compiles, __traits(getMember, FIXTURE, testCaseName) ) ) {
+            static if (hasUDA!(__traits(getMember, FIXTURE, testCaseName), mecca_ut)) {
+                import std.string:format;
+                string fullCaseName = format("%s.%s", __traits(identifier, FIXTURE), testCaseName);
+                META!"Test Case: %s"(fullCaseName);
+                stderr.writefln("\t%s...", fullCaseName);
+                import std.typecons:scoped;
+                auto fixture = new FIXTURE();
+                try {
+                    __traits(getMember, fixture, testCaseName)();
+                } catch (Throwable t) {
+                    stderr.writeln("\tERROR");
+                    throw t;
+                }
+                destroy(fixture);
+                stderr.flush();
+            }
+        }
+    }
+}
+
+/**
+ * Automatic UT expansion
+ *
+ * Applying the mixin on a class causes all class members labeled with the @mecca_ut attribute to run.
+ */
+mixin template TEST_FIXTURE(FIXTURE) {
+    unittest {
+        runFixtureTestCases!(FIXTURE)();
+    }
+}
 

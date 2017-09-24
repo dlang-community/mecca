@@ -373,7 +373,7 @@ unittest {
     void server() {
         ConnectedSocket sock = ConnectedSocket.listen( SockAddr(SockAddrIPv4.any()) );
         sa = sock.getSockName();
-        INFO!"Listening socket on %s"(sa);
+        INFO!"Listening socket on %s"(sa.toString()); // TODO remove reliance on GC
         evt.set();
 
         SockAddr clientAddr;
@@ -394,7 +394,7 @@ unittest {
 
     void client() {
         evt.wait();
-        INFO!"Connecting to %s"(sa);
+        INFO!"Connecting to %s"(sa.toString()); // TODO remove GC
         SockAddr serverAddr = SockAddrIPv4.loopback(sa.ipv4.port);
         ConnectedSocket sock = ConnectedSocket.connect( serverAddr );
 

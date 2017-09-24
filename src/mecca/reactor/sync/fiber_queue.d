@@ -149,7 +149,7 @@ unittest {
     void waiter() {
         try {
             Duration waitDuration = dur!"msecs"( uniform!"(]"(20, 200, random) );
-            DEBUG!"Fiber %s waiting for %s"(theReactor.runningFiberHandle, waitDuration);
+            DEBUG!"Fiber %s waiting for %s"(theReactor.runningFiberHandle, waitDuration.toString);
             fq.suspend( Timeout(waitDuration) );
             wokeup++;
         } catch( ReactorTimeout ex ) {

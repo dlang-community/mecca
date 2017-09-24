@@ -635,4 +635,3 @@ unittest {
     static assert(isDynamicArray!E);
     static assert(!isIntegralDynamicArray!E);
 }
-

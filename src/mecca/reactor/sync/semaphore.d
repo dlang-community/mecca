@@ -20,6 +20,10 @@ private:
 public:
     @disable this(this);
 
+    this(size_t capacity, size_t used = 0) {
+        open(capacity, used);
+    }
+
     /**
      * Call this function before using the semaphore.
      *
@@ -52,6 +56,18 @@ public:
     /// Report the capacity of the semaphore
     @property size_t capacity() const pure nothrow @safe @nogc {
         return _capacity;
+    }
+
+    /**
+     * Report the current amount of available resources.
+     *
+     * This amount includes all currently pending acquire requests.
+     */
+    @property size_t level() const pure nothrow @safe @nogc {
+        if( available < requestsPending )
+            return 0;
+
+        return available - requestsPending;
     }
 
     /**
