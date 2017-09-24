@@ -70,7 +70,7 @@ public:
      * timeout = sets a timeout for the wait.
      *
      * Throws:
-     * ReactorTimeout if the timeout expires.
+     * TimeoutExpired if the timeout expires.
      *
      * Any other exception injected to this fiber using Reactor.throwInFiber
      */
@@ -105,7 +105,7 @@ public:
      * timeout = sets a timeout for the wait.
      *
      * Throws:
-     * ReactorTimeout if the timeout expires.
+     * TimeoutExpired if the timeout expires.
      *
      * Any other exception injected to this fiber using Reactor.throwInFiber
      */
@@ -238,7 +238,7 @@ public:
      * timeout = sets a timeout for the wait.
      *
      * Throws:
-     * ReactorTimeout if the timeout expires.
+     * TimeoutExpired if the timeout expires.
      *
      * Any other exception injected to this fiber using Reactor.throwInFiber
      */

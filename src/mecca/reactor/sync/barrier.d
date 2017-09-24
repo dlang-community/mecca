@@ -66,7 +66,7 @@ public:
      * Halts the fiber until all expected completion events actually happen.
      *
      * Throws:
-     * Will throw ReactorTimeout if the timeout is exceeded.
+     * Will throw TimeoutExpired if the timeout is exceeded.
      *
      * May also throw any other exception injected into the fiber.
      */

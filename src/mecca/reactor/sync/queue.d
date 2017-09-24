@@ -121,7 +121,7 @@ version(unittest) {
                 queue.pop(timeout);
             }
 
-            assertThrows!ReactorTimeout(queue.pop(Timeout(1.seconds)));
+            assertThrows!TimeoutExpired(queue.pop(Timeout(1.seconds)));
         }
 
         @mecca_ut void multipleWaitingToPush() {

@@ -92,7 +92,7 @@ public:
      * timeout = sets a timeout for the wait.
      *
      * Throws:
-     * ReactorTimeout if the timeout expires.
+     * TimeoutExpired if the timeout expires.
      *
      * Any other exception injected to this fiber using Reactor.throwInFiber
      */
@@ -119,7 +119,7 @@ public:
             }
 
             tokenBallance -= tokens;
-        } catch(ReactorTimeout ex) {
+        } catch(TimeoutExpired ex) {
             // We know we won't make it even before the timeout actually passes. We delay throwing the reactor timeout until the timeout
             // actually transpired (you never know who depends on this in some weird way), but we do release any other waiter in queue to
             // get a chance at obtaining the lock immediately.
@@ -156,7 +156,7 @@ private:
 
         auto sleepDuration = TscTimePoint.toDuration( numMissingTokens * ticksPerToken );
         if( TscTimePoint.softNow + sleepDuration > timeout.expiry )
-            throw mkEx!ReactorTimeout;
+            throw mkEx!TimeoutExpired;
         return sleepDuration;
     }
 }

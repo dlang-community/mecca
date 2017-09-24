@@ -34,7 +34,7 @@ public:
         Params:
             timeout = How long to wait.
         Throws:
-            ReactorTimeout if the timeout expires.
+            TimeoutExpired if the timeout expires.
 
             Anything else if someone calls Reactor.throwInFiber
      */
@@ -73,7 +73,7 @@ public:
          *
          * Unless there are no viable fibers in the queue, exactly one fiber will be resumed.
          *
-         * Any fibers with pending exceptions (ReactorTimeout or anything else) do not count as viable, even if they are first in line to be
+         * Any fibers with pending exceptions (TimeoutExpired or anything else) do not count as viable, even if they are first in line to be
          * resumed.
          *
          * A volatile FiberQueue cannot provide a reliable resumeOne semantics. In order to not entrap innocent implementers, this method is
@@ -152,7 +152,7 @@ unittest {
             DEBUG!"Fiber %s waiting for %s"(theReactor.runningFiberHandle, waitDuration.toString);
             fq.suspend( Timeout(waitDuration) );
             wokeup++;
-        } catch( ReactorTimeout ex ) {
+        } catch( TimeoutExpired ex ) {
             timedout++;
             DEBUG!"%s timed out"(theReactor.runningFiberHandle);
         }
@@ -197,7 +197,7 @@ unittest {
         try {
             fq.suspend();
             finishedCount++;
-        } catch(ReactorTimeout ex) {
+        } catch(TimeoutExpired ex) {
             exceptionCount++;
         }
     }
@@ -223,8 +223,8 @@ unittest {
 
         // Both fibers sleeping
         fq.resumeOne();
-        theReactor.throwInFiber!ReactorTimeout(fib1);
-        theReactor.throwInFiber!ReactorTimeout(fib3);
+        theReactor.throwInFiber!TimeoutExpired(fib1);
+        theReactor.throwInFiber!TimeoutExpired(fib3);
         theReactor.yieldThisFiber();
         theReactor.yieldThisFiber();
         theReactor.yieldThisFiber();

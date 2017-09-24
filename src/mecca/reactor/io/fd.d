@@ -69,13 +69,13 @@ struct ConnectedDatagramSocket {
      *
      * Params:
      *  sa = a socket address for the server to connect to.
-     *  timeout = the timeout for the connection. Throws ReactorTimeout if the timeout expires
+     *  timeout = the timeout for the connection. Throws TimeoutExpired if the timeout expires
      *
      * Returns:
      *  Returns the connected socket.
      *
      * Throws:
-     * ReactorTimeout if the timeout expires
+     * TimeoutExpired if the timeout expires
      *
      * ErrnoException if the connection fails (e.g. - ECONNREFUSED if connecting to a non-listening port). Also throws this if one of the
      *                  system calls fails.
@@ -157,7 +157,7 @@ struct ConnectedSocket {
      *
      * Params:
      *  sa = a socket address for the server to connect to.
-     *  timeout = the timeout for the connection. Throws ReactorTimeout if the timeout expires
+     *  timeout = the timeout for the connection. Throws TimeoutExpired if the timeout expires
      *  nodelay = by default, Nagle algorithm is disabled for TCP connections. Setting this parameter to false reverts to the system-wide
      *         configuration.
      *
@@ -165,7 +165,7 @@ struct ConnectedSocket {
      *  Returns the connected socket.
      *
      * Throws:
-     * ReactorTimeout if the timeout expires
+     * TimeoutExpired if the timeout expires
      *
      * ErrnoException if the connection fails (e.g. - ECONNREFUSED if connecting to a non-listening port). Also throws this if one of the
      *                  system calls fails.

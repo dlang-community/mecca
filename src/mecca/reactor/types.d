@@ -8,7 +8,7 @@ import mecca.lib.typedid;
 alias FiberId = TypedIdentifier!("FiberId", ushort);
 
 /// Exception thrown when a fiber is suspended for too long.
-class ReactorTimeout : Exception {
+class TimeoutExpired : Exception {
     this(string file = __FILE__, size_t line = __LINE__, Throwable next = null) @safe pure nothrow @nogc {
         super("Reactor timed out on a timed suspend", file, line, next);
     }

@@ -81,7 +81,7 @@ public:
      *  timeout = how long to wait for resources to become available.
      *
      * Throws:
-     *  ReactorTimeout if timeout has elapsed without satisfying the request.
+     *  TimeoutExpired if timeout has elapsed without satisfying the request.
      *
      *  Also, any other exception may be thrown if injected using theReactor.throwInFiber.
      */

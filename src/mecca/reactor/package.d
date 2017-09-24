@@ -916,7 +916,7 @@ private:
         bool timeoutExpired;
 
         if (timeout == Timeout.elapsed) {
-            throw mkEx!ReactorTimeout;
+            throw mkEx!TimeoutExpired;
         }
 
         static void resumer(FiberHandle fibHandle, TimerHandle* cookie, bool* timeoutExpired) nothrow @safe @nogc{
@@ -924,7 +924,7 @@ private:
             ReactorFiber* fib = fibHandle.get;
             assert( fib !is null, "Fiber disappeared while suspended with timer" );
 
-            // Throw ReactorTimeout only if we're the ones who resumed the fiber. this prevents a race when
+            // Throw TimeoutExpired only if we're the ones who resumed the fiber. this prevents a race when
             // someone else had already woken the fiber, but it just didn't get time to run while the timer expired.
             // this probably indicates fibers hogging the CPU for too long (starving others)
             *timeoutExpired = ! fib.flag!"SCHEDULED";
@@ -942,7 +942,7 @@ private:
         switchToNext();
 
         if( timeoutExpired )
-            throw mkEx!ReactorTimeout();
+            throw mkEx!TimeoutExpired();
     }
 
     package void suspendThisFiber() @safe @nogc {
@@ -1398,7 +1398,7 @@ unittest {
 
         try {
             theReactor.suspendThisFiber( Timeout(dur!"msecs"(4)) );
-        } catch(ReactorTimeout ex) {
+        } catch(TimeoutExpired ex) {
             thrown = true;
         }
 

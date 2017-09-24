@@ -28,7 +28,7 @@ public:
      * The call is guaranteed not to sleep if the mutex is available.
      *
      * Throws:
-     * ReactorTimeout if the timeout expires
+     * TimeoutExpired if the timeout expires
      *
      * Anything injected through a call to Reactor.throwInFiber
      */
