@@ -84,6 +84,7 @@ public:
         syncPush.release();
         return ret;
     }
+    /+
     /**
      * Get reference to item at head of the queue.
      *
@@ -94,29 +95,7 @@ public:
         waitHasItems(timeout);
         return queue.peek();
     }
-
-    /**
-     * Suspend the fiber until the queue has at least one empty slot.
-     *
-     * Params:
-     *  timeout = how long to wait if no items are immediately available.
-     */
-    @notrace void waitHasRoom(Timeout timeout = Timeout.infinite) @safe @nogc {
-        syncPush.acquire(1, timeout);
-        syncPush.release();
-        assert(!this.full);
-    }
-    /**
-     * Suspend the fiber until the queue has at least one item queued.
-     *
-     * Params:
-     *  timeout = how long to wait if no items are immediately available.
-     */
-    @notrace void waitHasItems(Timeout timeout = Timeout.infinite) @safe @nogc {
-        syncPop.acquire(1, timeout);
-        syncPop.release();
-        assert(!this.empty);
-    }
+    +/
 }
 
 version(unittest) {
@@ -131,7 +110,6 @@ version(unittest) {
             assert(queue.empty);
             foreach (i; 0 .. SIZE) {
                 assert(!queue.full);
-                queue.waitHasRoom(Timeout.elapsed);
                 queue.push(i, Timeout.elapsed);
             }
             assert(queue.full);
@@ -140,17 +118,10 @@ version(unittest) {
         private void popTotal(size_t total) {
             auto timeout = Timeout(10.seconds);
             foreach (i; 0 .. total) {
-                if (i % 2 == 0) {
-                    queue.waitHasItems(timeout);
-                    queue.peek(Timeout.elapsed);
-                    queue.pop(Timeout.elapsed);
-                } else {
-                    queue.pop(timeout);
-                }
+                queue.pop(timeout);
             }
 
             assertThrows!ReactorTimeout(queue.pop(Timeout(1.seconds)));
-            assertThrows!ReactorTimeout(queue.waitHasItems(Timeout(1.seconds)));
         }
 
         @mecca_ut void multipleWaitingToPush() {
@@ -183,8 +154,7 @@ version(unittest) {
                 numRunning++;
                 scope(success) numRunning--;
                 assert(queue.full);
-                queue.waitHasRoom(Timeout(10.seconds));
-                queue.push(2000, Timeout.elapsed);
+                queue.push(2000, Timeout(10.seconds));
             }
 
             foreach (_; 0 .. SIZE) {
@@ -198,14 +168,12 @@ version(unittest) {
             assertEQ(numRunning, 0);
         }
 
-        @mecca_ut void waitPeekPop() {
+        @mecca_ut void waitPop() {
             import mecca.reactor.sync.event : Event;
             Event done;
             theReactor.spawnFiber({
                 foreach (i; 0 .. 2*SIZE) {
-                    queue.waitHasItems(Timeout(500.msecs));
-                    assertEQ(i, queue.peek(Timeout.elapsed));
-                    assertEQ(i, queue.pop(Timeout.elapsed));
+                    assertEQ(i, queue.pop(Timeout(500.msecs)));
                 }
                 done.set();
             });
