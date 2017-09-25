@@ -198,6 +198,13 @@ struct Timeout {
             this.expiry = now + dur;
         }
     }
+
+    bool expired(TscTimePoint now = TscTimePoint.softNow) const nothrow @safe @nogc {
+        if( this == infinite )
+            return false;
+
+        return expiry <= now;
+    }
 }
 
 

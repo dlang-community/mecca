@@ -84,18 +84,12 @@ public:
         syncPush.release();
         return ret;
     }
-    /+
-    /**
-     * Get reference to item at head of the queue.
-     *
-     * Params:
-     *  timeout = how long to wait if no items are immediately available.
+    // @notrace ref const(Type) peek(Timeout timeout = Timeout.infinite) @safe @nogc {
+    /*
+     * Peek is not implemented, because there is almost no safe way of using it. The only safe way to use it is to hold a critical section
+     * while the reference is alive, as any sleep might invalidate the reference. Since many implementations still do pop at the end of
+     * processing, I (Shachar) have decided to leave out any implementation at all.
      */
-    @notrace ref const(Type) peek(Timeout timeout = Timeout.infinite) @safe @nogc {
-        waitHasItems(timeout);
-        return queue.peek();
-    }
-    +/
 }
 
 version(unittest) {

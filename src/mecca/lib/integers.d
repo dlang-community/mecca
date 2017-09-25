@@ -6,6 +6,8 @@ import std.conv;
 import std.string;
 import std.algorithm: among;
 
+import mecca.log;
+
 version(LDC) {
     ubyte bswap(ubyte x) pure @nogc {
         pragma(inline, true);

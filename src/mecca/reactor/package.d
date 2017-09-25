@@ -478,7 +478,7 @@ public:
      * Returns:
      *  A FiberHandle to the newly created fiber.
      */
-    FiberHandle spawnFiber(T...)(T args) nothrow @safe @nogc {
+    @notrace FiberHandle spawnFiber(T...)(T args) nothrow @safe @nogc {
         static assert(T.length>=1, "Must pass at least the function/delegate to spawnFiber");
         auto fib = _spawnFiber(false);
         fib.params.fiberBody.set(args);
@@ -495,7 +495,7 @@ public:
      * Returns:
      *  A FiberHandle to the newly created fiber.
      */
-    FiberHandle spawnFiber(alias F)(Parameters!F args) {
+    @notrace FiberHandle spawnFiber(alias F)(Parameters!F args) {
         auto fib = _spawnFiber(false);
         fib.params.fiberBody.set!F(args);
         return FiberHandle(fib);
