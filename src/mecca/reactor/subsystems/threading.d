@@ -332,7 +332,7 @@ public:
 }
 
 unittest {
-    import mecca.reactor: testWithReactor;
+    import mecca.reactor: Reactor, testWithReactor;
 
     __gshared static long sum;
     __gshared static long done;
@@ -349,6 +349,9 @@ unittest {
         done--;
     }
 
+    Reactor.OpenOptions options;
+    options.threadDeferralEnabled = true;
+
     testWithReactor({
         done = 0;
         foreach(int i; [10, 20, 30, 40, 50, 45, 35, 25, 15]) {
@@ -362,7 +365,7 @@ unittest {
         }
 
         assert (sum == 270);
-    });
+    }, options);
 }
 
 

@@ -269,22 +269,8 @@ public:
   The main scheduler for the micro-threading architecture.
  */
 struct Reactor {
-private:
-    enum MAX_IDLE_CALLBACKS = 16;
-    enum TIMER_NUM_BINS = 256;
-    enum TIMER_NUM_LEVELS = 3;
-    enum MAX_DEFERRED_TASKS = 1024;
-
-    enum GUARD_ZONE_SIZE = SYS_PAGE_SIZE;
-
-    enum NUM_SPECIAL_FIBERS = 2;
-    enum ZERO_DURATION = Duration.zero;
-
-    enum MainFiberId = FiberId(0);
-    enum IdleFiberId = FiberId(1);
-
     /// The options control aspects of the reactor's operation
-    struct Options {
+    struct OpenOptions {
         /// Maximum number of fibers.
         uint     numFibers = 256;
         /// Stack size of each fiber (except the main fiber). The reactor will allocate numFiber*fiberStackSize during startup
@@ -329,13 +315,30 @@ private:
         uint numThreadsInPool = 4;
         /// Worker thread stack size
         size_t threadStackSize = 512*KB;
+
+        /// Whether we have enabled deferToThread
+        bool threadDeferralEnabled;
     }
+
+private:
+    enum MAX_IDLE_CALLBACKS = 16;
+    enum TIMER_NUM_BINS = 256;
+    enum TIMER_NUM_LEVELS = 3;
+    enum MAX_DEFERRED_TASKS = 1024;
+
+    enum GUARD_ZONE_SIZE = SYS_PAGE_SIZE;
+
+    enum NUM_SPECIAL_FIBERS = 2;
+    enum ZERO_DURATION = Duration.zero;
+
+    enum MainFiberId = FiberId(0);
+    enum IdleFiberId = FiberId(1);
 
     bool _open;
     bool _running;
     int criticalSectionNesting;
     ulong idleCycles;
-    Options options;
+    OpenOptions optionsInEffect;
 
     MmapBuffer fiberStacks;
     MmapArray!ReactorFiber allFibers;
@@ -379,12 +382,13 @@ public:
 
       All options must be set before calling this function.
      */
-    void setup() {
+    void setup(OpenOptions options = OpenOptions.init) {
         assert (!_open, "reactor.setup called twice");
         _open = true;
         assert (thread_isMainThread);
         _isReactorThread = true;
         assert (options.numFibers > NUM_SPECIAL_FIBERS);
+        optionsInEffect = options;
 
         const stackPerFib = (((options.fiberStackSize + SYS_PAGE_SIZE - 1) / SYS_PAGE_SIZE) + 1) * SYS_PAGE_SIZE;
         fiberStacks.allocate(stackPerFib * options.numFibers);
@@ -423,7 +427,8 @@ public:
 
         registerFaultHandlers();
 
-        threadPool.open(options.numThreadsInPool, options.threadStackSize);
+        if( options.threadDeferralEnabled )
+            threadPool.open(options.numThreadsInPool, options.threadStackSize);
     }
 
     /**
@@ -434,13 +439,13 @@ public:
         assert(!_running, "reactor teardown called on still running reactor");
         assert(criticalSectionNesting==0);
 
-        threadPool.close();
+        if( optionsInEffect.threadDeferralEnabled )
+            threadPool.close();
         switchCurrExcBuf(null);
 
         disableGCTracking();
         deregisterFaultHandlers();
         deregisterHangDetector();
-        options.setToInit();
         allFibers.free();
         fiberStacks.free();
         timeQueue.close();
@@ -812,11 +817,13 @@ public:
      * Will rethrow whatever the thread throws in the waiting fiber.
      */
     auto deferToThread(alias F)(Parameters!F args) @nogc {
+        DBG_ASSERT!"deferToThread called but thread deferral isn't enabled in the reactor"(optionsInEffect.threadDeferralEnabled);
         return threadPool.deferToThread!F(Timeout.infinite, args);
     }
 
     /// ditto
     auto deferToThread(F)(scope F dlg, Timeout timeout = Timeout.infinite) @nogc {
+        DBG_ASSERT!"deferToThread called but thread deferral isn't enabled in the reactor"(optionsInEffect.threadDeferralEnabled);
         static auto glueFunction(F dlg) {
             return F();
         }
@@ -876,7 +883,7 @@ private:
             auto now = TscTimePoint.now;
             if( !thisFiber.flag!"SPECIAL" ) {
                 auto fiberRunTime =  now - fiberRunStartTime;
-                if( fiberRunTime >= options.hoggerWarningThreshold ) {
+                if( fiberRunTime >= optionsInEffect.hoggerWarningThreshold ) {
                     WARN!"#HOGGER detected: Fiber %s ran for %sms"(thisFiber.identity, fiberRunTime.total!"msecs");
                     // TODO: Add dumping of stack trace
                 }
@@ -1159,7 +1166,7 @@ private:
         posix_time.itimerspec its;
 
         enum TIMER_GRANULARITY = 4; // Number of wakeups during the monitored period
-        Duration threshold = options.hangDetectorTimeout / TIMER_GRANULARITY;
+        Duration threshold = optionsInEffect.hangDetectorTimeout / TIMER_GRANULARITY;
         threshold.split!("seconds", "nsecs")(its.it_value.tv_sec, its.it_value.tv_nsec);
         its.it_interval = its.it_value;
         INFO!"Hang detector will wake up every %s seconds and %s nsecs"(its.it_interval.tv_sec, its.it_interval.tv_nsec);
@@ -1180,7 +1187,7 @@ private:
         auto now = TscTimePoint.now();
         auto delay = now - theReactor.fiberRunStartTime;
 
-        if( delay<theReactor.options.hangDetectorTimeout || theReactor.runningFiberId == IdleFiberId )
+        if( delay<theReactor.optionsInEffect.hangDetectorTimeout || theReactor.runningFiberId == IdleFiberId )
             return;
 
         long seconds, usecs;
@@ -1271,13 +1278,17 @@ private:
                 theReactor.resumeSpecialFiber(theReactor.mainFiber);
         }
 
-        TimerHandle gcTimer = registerRecurringTimer!gcEnabler(options.gcInterval, &needGcCollect);
+        TimerHandle gcTimer = registerRecurringTimer!gcEnabler(optionsInEffect.gcInterval, &needGcCollect);
 
         while (_running) {
             runTimedCallbacks();
             if( needGcCollect ) {
                 needGcCollect = false;
+                TscTimePoint.now(); // Update the hard now value
+                INFO!"Beginning GC collection cycle"();
                 GC.collect();
+                TscTimePoint.now(); // Update the hard now value
+                INFO!"GC collection cycle ended"();
             }
 
             switchToNext();
@@ -1325,8 +1336,8 @@ private bool /* thread local */ _isReactorThread;
 }
 
 version (unittest) {
-    void testWithReactor(bool withEpoller = false)(void delegate() dg) {
-        theReactor.setup();
+    void testWithReactor(bool withEpoller = false)(void delegate() dg, Reactor.OpenOptions options = Reactor.OpenOptions.init) {
+        theReactor.setup(options);
         scope(success) theReactor.teardown();
         static if( withEpoller ) {
             import mecca.reactor.io.fd;
@@ -1551,8 +1562,9 @@ unittest {
 }
 
 unittest {
-    theReactor.options.hangDetectorTimeout = 20.msecs;
-    DEBUG!"sanity: %s"(theReactor.options.hangDetectorTimeout.toString);
+    Reactor.OpenOptions options;
+    options.hangDetectorTimeout = 20.msecs;
+    DEBUG!"sanity: %s"(options.hangDetectorTimeout.toString);
 
     testWithReactor({
             theReactor.sleep(200.msecs);
@@ -1561,7 +1573,7 @@ unittest {
             import core.thread;
             Thread.sleep(200.msecs);
             +/
-            });
+            }, options);
 }
 
 /+
