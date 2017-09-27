@@ -275,7 +275,7 @@ public:
         }
     }
 
-    auto deferToThread(alias F)(Parameters!F args) @nogc {
+    auto deferToThread(alias F)(Timeout timeout, Parameters!F args) @nogc {
         auto task = tasksPool.alloc();
         task.fibHandle = theReactor.runningFiberHandle;
         task.timeAdded = TscTimePoint.softNow();
@@ -291,7 +291,7 @@ public:
         //      - if it is done, we must release it.
         //
         try {
-            theReactor.suspendThisFiber();
+            theReactor.suspendThisFiber(timeout);
         }
         catch (Throwable ex) {
             if (task.fibHandle.isValid) {
@@ -336,7 +336,6 @@ unittest {
 
     __gshared static long sum;
     __gshared static long done;
-    __gshared static ThreadPool!1024 thdPool;
 
     static int sleeper(Duration dur, int x) {
         Thread.sleep(dur);
@@ -344,15 +343,13 @@ unittest {
     }
 
     static void sleeperFib(int x) {
-        auto res = thdPool.deferToThread!sleeper(x.msecs, x);
+        auto res = theReactor.deferToThread!sleeper(x.msecs, x);
         assert (res == x * 2);
         sum += x;
         done--;
     }
 
     testWithReactor({
-        thdPool.open(10);
-
         done = 0;
         foreach(int i; [10, 20, 30, 40, 50, 45, 35, 25, 15]) {
             done++;

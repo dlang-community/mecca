@@ -30,6 +30,7 @@ import mecca.reactor.impl.time_queue;
 import mecca.reactor.impl.fibril: Fibril;
 import mecca.reactor.impl.fls;
 import mecca.reactor.subsystems.gc_tracker;
+import mecca.reactor.subsystems.threading;
 public import mecca.reactor.types;
 
 import std.stdio;
@@ -272,6 +273,7 @@ private:
     enum MAX_IDLE_CALLBACKS = 16;
     enum TIMER_NUM_BINS = 256;
     enum TIMER_NUM_LEVELS = 3;
+    enum MAX_DEFERRED_TASKS = 1024;
 
     enum GUARD_ZONE_SIZE = SYS_PAGE_SIZE;
 
@@ -322,6 +324,11 @@ private:
         Duration hangDetectorTimeout = Duration.zero;
         /// Maximal number of timers that can be simultaneously registered.
         size_t   numTimers = 10_000;
+
+        /// Number of threads servicing deferred tasks
+        uint numThreadsInPool = 4;
+        /// Worker thread stack size
+        size_t threadStackSize = 512*KB;
     }
 
     bool _open;
@@ -358,6 +365,8 @@ private:
     // TODO change to mmap pool or something
     SimplePool!(TimedCallback) timedCallbacksPool;
     CascadingTimeQueue!(TimedCallback*, TIMER_NUM_BINS, TIMER_NUM_LEVELS, true) timeQueue;
+
+    ThreadPool!MAX_DEFERRED_TASKS threadPool;
 
 public:
     /// Report whether the reactor has been properly opened (i.e. - setup has been called).
@@ -413,6 +422,8 @@ public:
             registerHangDetector();
 
         registerFaultHandlers();
+
+        threadPool.open(options.numThreadsInPool, options.threadStackSize);
     }
 
     /**
@@ -423,6 +434,7 @@ public:
         assert(!_running, "reactor teardown called on still running reactor");
         assert(criticalSectionNesting==0);
 
+        threadPool.close();
         switchCurrExcBuf(null);
 
         disableGCTracking();
@@ -784,6 +796,32 @@ public:
         scope(failure) cancelTimer(timerHandle);
 
         suspendThisFiber();
+    }
+
+    /**
+     * run a function inside a different thread.
+     *
+     * Runs a function inside a thread. Use this function to run CPU bound processing without freezing the other fibers.
+     *
+     * Returns:
+     * The return argument from the delegate is returned by this function.
+     *
+     * Throws:
+     * Will throw TimeoutExpired if the timeout expires.
+     *
+     * Will rethrow whatever the thread throws in the waiting fiber.
+     */
+    auto deferToThread(alias F)(Parameters!F args) @nogc {
+        return threadPool.deferToThread!F(Timeout.infinite, args);
+    }
+
+    /// ditto
+    auto deferToThread(F)(scope F dlg, Timeout timeout = Timeout.infinite) @nogc {
+        static auto glueFunction(F dlg) {
+            return F();
+        }
+
+        return threadPool.deferToThread!glueFunction(timeout, dlg);
     }
 
     /**

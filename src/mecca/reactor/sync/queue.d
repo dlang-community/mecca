@@ -90,6 +90,24 @@ public:
      * while the reference is alive, as any sleep might invalidate the reference. Since many implementations still do pop at the end of
      * processing, I (Shachar) have decided to leave out any implementation at all.
      */
+
+    /**
+     * Wait until all current fibers waiting to push have done so.
+     *
+     * This method follows the principle that ugly functionality should have an ugly name. This function is only reliably useful if you know
+     * there is only one fiber that can push to the queue.
+     *
+     * This method waits until all fibers currently waiting to push have done so, and then waits for an empty slot to clear up. If only one
+     * fiber is pushing, this guarantees that the next call to push will not have to sleep.
+     *
+     * Please note that if more than one fiber might be pushing items to the queue, no such guarantee exists even if a push is attempted
+     * immediately after this method returns. The reason is that fibers that asked to push after this fiber called the method are ahead of
+     * the future push event in line.
+     */
+    void pushWaitersQueueWaitForHead(Timeout timeout = Timeout.infinite) @safe @nogc {
+        syncPush.acquire(1, timeout);
+        syncPush.release();
+    }
 }
 
 version(unittest) {
