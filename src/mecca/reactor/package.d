@@ -708,6 +708,7 @@ public:
     public:
         /// Returns whether the handle describes a currently registered task
         @property bool isValid() const @safe @nogc {
+            // TODO make the handle resilient to ABA changes
             return callback !is null && callback._owner !is null;
         }
     }

@@ -4,10 +4,12 @@ module mecca.reactor.io.signal;
 import core.sys.posix.signal;
 import core.sys.posix.unistd;
 import core.sys.linux.sys.signalfd;
+public import core.sys.linux.sys.signalfd : signalfd_siginfo;
 
 import mecca.lib.exception;
 import mecca.lib.reflection;
 import mecca.log;
+public import mecca.platform.linux : OSSignal;
 import mecca.platform.linux;
 import mecca.reactor.io.fd;
 import mecca.reactor;
@@ -55,7 +57,7 @@ private {
  * A singleton managing registered signals
  */
 private struct ReactorSignal {
-    alias SignalHandler = void delegate(const ref signalfd_siginfo siginfo) nothrow @safe @nogc;
+    alias SignalHandler = void delegate(const ref signalfd_siginfo siginfo) @system;
 private:
     enum BATCH_SIZE = 16; // How many signals to handle with one syscall
 
@@ -104,9 +106,9 @@ public:
      * signum = the signal to be handled
      * handler = a delegate to be called when the signal arrives
      */
-    void registerSignal(OSSignal signum, SignalHandler handler) @trusted @nogc {
+    void registerHandler(OSSignal signum, SignalHandler handler) @trusted @nogc {
         verifyOpen();
-        ASSERT!"registerSignal called with invalid signal %s"(signum<NUM_SIGS || signum<=0, signum);
+        ASSERT!"registerHandler called with invalid signal %s"(signum<NUM_SIGS || signum<=0, signum);
         ASSERT!"signal %s registered twice"(handlers[signum] is null, signum);
         DBG_ASSERT!"signal %s has no handle but is set in sigmask"(sigismember(signals, signum)!=1, signum);
 
@@ -122,9 +124,9 @@ public:
         handlers[signum] = handler;
     }
 
-    void unregisterSignal(OSSignal signum) @trusted @nogc {
+    void unregisterHandler(OSSignal signum) @trusted @nogc {
         verifyOpen();
-        ASSERT!"registerSignal called with invalid signal %s"(signum<NUM_SIGS || signum<=0, signum);
+        ASSERT!"registerHandler called with invalid signal %s"(signum<NUM_SIGS || signum<=0, signum);
         ASSERT!"signal %s not registered"(handlers[signum] !is null, signum);
         DBG_ASSERT!"signal %s has a handle but is not set sigmask"(sigismember(signals, signum)==1, signum);
 
@@ -145,11 +147,11 @@ private:
         }
     }
 
-    static void fiberMainWrapper(ReactorSignal* rs) @safe @nogc {
+    static void fiberMainWrapper(ReactorSignal* rs) @safe {
         rs.fiberMain();
     }
 
-    void fiberMain() @trusted @nogc {
+    void fiberMain() @trusted {
         try {
             while(true) {
                 // XXX Consider placing the array in the struct, so it's not on the stack
@@ -208,7 +210,7 @@ unittest {
         import core.sys.posix.sys.time;
         import mecca.lib.time;
 
-        reactorSignal.registerSignal(OSSignal.SIGALRM, &sigHandler);
+        reactorSignal.registerHandler(OSSignal.SIGALRM, &sigHandler);
 
         itimerval it;
         it.it_interval.tv_usec = 500; // Wake up every half millisecond. More accurate than our reactor timers ;-)
