@@ -826,7 +826,7 @@ public:
     auto deferToThread(F)(scope F dlg, Timeout timeout = Timeout.infinite) @nogc {
         DBG_ASSERT!"deferToThread called but thread deferral isn't enabled in the reactor"(optionsInEffect.threadDeferralEnabled);
         static auto glueFunction(F dlg) {
-            return F();
+            return dlg();
         }
 
         return threadPool.deferToThread!glueFunction(timeout, dlg);
