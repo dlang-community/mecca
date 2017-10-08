@@ -248,8 +248,6 @@ struct GCStats {
     size_t pageBlocks;      // number of blocks marked PAGE
 }
 
-pragma(mangle, "gc_stats") extern(C) GCStats gcGetStats() @nogc nothrow @safe;
-
 struct GCStackDescriptor {
     private import core.sync.mutex: Mutex;
 
