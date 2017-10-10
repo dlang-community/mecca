@@ -1,5 +1,5 @@
 /// Manage signals as reactor callbacks
-module mecca.reactor.io.signal;
+module mecca.reactor.io.signals;
 
 import core.sys.posix.signal;
 import core.sys.posix.unistd;
