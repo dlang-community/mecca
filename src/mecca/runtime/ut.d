@@ -22,7 +22,7 @@ shared static this() {
  *
  * Special main for UT compilations. This main accepts arguments that limit (by module) the UTs to run.
  */
-@notrace int main(string[] argv) {
+@notrace int utMain(string[] argv) {
     bool tty = isatty(1) != 0;
 
     void logLine(string text) {
