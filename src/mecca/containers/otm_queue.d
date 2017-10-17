@@ -616,13 +616,3 @@ unittest {
     assert (totalRequests == totalResults && numRequests == numResults,
         "%s=%s %s=%s".format(totalRequests, totalResults, numRequests, numResults));
 }
-
-
-
-
-
-
-
-
-
-

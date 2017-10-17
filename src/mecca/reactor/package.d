@@ -102,26 +102,29 @@ align(1):
         _prevId = to!FiberId(newPrev);
     }
 
-    @notrace void setup(void[] stackArea) nothrow @nogc {
-        fibril.set(stackArea[0 .. $ - OnStackParams.sizeof], &wrapper);
+    @notrace void setup(void[] stackArea, bool main) nothrow @nogc {
+        if( !main )
+            fibril.set(stackArea[0 .. $ - OnStackParams.sizeof], &wrapper);
         params = cast(OnStackParams*)&stackArea[$ - OnStackParams.sizeof];
         setToInit(params);
 
-        params.stackDescriptor.bstack = params;
-        params.stackDescriptor.tstack = fibril.rsp;
-        params.stackDescriptor.add();
+        if( !main ) {
+            params.stackDescriptor.bstack = params;
+            params.stackDescriptor.tstack = fibril.rsp;
+            params.stackDescriptor.add();
+        }
 
         _next = null;
         incarnationCounter = 0;
         _flags = 0;
     }
 
-    void teardown() nothrow @nogc {
+    void teardown(bool main) nothrow @nogc {
         fibril.reset();
-        if (params) {
+        if (!main) {
             params.stackDescriptor.remove();
-            params = null;
         }
+        params = null;
     }
 
     @property FiberId identity() const nothrow @safe @nogc {
@@ -400,9 +403,9 @@ public:
 
         foreach(i, ref fib; allFibers) {
             auto stack = fiberStacks[i * stackPerFib .. (i + 1) * stackPerFib];
-            //errnoEnforce(mprotect(stack.ptr, SYS_PAGE_SIZE, PROT_NONE) == 0);
-            errnoEnforce(munmap(stack.ptr, GUARD_ZONE_SIZE) == 0, "munmap");
-            fib.setup(stack[SYS_PAGE_SIZE .. $]);
+            errnoEnforce(mprotect(stack.ptr, SYS_PAGE_SIZE, PROT_NONE) == 0);
+            //errnoEnforce(munmap(stack.ptr, GUARD_ZONE_SIZE) == 0, "munmap");
+            fib.setup(stack[SYS_PAGE_SIZE .. $], i==0);
 
             if (i >= NUM_SPECIAL_FIBERS) {
                 freeFibers.append(&fib);
@@ -438,6 +441,10 @@ public:
         assert(_open, "reactor teardown called on non-open reactor");
         assert(!_running, "reactor teardown called on still running reactor");
         assert(criticalSectionNesting==0);
+
+        foreach(i, ref fib; allFibers) {
+            fib.teardown(i==0);
+        }
 
         if( optionsInEffect.threadDeferralEnabled )
             threadPool.close();

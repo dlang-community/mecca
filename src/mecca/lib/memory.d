@@ -274,6 +274,10 @@ struct GCStackDescriptor {
     }
 
     @notrace void remove() nothrow @nogc {
+        auto slock = cast(Mutex)_locks[0].ptr;
+        slock.lock_nothrow();
+        scope(exit) slock.unlock_nothrow();
+
         if (this.prev) {
             this.prev.next = this.next;
         }
@@ -285,8 +289,3 @@ struct GCStackDescriptor {
         }
     }
 }
-
-
-
-
-
