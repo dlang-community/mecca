@@ -339,6 +339,7 @@ private:
 
     bool _open;
     bool _running;
+    bool _stopping;
     int criticalSectionNesting;
     ulong idleCycles;
     OpenOptions optionsInEffect;
@@ -577,25 +578,22 @@ public:
 
     /**
       Stop the reactor, killing all fibers.
+
+      This will trigger a return from the call to Reactor.start.
      */
-    void stop() {
-        if (_running) {
-            Throwable reactorExit = mkEx!ReactorExit("Reactor is quitting");
-            foreach(ref fiber; allFibers) {
-                if( !fiber.flag!"SPECIAL" && fiber.state == ReactorFiber.State.Sleeping ) {
-                    throwInFiber(FiberHandle(&fiber), reactorExit);
-                }
-            }
-            yieldThisFiber(); // Let everyone else die
+    void stop() @safe @nogc {
+        if( _stopping ) {
+            ERROR!"Reactor.stop called, but reactor is not running"();
+            return;
+        }
 
-            META!"Stopping reactor"();
-            _running = false;
-            if (thisFiber !is mainFiber) {
-                resumeSpecialFiber(mainFiber);
-            }
+        _stopping = true;
+        if( !isMain() ) {
+            resumeSpecialFiber(mainFiber);
+            thisFiber.flag!"SPECIAL" = false;
+            yieldThisFiber();
 
-            if( !thisFiber.flag!"SPECIAL" )
-                throw reactorExit; // We need to die too
+            assert(false, "Woke up after stopping reactor");
         }
     }
 
@@ -844,12 +842,13 @@ public:
      *
      * This function throws an exception in another fiber. The fiber will be scheduled to run.
      *
-     * There is a difference in semantics between the two forms. The first form throws an identical copy of the exception in the target
-     * fiber. The second form forms a new exception to be thrown in that fiber.
+     * There is a difference in semantics between the two forms. The first form throws an identical copy of the exception in the
+     * target fiber. The second form forms a new exception to be thrown in that fiber.
      *
-     * One place where this difference matters is with the stack trace the thrown exception will have. With the first form, the stack trace
-     * will be the stack trace `ex` has, wherever it is (usually not in the fiber in which the exception was thrown). With the second form,
-     * the stack trace will be of the target fiber, which means it will point back to where the fiber went to sleep.
+     * One place where this difference matters is with the stack trace the thrown exception will have. With the first form, the
+     * stack trace will be the stack trace `ex` has, wherever it is (usually not in the fiber in which the exception was thrown).
+     * With the second form, the stack trace will be of the target fiber, which means it will point back to where the fiber went
+     * to sleep.
      */
     bool throwInFiber(FiberHandle fHandle, Throwable ex) nothrow @safe @nogc {
         ExcBuf* fiberEx = prepThrowInFiber(fHandle, false);
@@ -864,7 +863,9 @@ public:
     }
 
     /// ditto
-    bool throwInFiber(T : Throwable, string file = __FILE__, size_t line = __LINE__, A...)(FiberHandle fHandle, auto ref A args) nothrow @safe @nogc {
+    bool throwInFiber(T : Throwable, string file = __FILE__, size_t line = __LINE__, A...)
+            (FiberHandle fHandle, auto ref A args) nothrow @safe @nogc
+    {
         pragma(inline, true);
         ExcBuf* fiberEx = prepThrowInFiber(fHandle, true);
 
@@ -954,6 +955,7 @@ private:
         }
         catch (Throwable ex2) {
             ERROR!"switchToNext on dead fiber failed with exception %s"(ex2.msg);
+            LOG_EXCEPTION(ex2);
             assert(false);
         }
     }
@@ -1281,6 +1283,9 @@ private:
 
         bool needGcCollect;
         static void gcEnabler(bool* needGcCollect) {
+            if( theReactor._stopping )
+                return;
+
             *needGcCollect = true;
             if( theReactor.runningFiberId != MainFiberId )
                 theReactor.resumeSpecialFiber(theReactor.mainFiber);
@@ -1288,7 +1293,7 @@ private:
 
         TimerHandle gcTimer = registerRecurringTimer!gcEnabler(optionsInEffect.gcInterval, &needGcCollect);
 
-        while (_running) {
+        while (!_stopping) {
             runTimedCallbacks();
             if( needGcCollect ) {
                 needGcCollect = false;
@@ -1299,8 +1304,30 @@ private:
                 INFO!"GC collection cycle ended"();
             }
 
-            switchToNext();
+            if( !_stopping )
+                switchToNext();
         }
+
+        performStopReactor();
+    }
+
+    void performStopReactor() @nogc {
+        ASSERT!"performStopReactor must be called from the main fiber. Use Reactor.stop instead"( isMain );
+
+        Throwable reactorExit = mkEx!ReactorExit("Reactor is quitting");
+        foreach(ref fiber; allFibers[1..$]) { // All fibers but main
+            if( fiber.state == ReactorFiber.State.Sleeping ) {
+                fiber.flag!"SPECIAL" = false;
+                throwInFiber(FiberHandle(&fiber), reactorExit);
+            }
+        }
+
+        thisFiber.flag!"SPECIAL" = false;
+        yieldThisFiber();
+
+        META!"Stopping reactor"();
+        _running = false;
+        _stopping = false;
     }
 }
 
