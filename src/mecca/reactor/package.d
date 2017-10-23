@@ -311,6 +311,13 @@ struct Reactor {
           switching out, for too long, it terminates the entire program.
          */
         Duration hangDetectorTimeout = Duration.zero;
+        /**
+          Whether to enable fault handlers
+
+          The fault handlers catch program faults (such as segmentation faults) and log them with their backtrace.
+         */
+        bool faultHandlersEnabled = true;
+
         /// Maximal number of timers that can be simultaneously registered.
         size_t   numTimers = 10_000;
 
@@ -429,7 +436,8 @@ public:
         if( options.hangDetectorTimeout !is Duration.zero )
             registerHangDetector();
 
-        registerFaultHandlers();
+        if( options.faultHandlersEnabled )
+            registerFaultHandlers();
 
         if( options.threadDeferralEnabled )
             threadPool.open(options.numThreadsInPool, options.threadStackSize);
@@ -452,8 +460,13 @@ public:
         switchCurrExcBuf(null);
 
         disableGCTracking();
-        deregisterFaultHandlers();
-        deregisterHangDetector();
+
+        if( optionsInEffect.faultHandlersEnabled )
+            deregisterFaultHandlers();
+
+        if( optionsInEffect.hangDetectorTimeout !is Duration.zero )
+            deregisterHangDetector();
+
         allFibers.free();
         fiberStacks.free();
         timeQueue.close();
@@ -1225,7 +1238,7 @@ private:
         posix_signal.signal(OSSignal.SIGSEGV, posix_signal.SIG_DFL);
     }
 
-    extern(C) static void faultHandler(int signum, siginfo_t* info, void *ctx) nothrow @trusted @nogc {
+    @notrace extern(C) static void faultHandler(int signum, siginfo_t* info, void* ctx) nothrow @trusted @nogc {
         OSSignal sig = cast(OSSignal)signum;
         string faultName;
 
