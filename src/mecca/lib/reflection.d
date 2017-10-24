@@ -601,37 +601,3 @@ unittest {
     alias BF = ForeachTypeof!B;
     alias IF = ForeachTypeof!(int[5]);
 }
-
-template isIntegralDynamicArray (T) {
-    //pragma(msg, format("isIntegralDynamicArray!%s", T.stringof));
-    static if(isDynamicArray!T){
-        //pragma(msg, "Dynamic");
-        static if (is (T == void[]) || is (T == const(void[])) || is (T == const(void)[]) || is (T == enum)) {
-            enum bool isIntegralDynamicArray = false; //ForeachType explodes on void[]
-        }else{
-            alias TT = ForeachTypeof!T;
-            //pragma(msg, TT.stringof);
-            import mecca.lib.typedid : isTypedIdentifier;
-            static if (isTypedIdentifier!TT) {
-                alias TTT = const(TT.UnderlyingType);
-            } else {
-                alias TTT = const(TT);
-            }
-            enum bool isIntegralDynamicArray =
-                (is (TTT == const(byte))  || is (TTT == const(ubyte))  ||
-                 is (TTT == const(char))  || is (TTT == const(bool))   ||
-                 is (TTT == const(short)) || is (TTT == const(ushort)) ||
-                 is (TTT == const(int))   || is (TTT == const(uint))   ||
-                 is (TTT == const(long))  || is (TTT == const(ulong))  );
-        }
-    }else{
-        enum bool isIntegralDynamicArray = false;
-    }
-    //pragma(msg, format("isIntegralDynamicArray!%s = %s", T.stringof, isIntegralDynamicArray));
-}
-
-unittest {
-    enum E : string { e = "e" }
-    static assert(isDynamicArray!E);
-    static assert(!isIntegralDynamicArray!E);
-}
