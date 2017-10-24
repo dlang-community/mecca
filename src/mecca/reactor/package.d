@@ -893,7 +893,7 @@ public:
 
 private:
     @property bool shouldRunTimedCallbacks() nothrow @safe @nogc {
-        return timeQueue.cyclesTillNextEntry(TscTimePoint.now()) == 0;
+        return timeQueue.cyclesTillNextEntry(TscTimePoint.hardNow()) == 0;
     }
 
     void switchToNext() @safe @nogc {
@@ -902,7 +902,7 @@ private:
 
         // in source fiber
         {
-            auto now = TscTimePoint.now;
+            auto now = TscTimePoint.hardNow;
             if( !thisFiber.flag!"SPECIAL" ) {
                 auto fiberRunTime =  now - fiberRunStartTime;
                 if( fiberRunTime >= optionsInEffect.hoggerWarningThreshold ) {
@@ -1067,12 +1067,12 @@ private:
     void idleLoop() {
         while (true) {
             TscTimePoint start, end;
-            end = start = TscTimePoint.now;
+            end = start = TscTimePoint.hardNow;
 
             while (scheduledFibers.empty) {
                 //enterCriticalSection();
                 //scope(exit) leaveCriticalSection();
-                end = TscTimePoint.now;
+                end = TscTimePoint.hardNow;
                 /*
                    Since we've updated "end" before calling the timers, these timers won't count as idle time, unless....
                    after running them the scheduledFibers list is still empty, in which case they do.
@@ -1099,7 +1099,7 @@ private:
         }
     }
 
-    bool runTimedCallbacks(TscTimePoint now = TscTimePoint.now) {
+    bool runTimedCallbacks(TscTimePoint now = TscTimePoint.hardNow) {
         // Timer callbacks are not allowed to sleep
         auto criticalSectionContainer = criticalSection();
 
@@ -1120,7 +1120,7 @@ private:
     }
 
     void rescheduleRecurringTimer(TimedCallback* callback) nothrow @safe @nogc {
-        ulong cycles = TscTimePoint.now.cycles + callback.intervalCycles;
+        ulong cycles = TscTimePoint.hardNow.cycles + callback.intervalCycles;
         cycles -= cycles % callback.intervalCycles;
         callback.timePoint = TscTimePoint(cycles);
 
@@ -1207,7 +1207,7 @@ private:
     }
 
     extern(C) static void hangDetectorHandler(int signum, siginfo_t* info, void *ctx) nothrow @trusted @nogc {
-        auto now = TscTimePoint.now();
+        auto now = TscTimePoint.hardNow();
         auto delay = now - theReactor.fiberRunStartTime;
 
         if( delay<theReactor.optionsInEffect.hangDetectorTimeout || theReactor.runningFiberId == IdleFiberId )
@@ -1310,10 +1310,10 @@ private:
             runTimedCallbacks();
             if( needGcCollect ) {
                 needGcCollect = false;
-                TscTimePoint.now(); // Update the hard now value
+                TscTimePoint.hardNow(); // Update the hard now value
                 INFO!"Beginning GC collection cycle"();
                 GC.collect();
-                TscTimePoint.now(); // Update the hard now value
+                TscTimePoint.hardNow(); // Update the hard now value
                 INFO!"GC collection cycle ended"();
             }
 
@@ -1453,7 +1453,7 @@ unittest {
     void fiberFunc(Duration duration) {
         INFO!"Fiber %s sleeping for %s"(theReactor.runningFiberHandle, duration.toString);
         theReactor.sleep(duration);
-        auto now = TscTimePoint.now;
+        auto now = TscTimePoint.hardNow;
         counter++;
         INFO!"Fiber %s woke up after %s, overshooting by %s counter is %s"(theReactor.runningFiberHandle, (now - start).toString,
                 ((now-start) - duration).toString, counter);
@@ -1475,9 +1475,9 @@ unittest {
     theReactor.spawnFiber(&fiberFunc, dur!"msecs"(200));
     theReactor.spawnFiber(&ender);
 
-    start = TscTimePoint.now;
+    start = TscTimePoint.hardNow;
     theReactor.start();
-    auto end = TscTimePoint.now;
+    auto end = TscTimePoint.hardNow;
     INFO!"UT finished in %s"((end - start).toString);
 
     assert(counter == 6, "Not all fibers finished");

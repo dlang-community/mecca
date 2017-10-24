@@ -183,11 +183,11 @@ unittest {
     enum ITERS = 10_000_000;
 
     import mecca.lib.time: TscTimePoint;
-    auto t0 = TscTimePoint.now;
+    auto t0 = TscTimePoint.hardNow;
     foreach(_; 0 .. ITERS) {
         mainFib.switchTo(fib1);
     }
-    auto dt = TscTimePoint.now.diff!"cycles"(t0);
+    auto dt = TscTimePoint.hardNow.diff!"cycles"(t0);
     assert (counter == ITERS);
     writefln("total %s cycles, per iteration %s", dt, dt / (ITERS * 3.0));
 }

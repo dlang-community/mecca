@@ -85,7 +85,7 @@ unittest {
         barrier.markDone();
     }
 
-    TscTimePoint begin = TscTimePoint.now;
+    TscTimePoint begin = TscTimePoint.hardNow;
     testWithReactor({
             foreach(i; 0..7) {
                 barrier.addWaiter();
@@ -100,7 +100,7 @@ unittest {
             lock.release();
             theReactor.leaveCriticalSection();
             });
-    TscTimePoint end = TscTimePoint.now;
+    TscTimePoint end = TscTimePoint.hardNow;
 
     assert(end - begin >= 21.msecs, "mutex did not mutually exclude");
 }

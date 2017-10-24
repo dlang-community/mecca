@@ -123,7 +123,7 @@ struct DeferredTask {
             return;
         }
 
-        scope(exit) timeFinished = TscTimePoint.now;
+        scope(exit) timeFinished = TscTimePoint.hardNow;
         hasException = false;
         try {
             DEBUG!"#THD running %s in thread"(cookie);

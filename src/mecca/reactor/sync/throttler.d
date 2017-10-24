@@ -56,7 +56,7 @@ public:
                 (numInitialTokens<=cast(long)burstSize, numInitialTokens, burstSize);
         this.burstSize = burstSize;
         tokenBallance = numInitialTokens;
-        lastDepositTime = TscTimePoint.now();
+        lastDepositTime = TscTimePoint.hardNow();
         ticksPerToken = TscTimePoint.cyclesPerSecond / tokensPerSecond;
         ticksPerTokenDivider = S64Divisor(ticksPerToken);
     }
@@ -190,7 +190,7 @@ unittest {
     }
 
     testWithReactor({
-        auto startTime = TscTimePoint.now();
+        auto startTime = TscTimePoint.hardNow();
         budget.open(NETWORK_BUDGET, 256);
         scope(exit) budget.close();
 
@@ -207,7 +207,7 @@ unittest {
         // All together: 25,600 packets, which at 50MB/s equals two seconds
 
         doneEvent.waitAll();
-        auto endTime = TscTimePoint.now();
+        auto endTime = TscTimePoint.hardNow();
 
         auto duration = endTime - startTime;
 

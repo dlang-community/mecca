@@ -44,7 +44,7 @@ public:
         alias OwnerAttrType = ListType*;
     }
 
-    void open(Duration resolution, TscTimePoint startTime = TscTimePoint.now) @safe @nogc {
+    void open(Duration resolution, TscTimePoint startTime = TscTimePoint.hardNow) @safe @nogc {
         open(TscTimePoint.toCycles(resolution), startTime);
     }
 
@@ -375,7 +375,7 @@ unittest {
     enum numBins = 16;
     enum numLevels = 3;
 
-    TscTimePoint now = TscTimePoint.now;
+    TscTimePoint now = TscTimePoint.hardNow;
 
     CascadingTimeQueue!(Entry*, numBins, numLevels) ctq;
     ctq.open(resolution, now);

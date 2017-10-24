@@ -32,10 +32,10 @@ struct TscTimePoint {
             return lastTsc;
         }
         else {
-            return now();
+            return hardNow();
         }
     }
-    static TscTimePoint now() nothrow @nogc @safe {
+    static TscTimePoint hardNow() nothrow @nogc @safe {
         pragma(inline, true);
         lastTsc.cycles = readTSC();
         fetchCounter = 0;
@@ -81,11 +81,11 @@ struct TscTimePoint {
         cyclesPerMsecDivisor = S64Divisor(cyclesPerMsec);
         cyclesPerUsecDivisor = S64Divisor(cyclesPerUsec);
 
-        now();
+        hardNow();
     }
 
     static auto fromNow(Duration dur) @nogc {
-        return now + toCycles(dur);
+        return hardNow + toCycles(dur);
     }
     static long toCycles(Duration dur) @nogc @safe nothrow {
         long hns = dur.total!"hnsecs";
@@ -176,7 +176,7 @@ struct TscTimePoint {
 }
 
 unittest {
-    auto t0 = TscTimePoint.now;
+    auto t0 = TscTimePoint.hardNow;
     assert (t0.cycles > 0);
     assert (TscTimePoint.cyclesPerSecond > 1_000_000);
 }
@@ -190,7 +190,7 @@ struct Timeout {
     this(TscTimePoint expiry) {
         this.expiry = expiry;
     }
-    this(Duration dur, TscTimePoint now = TscTimePoint.now) @safe @nogc {
+    this(Duration dur, TscTimePoint now = TscTimePoint.hardNow) @safe @nogc {
         if (dur == Duration.max) {
             this.expiry = TscTimePoint.max;
         }
