@@ -447,9 +447,9 @@ public:
       Shut the reactor down.
      */
     void teardown() {
-        assert(_open, "reactor teardown called on non-open reactor");
-        assert(!_running, "reactor teardown called on still running reactor");
-        assert(criticalSectionNesting==0);
+        ASSERT!"reactor teardown called on non-open reactor"(_open);
+        ASSERT!"reactor teardown called on still running reactor"(!_running);
+        ASSERT!"reactor teardown called inside a critical section"(criticalSectionNesting==0);
 
         foreach(i, ref fib; allFibers) {
             fib.teardown(i==0);
