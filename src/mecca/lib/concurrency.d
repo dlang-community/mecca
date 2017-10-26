@@ -1,10 +1,11 @@
+/// Helpers for asynchronously executing code
 module mecca.lib.concurrency;
 
 import core.atomic;
 
 /**
-  This struct allows updating complex values (i.e. - values you cannot update atomically) to be read by a signal handler. The signal handler
-  has only read-only access, it cannot update the value.
+  This struct allows updating complex values (i.e. - values you cannot update atomically) to be read by a signal handler. The
+  signal handler has only read-only access, it cannot update the value.
  */
 struct SignalHandlerValue(T) {
 private:
