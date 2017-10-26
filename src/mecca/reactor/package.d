@@ -1052,6 +1052,7 @@ private:
     }
 
     ReactorFiber* _spawnFiber(bool immediate) nothrow @safe @nogc {
+        ASSERT!"No more free fibers in pool"(!freeFibers.empty);
         auto fib = freeFibers.popHead();
         assert (!fib.flag!"CALLBACK_SET");
         fib.flag!"CALLBACK_SET" = true;
