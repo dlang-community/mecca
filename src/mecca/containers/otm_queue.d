@@ -452,12 +452,14 @@ unittest {
         }
 
         void run() {
+            DEBUG!"Started test thread"();
             while (true) {
                 void* p;
                 if (dq.pullRequest(p)) {
                     //writeln("RI ", cast(ulong)p);
 
                     if (p is POISON) {
+                        DEBUG!"Breaking from thread due to test finished"();
                         break;
                     }
 
@@ -534,10 +536,11 @@ unittest {
         }
         void thdfunc() {
             ushort req;
+            DEBUG!"Started test thread %s"(id);
             while (true) {
                 if (dq.pullRequest(req)) {
                     if (req == POISON) {
-                        //writefln("[%s] ate POISON", id);
+                        DEBUG!"Breaking from thread %s due to test finished"(id);
                         break;
                     }
                     //writefln("[%s] fetched %s", id, req);
