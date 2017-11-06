@@ -7,6 +7,8 @@ import std.stdint: intptr_t;
 
 import mecca.log;
 
+private enum UtExtraDebug = false;
+
 /******************************************************************************************************
  * Lock-free 1-to-many queue, either single consumer multi producers, or single producer multi
  * consumers.
@@ -143,7 +145,7 @@ align(8) struct _OneToManyQueue(T, size_t _capacity, bool singleConsumerMultiPro
             }
 
             val = cast(T)(arr[ridx % capacity] >> 1);
-            atomicStore!(MemoryOrder.raw)(readIndex, ridx + 1);
+            atomicOp!"+="(readIndex, 1);
         }
         else {
             // Because incrementing writeIndex is the only thing the producer gives us to synchronize
@@ -443,38 +445,65 @@ unittest {
     enum void* POISON = cast(void*)0x7fff_ffff_ffff_ffffUL;
 
     enum ulong numElems = 200_000;
+    enum NumThreads = 17;
     ulong inputsSum;
     ulong outputsSum;
 
+    align(64) struct WorkerTracker {
+        ulong numRequests;
+        ulong numReplies;
+        ulong[numElems] requests;
+    }
+
+    static if(UtExtraDebug) {
+        static __gshared WorkerTracker[] workerTrackers = new WorkerTracker[NumThreads];
+    }
+
     class Worker: Thread {
-        this() {
+        ulong id;
+
+        this(ulong id) {
+            this.id = id;
             super(&run, 512*1024);
         }
 
         void run() {
-            DEBUG!"Started test thread"();
+            static if(UtExtraDebug) {
+                WorkerTracker* tracker = &workerTrackers[id];
+                DEBUG!"Started test thread %s tracker %s"(id, tracker);
+            } else {
+                DEBUG!"Started test thread %s"(id);
+            }
+
             while (true) {
                 void* p;
                 if (dq.pullRequest(p)) {
-                    //writeln("RI ", cast(ulong)p);
+                    // DEBUG!"RI %s"(cast(ulong)p);
 
+                    static if(UtExtraDebug) {
+                        tracker.requests[tracker.numRequests++] = cast(ulong)p;
+                    }
                     if (p is POISON) {
-                        DEBUG!"Breaking from thread due to test finished"();
+                        DEBUG!"Breaking from thread %s due to test finished"(id);
                         break;
                     }
 
                     while (!dq.submitResult(p)) {}
-                    //writeln("WO ", cast(ulong)p);
+                    // DEBUG!"WO %s"(cast(ulong)p);
+                    static if(UtExtraDebug) {
+                        tracker.numReplies++;
+                    }
                 }
             }
         }
     }
 
-    Worker[17] workers;
+    Worker[NumThreads] workers;
     dq.open(workers.length);
 
-    foreach(ref worker; workers) {
-        worker = new Worker();
+    foreach(i, ref worker; workers) {
+        // DEBUG!"Started worker"();
+        worker = new Worker(i);
         worker.start();
     }
 
@@ -498,15 +527,15 @@ unittest {
 
     for (int numPosions = 0; numPosions < workers.length;) {
         if (dq.submitRequest(POISON)) {
-            //writeln("poisoning ", numPosions);
+            //DEBUG!"Poisoning %s"(numPosions);
             numPosions++;
         }
         fetchReplies();
     }
 
     foreach(worker; workers) {
-        //writeln("joining worker");
         worker.join(true);
+        // DEBUG!"Worker joined"();
     }
 
     foreach(i; 0 .. 50) {
@@ -517,6 +546,8 @@ unittest {
     assert (computedSum == inputsSum, "comp %s != inp %s".format(computedSum, inputsSum));
     assert (outputsSum == inputsSum, "out %s != inp %s".format(outputsSum, inputsSum));
     //writeln("done2");
+
+    // DEBUG!"Test done"();
 }
 
 unittest {
