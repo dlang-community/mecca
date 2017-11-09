@@ -1,3 +1,4 @@
+/// Lock free one-to-many queues
 module mecca.containers.otm_queue;
 
 import core.atomic;
@@ -23,10 +24,20 @@ private enum UtExtraDebug = false;
  * moved to another core.
  ******************************************************************************************************/
 
+/**
+ * Single consumer multiple producers queue
+ *
+ * Params:
+ * T = the type handled by the queue. Must be one that supports atomic operations.
+ * size = the number of raw elements in the queue (actual queue size will be somewhat smaller). Must be a power of 2.
+ */
 struct SCMPQueue(T, size_t size)
 {
-    // This is a performance issue rather than an actual problem. It is a major performance issue, however.
+    // This is "just" a performance issue rather than an actual problem. It is a major performance issue, however.
     static assert( (size & -size) == size, "One to many queue size not a power of 2" );
+    static assert(
+            __traits( compiles, { shared T t; atomicLoad!(MemoryOrder.raw)(t); } ), "T is incompatible with atomic operations" );
+
 private:
     static struct QueueNode {
         shared ubyte phase = 1;
@@ -39,10 +50,17 @@ private:
 
     // No synchronization here because it is only accessed from the main thread.
     ulong producers;
+    size_t maxQueueCapacity = size - 1;
 
 public:
-    /// Must only be called from the main thread, and before any queue activity has actually started
-    private size_t maxQueueCapacity = size - 1;
+    /**
+     * Register number of producers
+     *
+     * For the algorithm to know, the queue must know how many concurrent threads might be pushing data at any point.
+     * This function add producers to the number of currently registered producers.
+     *
+     * This function must only be called from the main thread, and before any queue activity has actually started.
+     */
     void addProducers(size_t numProducers) nothrow @nogc @safe {
         ASSERT!"addProducer called on an already active queue"(readIndex==0 && writeIndex==0);
         DBG_ASSERT!"Cannot register %s producers on queue of size %s with %s producers already"
@@ -57,15 +75,27 @@ public:
                   numProducers );
     }
 
+    /// ditto
     void addProducer() nothrow @safe @nogc {
         addProducers(1);
     }
 
-    @property size_t effectiveCapacity() nothrow @safe @nogc {
+    /**
+     * Report the effective capacity of the queue.
+     *
+     * Effective capacity might be smaller than the queue size, due to algorithm related constraints. It also depends on the
+     * number of producers registered.
+     */
+    @property size_t effectiveCapacity() pure const nothrow @safe @nogc {
         return maxQueueCapacity;
     }
 
-    @property bool isFull() nothrow @trusted @nogc {
+    /**
+     * Report whether the queue is currently full.
+     *
+     * Please note that the value returned may change by other threads at any point.
+     */
+    @property bool isFull() const nothrow @trusted @nogc {
         // This has the same version for multi consumer and multi producers.
         // * For multi producers the readIndex may not have updated, so the worst to happen
         //   is that a producer will not produce, and will just try again later
@@ -74,12 +104,23 @@ public:
         // Note that this assumes that there are no pointers around from cycles that are separated by more
         // than one pointer wraparound. Given that we are using ulongs, this is a solid assumption in
         // practice, even if theoritically a bit unsound in terms of the memory model.
-        const myConsumerPtr = atomicLoad!(MemoryOrder.raw)(readIndex);
-        const myProducerPtr = atomicLoad!(MemoryOrder.raw)(writeIndex);
+        const myReadIndex = atomicLoad!(MemoryOrder.raw)(readIndex);
+        const myWriteIndex = atomicLoad!(MemoryOrder.raw)(writeIndex);
 
-        return maxQueueCapacity <= (myProducerPtr - myConsumerPtr);
+        return maxQueueCapacity <= (myWriteIndex - myReadIndex);
     }
 
+    /**
+     * Pop a value from the queue
+     *
+     * Pop one value from the queue, if one is available. Only one thread can simulteneously safely call this function.
+     *
+     * Params:
+     * T = out parameter where to store the result.
+     *
+     * Returns:
+     * true if a value was, indeed, popped from the queue. False if the queue was empty.
+     */
     @notrace bool pop(out T result) nothrow @trusted @nogc {
         version (unittest) {
             sanity();
@@ -90,27 +131,39 @@ public:
         // For multiple consumers, we will do a sequentially consistent cas() to claim a slot later
         // anyway, so the worst thing that can happen is that we needlessly wait for produce for
         // some time.
-        const myConsumerPtr = atomicLoad!(MemoryOrder.raw)(readIndex);
+        const myReadIndex = atomicLoad!(MemoryOrder.raw)(readIndex);
 
         // Relaxed memory order is fine here, we will synchronize with the data store by virtue
         // of the acquire read of phase below.
-        const myProducerPtr = atomicLoad!(MemoryOrder.raw)(writeIndex);
+        const myWriteIndex = atomicLoad!(MemoryOrder.raw)(writeIndex);
 
-        if (myProducerPtr == myConsumerPtr) {
+        if (myWriteIndex == myReadIndex) {
             return false;
         }
 
-        if (atomicLoad!(MemoryOrder.acq)(queue[myConsumerPtr % size].phase) != calcPhase(myConsumerPtr)) {
+        if (atomicLoad!(MemoryOrder.acq)(queue[myReadIndex % size].phase) != calcPhase(myReadIndex)) {
             return false;
         }
 
         result = queue[readIndex % size].data;
 
-        atomicStore!(MemoryOrder.raw)(readIndex, myConsumerPtr + 1);
+        atomicStore!(MemoryOrder.raw)(readIndex, myReadIndex + 1);
         return true;
     }
 
+    /**
+     * push a value into the queue.
+     *
+     * Push a single value into the queue.
+     *
+     * Params:
+     * data = value to push.
+     *
+     * Returns:
+     * true if value was successfully pushed. False if the queue was full.
+     */
     @notrace bool push(T data) nothrow @trusted @nogc {
+        DBG_ASSERT!"Must register number of concurrent producers"( producers>0 );
         version (unittest) {
             sanity();
             scope(exit) sanity();
@@ -137,9 +190,9 @@ private:
 
     version (unittest) @notrace void sanity() nothrow @system @nogc {
         version(assert) {
-            const myConsumerPtr = atomicLoad!(MemoryOrder.raw)(readIndex);
-            const myProducerPtr = atomicLoad!(MemoryOrder.raw)(writeIndex);
-            ASSERT!"writeIndex %d < ConsumerPtr %d"(myConsumerPtr <= myProducerPtr, myConsumerPtr, myProducerPtr);
+            const myReadIndex = atomicLoad!(MemoryOrder.raw)(readIndex);
+            const myWriteIndex = atomicLoad!(MemoryOrder.raw)(writeIndex);
+            ASSERT!"writeIndex %d < ConsumerPtr %d"(myReadIndex <= myWriteIndex, myReadIndex, myWriteIndex);
         }
         // Since we don't want to enforce SC on the consumer pointer, we cannot be sure of an override,
         // this is JUST a speculation, the following ASSERT should remain commented out.
@@ -149,10 +202,19 @@ private:
     }
 }
 
+/**
+ * Multiple consumers single producer queue
+ *
+ * Params:
+ * T = the type handled by the queue. Must be one that supports atomic operations.
+ * size = the number of raw elements in the queue (actual queue size will be somewhat smaller). Must be a power of 2.
+ */
 struct MCSPQueue(T, size_t size)
 {
     // This is a performance issue rather than an actual problem. It is a major performance issue, however.
     static assert( (size & -size) == size, "One to many queue size not a power of 2" );
+    static assert(
+            __traits( compiles, { shared T t; atomicLoad!(MemoryOrder.raw)(t); } ), "T is incompatible with atomic operations" );
 private:
     static struct QueueNode {
         shared ubyte phase = 0;
@@ -164,15 +226,24 @@ private:
     shared ulong writeIndex;
 
     // No synchronization here because it is only accessed from the main thread.
-    size_t maxQueueCapacity = size - 1;
     ulong producers;
 
 public:
 
+    /**
+     * Report the effective capacity of the queue.
+     *
+     * Effective capacity will be slightly smaller than the queue size, due to algorithm related constraints.
+     */
     @property size_t effectiveCapacity() nothrow @safe @nogc {
-        return maxQueueCapacity;
+        return size - 1;
     }
 
+    /**
+     * Report whether the queue is currently full.
+     *
+     * Please note that the value returned may change by other threads at any point.
+     */
     @property bool isFull() nothrow @trusted @nogc {
         // This has the same version for multi consumer and multi producers.
         // * For multi producers the readIndex may not have updated, so the worst to happen
@@ -182,59 +253,84 @@ public:
         // Note that this assumes that there are no pointers around from cycles that are separated by more
         // than one pointer wraparound. Given that we are using ulongs, this is a solid assumption in
         // practice, even if theoritically a bit unsound in terms of the memory model.
-        const myConsumerPtr = atomicLoad!(MemoryOrder.raw)(readIndex);
-        const myProducerPtr = atomicLoad!(MemoryOrder.raw)(writeIndex);
+        const myReadIndex = atomicLoad!(MemoryOrder.raw)(readIndex);
+        const myWriteIndex = atomicLoad!(MemoryOrder.raw)(writeIndex);
 
-        return maxQueueCapacity <= (myProducerPtr - myConsumerPtr);
+        return effectiveCapacity <= (myWriteIndex - myReadIndex);
     }
 
+    /**
+     * Pop a value from the queue
+     *
+     * Attempt to pop one value from the queue, if one is available.
+     *
+     * Please note that failure to pop a value from the queue does not necessarily mean that the queue is empty.
+     *
+     * Params:
+     * T = out parameter where to store the result.
+     *
+     * Returns:
+     * true if a value was, indeed, popped from the queue. False if failed.
+     */
     @notrace bool pop(out T result) nothrow @trusted @nogc {
         // A raw load is fine in either case. For a single consumer, this is obviously up to date.
         // For multiple consumers, we will do a sequentially consistent cas() to claim a slot later
         // anyway, so the worst thing that can happen is that we needlessly wait for produce for
         // some time.
-        const myConsumerPtr = atomicLoad!(MemoryOrder.raw)(readIndex);
+        const myReadIndex = atomicLoad!(MemoryOrder.raw)(readIndex);
 
         // Because incrementing writeIndex is the only thing the producer gives us to synchronize
         // with it storing the new data. To make the "no new data" case a bit cheaper on platforms
         // where acquire loads are expensive, the initial check could be done using a relaxed load
         // and an acquire barrier could be inserted after the slot has ben claimed.
-        const myProducerPtr = atomicLoad!(MemoryOrder.acq)(writeIndex);
+        const myWriteIndex = atomicLoad!(MemoryOrder.acq)(writeIndex);
 
-        if (myProducerPtr <= myConsumerPtr) {
+        if (myWriteIndex <= myReadIndex) {
             return false;
         }
 
         // Try to claim the slot for reading.
-        if (!cas(&readIndex, myConsumerPtr, myConsumerPtr + 1)) {
+        if (!cas(&readIndex, myReadIndex, myReadIndex + 1)) {
             return false;
         }
 
-        result = queue[myConsumerPtr % size].data;
+        result = queue[myReadIndex % size].data;
 
         // We have read the data, so toggle the phase to allow the producer to write to this slot
         // when it arrives at it the next time around.
-        const nextPhase = cast(ubyte)(1 - calcPhase(myConsumerPtr));
-        atomicStore!(MemoryOrder.rel)(queue[myConsumerPtr % size].phase, nextPhase);
+        const nextPhase = cast(ubyte)(1 - calcPhase(myReadIndex));
+        atomicStore!(MemoryOrder.rel)(queue[myReadIndex % size].phase, nextPhase);
 
         return true;
     }
 
+    /**
+     * push a value into the queue.
+     *
+     * Push a single value into the queue. Only one thread can simulteneously safely call this function.
+     *
+     * Params:
+     * data = value to push.
+     *
+     * Returns:
+     * true if value was successfully pushed. False if the queue was full.
+     */
     @notrace bool push(T data) nothrow @trusted @nogc {
         if (isFull()) {
             return false;
         }
 
         // We are the only one modifying the producer pointer, no synchronization needed.
-        const myProducerPtr = atomicLoad!(MemoryOrder.raw)(writeIndex);
+        const myWriteIndex = atomicLoad!(MemoryOrder.raw)(writeIndex);
 
         // Make sure that the phase is back to "produce" mode.
-        if (atomicLoad!(MemoryOrder.acq)(queue[myProducerPtr % size].phase) != calcPhase(myProducerPtr)) {
+        if (atomicLoad!(MemoryOrder.acq)(queue[myWriteIndex % size].phase) != calcPhase(myWriteIndex)) {
             // We have wrapped and the consumers have not read the data yet.
             return false;
         }
-        queue[myProducerPtr % size].data = data;
-        atomicStore!(MemoryOrder.rel)(writeIndex, myProducerPtr + 1);
+
+        queue[myWriteIndex % size].data = data;
+        atomicStore!(MemoryOrder.rel)(writeIndex, myWriteIndex + 1);
 
         return true;
     }
@@ -244,8 +340,6 @@ private:
         return (ptr / size) &1;
     }
 }
-
-//debug = longrun;
 
 unittest {
     import std.stdio;
@@ -426,33 +520,47 @@ unittest {
     //writeln("Done");
 }
 
+/**
+ * Request/response construct for sending requests from one requester to multiple worker threads
+ *
+ * Params:
+ * T = type of request. Must be small enough to support atomic loading and storing.
+ * capacity = the queue buffer size.
+ */
 struct DuplexQueue(T, size_t capacity) {
     MCSPQueue!(T, capacity) inputs;
     SCMPQueue!(T, capacity) outputs;
 
+    /**
+     * Register number of worker threads
+     *
+     * Must be called before using the queue.
+     */
     void open(size_t numWorkers) {
         outputs.addProducers(numWorkers);
     }
 
-    //
-    // submit
-    //
+    /**
+     * Submit a single request
+     */
     @notrace bool submitRequest(T val) nothrow @nogc {
         pragma(inline, true);
         return inputs.push(val);
     }
+    /// Receive a single response
     @notrace bool pullResult(out T val) nothrow @nogc {
         pragma(inline, true);
         return outputs.pop(val);
     }
 
-    //
-    // worker-thread APIs
-    //
+    /**
+     * worker-thread APIs
+     */
     @notrace bool pullRequest(out T val) nothrow @nogc {
         pragma(inline, true);
         return inputs.pop(val);
     }
+    /// ditto
     @notrace bool submitResult(T val) nothrow @nogc {
         pragma(inline, true);
         return outputs.push(val);
