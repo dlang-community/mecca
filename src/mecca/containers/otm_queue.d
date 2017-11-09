@@ -23,22 +23,13 @@ private enum UtExtraDebug = false;
  * moved to another core.
  ******************************************************************************************************/
 
-private enum OtMType {
-    SingleConsumerMultiProducers,
-    MultiConsumersSingleProducer
-}
-
-struct _OneToManyQueue(T, size_t size, OtMType queueType)
+struct SCMPQueue(T, size_t size)
 {
     // This is a performance issue rather than an actual problem. It is a major performance issue, however.
     static assert( (size & -size) == size, "One to many queue size not a power of 2" );
 private:
     static struct QueueNode {
-        static if (queueType == OtMType.SingleConsumerMultiProducers) {
-            shared ubyte phase = 1;
-        } else {
-            shared ubyte phase = 0;
-        }
+        shared ubyte phase = 1;
         T data;
     }
 
@@ -51,27 +42,23 @@ private:
 
 public:
     /// Must only be called from the main thread, and before any queue activity has actually started
-    static if (queueType == OtMType.SingleConsumerMultiProducers) {
-        private size_t maxQueueCapacity = size - 1;
-        void addProducers(size_t numProducers) nothrow @nogc @safe {
-            ASSERT!"addProducer called on an already active queue"(readIndex==0 && writeIndex==0);
-            DBG_ASSERT!"Cannot register %s producers on queue of size %s with %s producers already"
-                    ( numProducers+producers < size/2, numProducers, size, producers );
-            producers += numProducers;
-            maxQueueCapacity -= numProducers;
-            DBG_ASSERT!"queue capacity calculation is off. Capacity %s size %s producers %s registered now %s"
-                    ( maxQueueCapacity == size - producers - 1,
-                      maxQueueCapacity,
-                      size,
-                      producers,
-                      numProducers );
-        }
+    private size_t maxQueueCapacity = size - 1;
+    void addProducers(size_t numProducers) nothrow @nogc @safe {
+        ASSERT!"addProducer called on an already active queue"(readIndex==0 && writeIndex==0);
+        DBG_ASSERT!"Cannot register %s producers on queue of size %s with %s producers already"
+                ( numProducers+producers < size/2, numProducers, size, producers );
+        producers += numProducers;
+        maxQueueCapacity -= numProducers;
+        DBG_ASSERT!"queue capacity calculation is off. Capacity %s size %s producers %s registered now %s"
+                ( maxQueueCapacity == size - producers - 1,
+                  maxQueueCapacity,
+                  size,
+                  producers,
+                  numProducers );
+    }
 
-        void addProducer() nothrow @safe @nogc {
-            addProducers(1);
-        }
-    } else {
-        private size_t maxQueueCapacity = size - 1;
+    void addProducer() nothrow @safe @nogc {
+        addProducers(1);
     }
 
     @property size_t effectiveCapacity() nothrow @safe @nogc {
@@ -105,48 +92,22 @@ public:
         // some time.
         const myConsumerPtr = atomicLoad!(MemoryOrder.raw)(readIndex);
 
-        static if (queueType == OtMType.SingleConsumerMultiProducers) {
-            // Relaxed memory order is fine here, we will synchronize with the data store by virtue
-            // of the acquire read of phase below.
-            const myProducerPtr = atomicLoad!(MemoryOrder.raw)(writeIndex);
+        // Relaxed memory order is fine here, we will synchronize with the data store by virtue
+        // of the acquire read of phase below.
+        const myProducerPtr = atomicLoad!(MemoryOrder.raw)(writeIndex);
 
-            if (myProducerPtr == myConsumerPtr) {
-                return false;
-            }
-
-            if (atomicLoad!(MemoryOrder.acq)(queue[myConsumerPtr % size].phase) != calcPhase(myConsumerPtr)) {
-                return false;
-            }
-
-            result = queue[readIndex % size].data;
-
-            atomicStore!(MemoryOrder.raw)(readIndex, myConsumerPtr + 1);
-            return true;
-        } else {
-            // Because incrementing writeIndex is the only thing the producer gives us to synchronize
-            // with it storing the new data. To make the "no new data" case a bit cheaper on platforms
-            // where acquire loads are expensive, the initial check could be done using a relaxed load
-            // and an acquire barrier could be inserted after the slot has ben claimed.
-            const myProducerPtr = atomicLoad!(MemoryOrder.acq)(writeIndex);
-
-            if (myProducerPtr <= myConsumerPtr) {
-                return false;
-            }
-
-            // Try to claim the slot for reading.
-            if (!cas(&readIndex, myConsumerPtr, myConsumerPtr + 1)) {
-                return false;
-            }
-
-            result = queue[myConsumerPtr % size].data;
-
-            // We have read the data, so toggle the phase to allow the producer to write to this slot
-            // when it arrives at it the next time around.
-            const nextPhase = cast(ubyte)(1 - calcPhase(myConsumerPtr));
-            atomicStore!(MemoryOrder.rel)(queue[myConsumerPtr % size].phase, nextPhase);
-
-            return true;
+        if (myProducerPtr == myConsumerPtr) {
+            return false;
         }
+
+        if (atomicLoad!(MemoryOrder.acq)(queue[myConsumerPtr % size].phase) != calcPhase(myConsumerPtr)) {
+            return false;
+        }
+
+        result = queue[readIndex % size].data;
+
+        atomicStore!(MemoryOrder.raw)(readIndex, myConsumerPtr + 1);
+        return true;
     }
 
     @notrace bool push(T data) nothrow @trusted @nogc {
@@ -158,25 +119,14 @@ public:
         if (isFull()) {
             return false;
         }
-        static if (queueType == OtMType.SingleConsumerMultiProducers) {
-            const myPtr = atomicOp!"+="(writeIndex, 1) - 1;
-            queue[myPtr % size].data = data;
-            DBG_ASSERT!"Phase is already correct for new produce. myPtr %s queue[%d].phase = %d"(
-                    atomicLoad!(MemoryOrder.acq)(queue[myPtr % size].phase) != calcPhase(myPtr),
-                    myPtr, myPtr % size, calcPhase(myPtr));
-            atomicStore!(MemoryOrder.rel)(queue[myPtr % size].phase, calcPhase(myPtr));
-        } else {
-            // We are the only one modifying the producer pointer, no synchronization needed.
-            const myProducerPtr = atomicLoad!(MemoryOrder.raw)(writeIndex);
 
-            // Make sure that the phase is back to "produce" mode.
-            if (atomicLoad!(MemoryOrder.acq)(queue[myProducerPtr % size].phase) != calcPhase(myProducerPtr)) {
-                // We have wrapped and the consumers have not read the data yet.
-                return false;
-            }
-            queue[myProducerPtr % size].data = data;
-            atomicStore!(MemoryOrder.rel)(writeIndex, myProducerPtr + 1);
-        }
+        const myPtr = atomicOp!"+="(writeIndex, 1) - 1;
+        queue[myPtr % size].data = data;
+        DBG_ASSERT!"Phase is already correct for new produce. myPtr %s queue[%d].phase = %d"(
+                atomicLoad!(MemoryOrder.acq)(queue[myPtr % size].phase) != calcPhase(myPtr),
+                myPtr, myPtr % size, calcPhase(myPtr));
+        atomicStore!(MemoryOrder.rel)(queue[myPtr % size].phase, calcPhase(myPtr));
+
         return true;
     }
 
@@ -186,27 +136,114 @@ private:
     }
 
     version (unittest) @notrace void sanity() nothrow @system @nogc {
-        static if (queueType == OtMType.SingleConsumerMultiProducers) {
-            version(assert) {
-                const myConsumerPtr = atomicLoad!(MemoryOrder.raw)(readIndex);
-                const myProducerPtr = atomicLoad!(MemoryOrder.raw)(writeIndex);
-                ASSERT!"writeIndex %d < ConsumerPtr %d"(myConsumerPtr <= myProducerPtr, myConsumerPtr, myProducerPtr);
-            }
-            // Since we don't want to enforce SC on the consumer pointer, we cannot be sure of an override,
-            // this is JUST a speculation, the following ASSERT should remain commented out.
-            // assert(producer - consumer <= size,
-            //        format("An override occurred! writeIndex %d, readIndex %d size %d",
-            //               producer, consumer, size));
-        } else {
-            // the writeIndex may not have updated for our thread, so we cannot be sure of anything, basically.
-            // As far as what a multi consumer setup can be, the consumer pointer may even be AFTER the producer
-            // only updated consumers will be able to consume data.
+        version(assert) {
+            const myConsumerPtr = atomicLoad!(MemoryOrder.raw)(readIndex);
+            const myProducerPtr = atomicLoad!(MemoryOrder.raw)(writeIndex);
+            ASSERT!"writeIndex %d < ConsumerPtr %d"(myConsumerPtr <= myProducerPtr, myConsumerPtr, myProducerPtr);
         }
+        // Since we don't want to enforce SC on the consumer pointer, we cannot be sure of an override,
+        // this is JUST a speculation, the following ASSERT should remain commented out.
+        // assert(producer - consumer <= size,
+        //        format("An override occurred! writeIndex %d, readIndex %d size %d",
+        //               producer, consumer, size));
     }
 }
 
-alias SCMPQueue(T, size_t capacity) = _OneToManyQueue!(T, capacity, OtMType.SingleConsumerMultiProducers);
-alias MCSPQueue(T, size_t capacity) = _OneToManyQueue!(T, capacity, OtMType.MultiConsumersSingleProducer);
+struct MCSPQueue(T, size_t size)
+{
+    // This is a performance issue rather than an actual problem. It is a major performance issue, however.
+    static assert( (size & -size) == size, "One to many queue size not a power of 2" );
+private:
+    static struct QueueNode {
+        shared ubyte phase = 0;
+        T data;
+    }
+
+    QueueNode[size] queue;
+    shared ulong readIndex;
+    shared ulong writeIndex;
+
+    // No synchronization here because it is only accessed from the main thread.
+    size_t maxQueueCapacity = size - 1;
+    ulong producers;
+
+public:
+
+    @property size_t effectiveCapacity() nothrow @safe @nogc {
+        return maxQueueCapacity;
+    }
+
+    @property bool isFull() nothrow @trusted @nogc {
+        // This has the same version for multi consumer and multi producers.
+        // * For multi producers the readIndex may not have updated, so the worst to happen
+        //   is that a producer will not produce, and will just try again later
+        // * For multi consumers, since there is a single producer thread with the correct value
+        //
+        // Note that this assumes that there are no pointers around from cycles that are separated by more
+        // than one pointer wraparound. Given that we are using ulongs, this is a solid assumption in
+        // practice, even if theoritically a bit unsound in terms of the memory model.
+        const myConsumerPtr = atomicLoad!(MemoryOrder.raw)(readIndex);
+        const myProducerPtr = atomicLoad!(MemoryOrder.raw)(writeIndex);
+
+        return maxQueueCapacity <= (myProducerPtr - myConsumerPtr);
+    }
+
+    @notrace bool pop(out T result) nothrow @trusted @nogc {
+        // A raw load is fine in either case. For a single consumer, this is obviously up to date.
+        // For multiple consumers, we will do a sequentially consistent cas() to claim a slot later
+        // anyway, so the worst thing that can happen is that we needlessly wait for produce for
+        // some time.
+        const myConsumerPtr = atomicLoad!(MemoryOrder.raw)(readIndex);
+
+        // Because incrementing writeIndex is the only thing the producer gives us to synchronize
+        // with it storing the new data. To make the "no new data" case a bit cheaper on platforms
+        // where acquire loads are expensive, the initial check could be done using a relaxed load
+        // and an acquire barrier could be inserted after the slot has ben claimed.
+        const myProducerPtr = atomicLoad!(MemoryOrder.acq)(writeIndex);
+
+        if (myProducerPtr <= myConsumerPtr) {
+            return false;
+        }
+
+        // Try to claim the slot for reading.
+        if (!cas(&readIndex, myConsumerPtr, myConsumerPtr + 1)) {
+            return false;
+        }
+
+        result = queue[myConsumerPtr % size].data;
+
+        // We have read the data, so toggle the phase to allow the producer to write to this slot
+        // when it arrives at it the next time around.
+        const nextPhase = cast(ubyte)(1 - calcPhase(myConsumerPtr));
+        atomicStore!(MemoryOrder.rel)(queue[myConsumerPtr % size].phase, nextPhase);
+
+        return true;
+    }
+
+    @notrace bool push(T data) nothrow @trusted @nogc {
+        if (isFull()) {
+            return false;
+        }
+
+        // We are the only one modifying the producer pointer, no synchronization needed.
+        const myProducerPtr = atomicLoad!(MemoryOrder.raw)(writeIndex);
+
+        // Make sure that the phase is back to "produce" mode.
+        if (atomicLoad!(MemoryOrder.acq)(queue[myProducerPtr % size].phase) != calcPhase(myProducerPtr)) {
+            // We have wrapped and the consumers have not read the data yet.
+            return false;
+        }
+        queue[myProducerPtr % size].data = data;
+        atomicStore!(MemoryOrder.rel)(writeIndex, myProducerPtr + 1);
+
+        return true;
+    }
+
+private:
+    static ubyte calcPhase(ulong ptr) nothrow @safe @nogc {
+        return (ptr / size) &1;
+    }
+}
 
 //debug = longrun;
 
