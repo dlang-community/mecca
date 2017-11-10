@@ -366,6 +366,7 @@ private:
     posix_time.timer_t hangDetectorTimerId;
 
     SignalHandlerValue!TscTimePoint fiberRunStartTime;
+    bool gcCollectionInProgress;
 
     struct TimedCallback {
         TimedCallback* _next, _prev;
@@ -1211,8 +1212,13 @@ private:
         auto now = TscTimePoint.hardNow();
         auto delay = now - theReactor.fiberRunStartTime;
 
-        if( delay<theReactor.optionsInEffect.hangDetectorTimeout || theReactor.runningFiberId == IdleFiberId )
+        if(
+                delay<theReactor.optionsInEffect.hangDetectorTimeout ||
+                theReactor.runningFiberId == IdleFiberId ||
+                theReactor.gcCollectionInProgress )
+        {
             return;
+        }
 
         long seconds, usecs;
         delay.split!("seconds", "usecs")(seconds, usecs);
@@ -1311,6 +1317,8 @@ private:
             runTimedCallbacks();
             if( needGcCollect ) {
                 needGcCollect = false;
+                gcCollectionInProgress = true;
+                scope(exit) gcCollectionInProgress = false;
                 TscTimePoint.hardNow(); // Update the hard now value
                 INFO!"Beginning GC collection cycle"();
                 GC.collect();
