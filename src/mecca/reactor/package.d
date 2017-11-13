@@ -1615,6 +1615,9 @@ unittest {
     options.hangDetectorTimeout = 20.msecs;
     DEBUG!"sanity: %s"(options.hangDetectorTimeout.toString);
 
+    // Run GC collection before we begin, to minimize the possibility that a GC run during the test will take more than 20ms
+    GC.collect();
+
     testWithReactor({
             theReactor.sleep(200.msecs);
             /+
