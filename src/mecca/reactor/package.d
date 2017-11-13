@@ -459,7 +459,7 @@ public:
             threadPool.close();
         switchCurrExcBuf(null);
 
-        disableGCTracking();
+        // disableGCTracking();
 
         if( optionsInEffect.faultHandlersEnabled )
             deregisterFaultHandlers();

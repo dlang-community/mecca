@@ -4,6 +4,8 @@
  */
 module mecca.reactor.subsystems.gc_tracker;
 
+version(supports_pluggable_gc):
+
 import mecca.lib.exception;
 import mecca.log;
 import mecca.reactor;
