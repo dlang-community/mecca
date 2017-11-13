@@ -632,6 +632,7 @@ unittest {
     Worker[NumThreads] workers;
     dq.open(workers.length);
 
+    DEBUG!"Launching threads"();
     foreach(i, ref worker; workers) {
         // DEBUG!"Started worker"();
         worker = new Worker(i);
@@ -648,6 +649,7 @@ unittest {
         }
     }
 
+    DEBUG!"Starting test"();
     for (ulong i = 1; i <= numElems;) {
         if (dq.submitRequest(cast(void*)i)) {
             //writeln("WI ", i);
@@ -657,6 +659,7 @@ unittest {
         fetchReplies();
     }
 
+    DEBUG!"Sending poison"();
     for (int numPosions = 0; numPosions < workers.length;) {
         if (dq.submitRequest(POISON)) {
             //DEBUG!"Poisoning %s"(numPosions);
@@ -665,10 +668,16 @@ unittest {
         fetchReplies();
     }
 
+    ulong repliesReported;
     while( numReplies<numElems ) {
+        if( repliesReported!=numReplies ) {
+            DEBUG!"Fetching remaining replies (%s/%s fetched)"( numReplies, numElems );
+            repliesReported = numReplies;
+        }
         fetchReplies();
     }
 
+    DEBUG!"Joining all threads"();
     foreach(worker; workers) {
         worker.join(true);
         // DEBUG!"Worker joined"();
@@ -677,9 +686,8 @@ unittest {
     auto computedSum = ((1+numElems) * numElems)/2;
     assert (computedSum == inputsSum, "comp %s != inp %s".format(computedSum, inputsSum));
     assert (outputsSum == inputsSum, "out %s != inp %s".format(outputsSum, inputsSum));
-    //writeln("done2");
 
-    // DEBUG!"Test done"();
+    DEBUG!"Test successfully done"();
 }
 
 unittest {
