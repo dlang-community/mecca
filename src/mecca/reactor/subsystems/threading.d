@@ -138,7 +138,7 @@ struct DeferredTask {
         }
     }
 
-    void runFinalizer() nothrow {
+    @notrace void runFinalizer() nothrow {
         // XXX: implement finalizer
     }
 }
@@ -253,7 +253,7 @@ public:
         }
     }
 
-    private void completionCallback() nothrow {
+    @notrace private void completionCallback() nothrow {
         assert (!threadExited);
         foreach(_; 0 .. MAX_FETCH_STREAK) {
             IdxType idx;

@@ -233,7 +233,7 @@ struct SimplePool(T) {
         elements.free();
     }
 
-    T* alloc() nothrow @trusted @nogc {
+    @notrace T* alloc() nothrow @trusted @nogc {
         assert (!closed);
         if (used >= elements.length) {
             static const PoolDepleted poolDepeleted = new PoolDepleted(typeof(this).stringof);
@@ -252,7 +252,7 @@ struct SimplePool(T) {
         return e.value;
     }
 
-    void release(ref T* obj) nothrow @trusted @nogc {
+    @notrace void release(ref T* obj) nothrow @trusted @nogc {
         assert (!closed);
         assert (used > 0);
         static if (__traits(hasMember, T, "_poolElementFini")) {

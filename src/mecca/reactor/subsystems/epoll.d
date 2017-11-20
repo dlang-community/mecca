@@ -105,7 +105,7 @@ public:
     }
 
 private:
-    void reactorIdle(Duration timeout) {
+    @notrace void reactorIdle(Duration timeout) {
 
         int intTimeout;
         if( timeout == Duration.max )

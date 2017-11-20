@@ -90,7 +90,7 @@ public:
         }
     }
 
-    Duration timeTillNextEntry(TscTimePoint now) {
+    @notrace Duration timeTillNextEntry(TscTimePoint now) {
         long cycles = cyclesTillNextEntry(now);
 
         if( cycles==long.max )

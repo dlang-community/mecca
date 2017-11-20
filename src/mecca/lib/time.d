@@ -195,7 +195,9 @@ public:
     }
 
     /// Calculate difference between two TscTimePoint in the given units
-    long diff(string units)(TscTimePoint rhs) @nogc if (units == "usecs" || units == "msecs" || units == "seconds" || units == "cycles") {
+    @("notrace") long diff(string units)(TscTimePoint rhs) @nogc
+            if (units == "usecs" || units == "msecs" || units == "seconds" || units == "cycles")
+    {
         static if (units == "usecs") {
             return (cycles - rhs.cycles) / cyclesPerUsecDivisor;
         }

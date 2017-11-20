@@ -1100,7 +1100,7 @@ private:
         }
     }
 
-    bool runTimedCallbacks(TscTimePoint now = TscTimePoint.hardNow) {
+    @notrace bool runTimedCallbacks(TscTimePoint now = TscTimePoint.hardNow) {
         // Timer callbacks are not allowed to sleep
         auto criticalSectionContainer = criticalSection();
 
