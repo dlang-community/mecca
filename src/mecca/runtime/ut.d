@@ -3,6 +3,7 @@ module mecca.runtime.ut;
 
 version(unittest):
 
+import std.file: read;
 import std.stdio;
 import std.string;
 import std.datetime;
@@ -56,6 +57,7 @@ shared static this() {
         META!"Running UT of %s"(m.name);
         logLine(FG.yellow("Running UT of ") ~ FG.iwhite(m.name));
         try {
+            DEBUG!"#LOADAVG %s"(cast(immutable char[])read("/proc/loadavg"));
             auto ut = m.unitTest;
             ut();
         }
@@ -89,6 +91,7 @@ shared static this() {
     }
     auto endTime = MonoTime.currTime();
     auto secs = (endTime - startTime).total!"msecs" / 1000.0;
+    DEBUG!"#LOADAVG %s"(cast(immutable char[])read("/proc/loadavg"));
 
     if (failed) {
         META!"Failed. Ran %s unittests in %.2f seconds"(counter, secs);
