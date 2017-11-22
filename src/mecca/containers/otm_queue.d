@@ -651,6 +651,9 @@ unittest {
 
     DEBUG!"Starting test"();
     for (ulong i = 1; i <= numElems;) {
+        if( (i%1024)==0 )
+            DEBUG!"#UT otm_queue sent %s requests"(i);
+
         if (dq.submitRequest(cast(void*)i)) {
             //writeln("WI ", i);
             inputsSum += i;
