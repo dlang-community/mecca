@@ -215,8 +215,9 @@ int parseArgs(string[] args) {
             if( arg[1]=='-' ) {
                 if( !parseOption(arg[2..$]) )
                     return 2;
+            } else {
+                filters ~= FilterLine( arg[1..$], FilterLine.Type.NEGATIVE );
             }
-            filters ~= FilterLine( arg[1..$], FilterLine.Type.NEGATIVE );
             break;
         default:
             filters ~= FilterLine( arg, FilterLine.Type.PARTIAL );
