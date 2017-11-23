@@ -5,5 +5,5 @@
 /.settings/
 *.o
 *.a
-/mecca
+/mecca-ut
 .*.swp
