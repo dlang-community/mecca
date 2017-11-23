@@ -124,6 +124,10 @@ public:
         handlers[signum] = handler;
     }
 
+    void registerHandler(string sig, T)(T handler) @trusted {
+        registerHandler(__traits(getMember, OSSignal, sig), (ref _){handler();});
+    }
+
     void unregisterHandler(OSSignal signum) @trusted @nogc {
         verifyOpen();
         ASSERT!"registerHandler called with invalid signal %s"(signum<NUM_SIGS || signum<=0, signum);
@@ -139,6 +143,11 @@ public:
                 "Deregistering signal handler failed" );
         handlers[signum] = null;
     }
+
+    void unregisterHandler(string sig)() @trusted @nogc {
+        unregisterHandler(__traits(getMember, OSSignal, sig));
+    }
+
 
 private:
     class TerminateFiber : Exception {
