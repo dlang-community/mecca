@@ -18,7 +18,7 @@ package void runAtExitCallbacks() {
     _atExitCallbacks.length = 0;
 }
 
-package struct ServiceInterface {
+struct ServiceInterface {
     enum State {
         DOWN,
         SETUP,
@@ -28,8 +28,8 @@ package struct ServiceInterface {
     }
 
     string[] deps;
-    bool function() setup;
-    void function() teardown;
+    bool delegate() setup;
+    void delegate() teardown;
     State state = State.DOWN;
 }
 
@@ -39,6 +39,7 @@ mixin template registerService() {
     shared static this() {
         import std.string;
         import std.traits;
+        import mecca.runtime.services: ServiceInterface, _registeredServices;
 
         string svcName;
         ServiceInterface svcCbs;
@@ -68,13 +69,29 @@ mixin template registerService() {
             svcCbs.deps = null;
         }
 
-        svcCbs.setup = &typeof(this).setup;
-        svcCbs.teardown = &typeof(this).teardown;
+        static if (__traits(hasMember, typeof(this), "setup")) {
+            svcCbs.setup = &instance.setup;
+        }
+        else static if (__traits(hasMember, typeof(this), "mainFib")) {
+            svcCbs.setup = (){
+                import mecca.reactor: theReactor;
+                theReactor.spawnFiber(&instance.mainFib);
+                return true;
+            };
+        }
+
+        static if (__traits(hasMember, typeof(this), "teardown")) {
+            svcCbs.teardown = &instance.teardown;
+        }
+        else {
+            svcCbs.teardown = (){};
+        }
+
         _registeredServices[svcName] = svcCbs;
     }
 }
 
-package __gshared ServiceInterface[string] _registeredServices;
+__gshared ServiceInterface[string] _registeredServices;
 package __gshared void function()[][string] _serviceGlobalsInitFuncs;
 
 template ServiceGlobal(string svc, T, string mod=__MODULE__, size_t line=__LINE__) {
