@@ -18,6 +18,9 @@ import mecca.log.impl;
  */
 enum notrace = "notrace";
 
+// All implementations must define this enum to say whether logs sent find their way to the console
+enum LogToConsole = true;
+
 /*
    These functions are mostly placeholders. Since we'd sometimes want to replace them with functions that
    do binary logging, the format is part of the function's template.

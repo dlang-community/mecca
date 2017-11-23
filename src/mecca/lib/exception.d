@@ -345,6 +345,11 @@ void ASSERT(string fmt, string file = __FILE__, string mod = __MODULE__, size_t 
 
     scope f = () {
         META!("Assertion failure: " ~ fmt, file, mod, line)(args);
+        static if( !LogToConsole ) {
+            // Also log to stderr, as the logger doesn't do that for us.
+            import std.stdio: stderr;
+            stderr.writefln( "Assertion failure at %s:%s: " ~ fmt, file, line, args );
+        }
     };
     as!"@nogc pure nothrow"(f);
     version(unittest ){
