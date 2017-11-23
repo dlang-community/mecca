@@ -1,8 +1,35 @@
 {
-    "name" : "mecca",
-    "targetType": "executable",
+    "name": "mecca",
     "importPaths": ["src"],
-    "sourcePaths": ["src", "ut"],
+    "sourcePaths": ["src"],
     "description" : "Mecca - Weka's reactor and infrastructure library",
-    "dependencies" : {}
+    "dependencies" : {},
+    "configurations": [
+        {
+            "name": "mecca-lib",
+            "targetType": "library",
+            "targetName": "mecca"
+        },
+        {
+            "name": "mecca-ut",
+            "buildOptions": ["unittests"],
+            "mainSourceFile": "ut/main.d",
+            "targetType": "executable",
+            "targetName": "mecca-ut"
+        },
+        {
+            "name": "lordcmdr",
+            "targetType": "executable",
+            "importPaths": ["examples"],
+            "sourcePaths": ["examples/lordcmdr"],
+            "targetName": "lordcmdr"
+        },
+        {
+            "name": "sleeper",
+            "targetType": "executable",
+            "importPaths": ["examples"],
+            "sourcePaths": ["examples/sleeper"],
+            "targetName": "sleeper"
+        }
+    ]
 }
