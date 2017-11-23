@@ -4,6 +4,8 @@ module mecca.runtime.main;
 import std.stdio;
 import std.string;
 import mecca.reactor: theReactor;
+import mecca.reactor.io.fd: openReactorEpoll, closeReactorEpoll;
+import mecca.reactor.io.signals: reactorSignal;
 import mecca.runtime.services;
 
 
@@ -24,6 +26,12 @@ struct ServiceManager {
 
         theReactor.setup();
         scope(success) theReactor.teardown();
+
+        openReactorEpoll();
+        scope(exit) closeReactorEpoll();
+
+        reactorSignal.open();
+        scope(exit) reactorSignal.close();
 
         setupServices();
         scope(success) teardownServices();
@@ -103,6 +111,13 @@ struct ServiceManager {
             svc.state = ServiceInterface.State.DOWN;
         }
         _orderOfInitialization.length = 0;
+    }
+
+    public void stop() {
+        // graceful termination
+        //theReactor.stop();  -- this asserts on a context switch while in a critical section
+        import mecca.lib.time: Timeout;
+        theReactor.registerTimer(Timeout.elapsed, &theReactor.stop);
     }
 }
 
