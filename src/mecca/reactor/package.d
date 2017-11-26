@@ -328,6 +328,13 @@ struct Reactor {
 
         /// Whether we have enabled deferToThread
         bool threadDeferralEnabled;
+
+        version(unittest) {
+            /// Disable all GC collection during the reactor run time. Only available for UTs.
+            bool utGcDisabled;
+        } else {
+            private enum utGcDisabled = false;
+        }
     }
 
 private:
@@ -1305,7 +1312,8 @@ private:
                 theReactor.resumeSpecialFiber(theReactor.mainFiber);
         }
 
-        TimerHandle gcTimer = registerRecurringTimer!gcEnabler(optionsInEffect.gcInterval, &needGcCollect);
+        if( !optionsInEffect.utGcDisabled )
+            TimerHandle gcTimer = registerRecurringTimer!gcEnabler(optionsInEffect.gcInterval, &needGcCollect);
 
         while (!_stopping) {
             runTimedCallbacks();
@@ -1513,7 +1521,11 @@ unittest {
     // Test suspending timeout
     import std.stdio;
 
-    theReactor.setup();
+    // GC running during the test mess with the timing
+    Reactor.OpenOptions oo;
+    oo.utGcDisabled = true;
+
+    theReactor.setup(oo);
     scope(exit) theReactor.teardown();
 
     void fiberFunc() {
