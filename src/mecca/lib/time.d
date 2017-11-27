@@ -121,6 +121,14 @@ public:
         return hardNow + toCycles(dur);
     }
 
+    /// Calculate a TscTimePoint for a time given in systime from now
+    ///
+    /// Not @nogc and nothrow, because Clock.currTime does GC and may throw
+    @("notrace") static auto fromSysTime(SysTime time) @safe {
+        Duration diff = time - Clock.currTime();
+        return fromNow(diff);
+    }
+
     /// Various conversion functions
     static long toCycles(Duration dur) @nogc @safe nothrow {
         long hns = dur.total!"hnsecs";
@@ -137,34 +145,34 @@ public:
         }
     }
     /// ditto
-    static Duration toDuration(long cycles) @nogc @safe nothrow {
+    static Duration toDuration(long cycles) @safe @nogc nothrow {
         return hnsecs((cycles / cyclesPerSecond) * HECTONANO + ((cycles % cyclesPerSecond) * HECTONANO) / cyclesPerSecond);
     }
     /// ditto
-    Duration toDuration() const @safe nothrow {
+    Duration toDuration() const @safe @nogc nothrow {
         return hnsecs((cycles / cyclesPerSecond) * HECTONANO + ((cycles % cyclesPerSecond) * HECTONANO) / cyclesPerSecond);
     }
     /// ditto
-    static long toUsecs(long cycles) @nogc @safe nothrow {
+    static long toUsecs(long cycles) pure @nogc @safe nothrow {
         return cycles / cyclesPerUsecDivisor;
     }
     /// ditto
-    long toUsecs() const @nogc @safe nothrow {
+    long toUsecs() const pure @nogc @safe nothrow {
         return cycles / cyclesPerUsecDivisor;
     }
     /// ditto
-    static long toMsecs(long cycles) @nogc @safe nothrow {
+    static long toMsecs(long cycles) pure @nogc @safe nothrow {
         return cycles / cyclesPerMsecDivisor;
     }
     /// ditto
-    long toMsecs() const @nogc @safe nothrow {
+    long toMsecs() pure const @nogc @safe nothrow {
         return cycles / cyclesPerMsecDivisor;
     }
 
-    int opCmp(TscTimePoint rhs) const @nogc @safe nothrow {
+    int opCmp(TscTimePoint rhs) pure const @nogc @safe nothrow {
         return (cycles > rhs.cycles) ? 1 : ((cycles < rhs.cycles) ? -1 : 0);
     }
-    bool opEquals()(TscTimePoint rhs) const @nogc @safe nothrow {
+    bool opEquals()(TscTimePoint rhs) pure const @nogc @safe nothrow {
         return cycles == rhs.cycles;
     }
 
@@ -195,7 +203,7 @@ public:
     }
 
     /// Calculate difference between two TscTimePoint in the given units
-    @("notrace") long diff(string units)(TscTimePoint rhs) @nogc
+    @("notrace") long diff(string units)(TscTimePoint rhs) nothrow @safe @nogc
             if (units == "usecs" || units == "msecs" || units == "seconds" || units == "cycles")
     {
         static if (units == "usecs") {
@@ -216,7 +224,7 @@ public:
     }
 
     /// Convert to any of the units accepted by toDuration
-    long to(string unit)() @nogc @safe nothrow {
+    long to(string unit)() const @nogc @safe nothrow {
         return toDuration.total!unit();
     }
 }
