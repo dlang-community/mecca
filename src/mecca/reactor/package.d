@@ -1299,6 +1299,11 @@ private:
         GC.disable();
         scope(exit) GC.enable();
 
+        if( optionsInEffect.utGcDisabled ) {
+            // GC is disabled during the reactor run. Run it before we start
+            GC.collect();
+        }
+
         thisFiber = mainFiber;
         scope(exit) thisFiber = null;
 
@@ -1625,10 +1630,8 @@ unittest {
 unittest {
     Reactor.OpenOptions options;
     options.hangDetectorTimeout = 20.msecs;
+    options.utGcDisabled = true;
     DEBUG!"sanity: %s"(options.hangDetectorTimeout.toString);
-
-    // Run GC collection before we begin, to minimize the possibility that a GC run during the test will take more than 20ms
-    GC.collect();
 
     testWithReactor({
             theReactor.sleep(200.msecs);

@@ -200,7 +200,12 @@ private:
 __gshared ReactorSignal reactorSignal;
 
 unittest {
-    theReactor.setup();
+    Reactor.OpenOptions options;
+
+    // Timing sensitive tests should not suffer GC collection in their middle
+    options.utGcDisabled = true;
+
+    theReactor.setup(options);
     scope(exit) theReactor.teardown();
 
     openReactorEpoll();
