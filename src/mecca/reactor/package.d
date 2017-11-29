@@ -440,9 +440,6 @@ public:
         timedCallbacksPool.open(options.numTimers, true);
         timeQueue.open(options.timerGranularity);
 
-        if( options.hangDetectorTimeout !is Duration.zero )
-            registerHangDetector();
-
         if( options.faultHandlersEnabled )
             registerFaultHandlers();
 
@@ -470,9 +467,6 @@ public:
 
         if( optionsInEffect.faultHandlersEnabled )
             deregisterFaultHandlers();
-
-        if( optionsInEffect.hangDetectorTimeout !is Duration.zero )
-            deregisterHangDetector();
 
         allFibers.free();
         fiberStacks.free();
@@ -1302,6 +1296,15 @@ private:
         if( optionsInEffect.utGcDisabled ) {
             // GC is disabled during the reactor run. Run it before we start
             GC.collect();
+        }
+
+        // Don't register the hang detector until after we've finished running the GC
+        if( optionsInEffect.hangDetectorTimeout !is Duration.zero )
+            registerHangDetector();
+
+        scope(exit) {
+            if( optionsInEffect.hangDetectorTimeout !is Duration.zero )
+                deregisterHangDetector();
         }
 
         thisFiber = mainFiber;
