@@ -278,7 +278,7 @@ public:
     auto deferToThread(alias F)(Timeout timeout, Parameters!F args) @nogc {
         auto task = tasksPool.alloc();
         task.fibHandle = theReactor.runningFiberHandle;
-        task.timeAdded = TscTimePoint.softNow();
+        task.timeAdded = TscTimePoint.now();
         task.set!F(args);
         auto added = queue.submitRequest(tasksPool.indexOf(task));
         ASSERT!"submitRequest"(added);

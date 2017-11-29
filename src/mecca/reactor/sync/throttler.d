@@ -132,7 +132,7 @@ public:
 
 private:
     void deposit() nothrow @safe @nogc {
-        auto now = TscTimePoint.softNow;
+        auto now = TscTimePoint.now;
         long cyclesPassed = now.cycles - lastDepositTime.cycles;
         long tokensEarned = cyclesPassed / ticksPerTokenDivider;
 
@@ -155,7 +155,7 @@ private:
         DBG_ASSERT!"negative missing %s: requested %s have %s"(numMissingTokens>0, numMissingTokens, tokens, tokenBallance);
 
         auto sleepDuration = TscTimePoint.toDuration( numMissingTokens * ticksPerToken );
-        if( TscTimePoint.softNow + sleepDuration > timeout.expiry )
+        if( TscTimePoint.now + sleepDuration > timeout.expiry )
             throw mkEx!TimeoutExpired;
         return sleepDuration;
     }

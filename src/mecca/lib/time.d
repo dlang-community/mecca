@@ -34,7 +34,7 @@ struct TscTimePoint {
     static shared immutable S64Divisor cyclesPerUsecDivisor;    /// ditto
 
 private:
-    /* thread local */ static ubyte refetchInterval;
+    /* thread local */ static ubyte refetchInterval; // How many soft calls to do before doing hard fetch of timer
     /* thread local */ static ubyte fetchCounter;
     /* thread local */ static TscTimePoint lastTsc;
 
@@ -45,19 +45,24 @@ public:
     /**
      * Get a TscTimePoint representing now.
      *
-     * There are two variants of this method. hardNow returns the actual time, right now, as reported by the cycles counter in the
-     * CPU. softNow returns an approximate time. It is guaranteed to montoniously advance, but it not guaranteed to be accurate.
-     * softNow works by calling hardNow once in a while, and doing simple increments in between.
+     * There are two variants of this method. "now" and "hardNow". By default, they do exactly the same thing:
+     * report the time right now, as reported by the cycles counter in the CPU.
      *
-     * A good rule of thumb is this: If you use requires getting the time on a semi-regular basis, call softNow whenever precise
+     * As fetching the cycles counter may be relatively expensive, threads that do a lot of time keeping may find that getting
+     * the hardware counter each and every time is too costly. In that case, you can call "setHardNowThreshold" with a threshold.
+     * Calling, e.g. setHardNow(3) will mean that now will call hardNow every third invocation.
+     *
+     * Even when now doesn't call hardNow, it is still guaranteed to montoniously advance, but it not guaranteed to be accurate.
+     *
+     * A good rule of thumb is this: If you use requires getting the time on a semi-regular basis, call now whenever precise
      * time is not required. If your use requires time only sporadically, only use hardNow.
      *
      * Warning:
-     * softNow does not guarantee monotonity across different threads. If you need different threads to have comparable times, use
+     * now does not guarantee monotonity across different threads. If you need different threads to have comparable times, use
      * hardNow.
      */
-    static TscTimePoint softNow() nothrow @nogc @safe {
-        if (fetchCounter < refetchInterval) {
+    static TscTimePoint now() nothrow @nogc @safe {
+        if (fetchCounter < refetchInterval || refetchInterval==ubyte.max) {
             fetchCounter++;
             lastTsc.cycles++;
             return lastTsc;
@@ -66,6 +71,7 @@ public:
             return hardNow();
         }
     }
+
     /// ditto
     static TscTimePoint hardNow() nothrow @nogc @safe {
         pragma(inline, true);
@@ -74,14 +80,24 @@ public:
         return lastTsc;
     }
 
+    /**
+     * Set the frequency with which we take a hard TSC reading
+     *
+     * See complete documentation in the now method.
+     *
+     * Params:
+     * interval = take a hardNow every so many calls to now. A value of 1 mean that now and hardNow are identical. A value of 0
+     *   means that hardNow is $(B never) implicitly taken.
+     */
+    static void setHardNowThreshold(ubyte interval) nothrow @nogc @safe {
+        refetchInterval = cast(ubyte)(interval-1);
+    }
+
     shared static this() {
         import std.exception;
         import core.sys.posix.time;
         import std.file: readText;
         import std.string;
-
-        // the main thread actually performs RDTSC 1 in 10 calls
-        refetchInterval = 10;
 
         version (linux) {
         }
@@ -271,7 +287,7 @@ struct Timeout {
      * Params:
      * now = time point relative to which to check.
      */
-    bool expired(TscTimePoint now = TscTimePoint.softNow) const nothrow @safe @nogc {
+    bool expired(TscTimePoint now = TscTimePoint.now) const nothrow @safe @nogc {
         if( this == infinite )
             return false;
 
