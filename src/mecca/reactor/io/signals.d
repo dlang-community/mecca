@@ -232,10 +232,14 @@ unittest {
 
         errnoCall!setitimer(ITIMER_REAL, &it, null);
 
-        it = itimerval.init;
-        scope(exit) setitimer(ITIMER_REAL, &it, null);
-
         theReactor.sleep(dur!"msecs"(3));
+
+        // Disarm the timer
+        it.it_value.tv_sec = 0;
+        it.it_value.tv_usec = 0;
+        it.it_interval = it.it_value;
+        errnoCall!setitimer(ITIMER_REAL, &it, null);
+
         theReactor.stop();
     }
 
