@@ -15,7 +15,7 @@ struct FLSArea {
         data[] = flsAreaInit.data[];
     }
 
-    void switchTo() nothrow @safe @nogc {
+    void switchTo() nothrow @trusted @nogc {
         pragma(inline, true);
         thisFls = &this;
     }
