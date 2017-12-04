@@ -235,5 +235,5 @@ unittest {
         theReactor.sleep(1.msecs);
     }
 
-    testWithReactor!true(&testBody);
+    testWithReactor(&testBody);
 }

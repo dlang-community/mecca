@@ -360,10 +360,7 @@ unittest {
     import mecca.reactor.sync.event;
 
     theReactor.setup();
-    scope(exit) theReactor.teardown();
-
-    openReactorEpoll();
-    scope(exit) closeReactorEpoll();
+    scope(success) theReactor.teardown();
 
     enum BUF_SIZE = 128;
     enum NUM_BUFFERS = 16384;
@@ -589,11 +586,11 @@ package:
     }
 }
 
-void openReactorEpoll() {
+void _openReactorEpoll() {
     epoller.open();
 }
 
-void closeReactorEpoll() {
+void _closeReactorEpoll() {
     epoller.close();
 }
 
@@ -604,10 +601,7 @@ unittest {
     import mecca.reactor;
 
     theReactor.setup();
-    scope(exit) theReactor.teardown();
-
-    openReactorEpoll();
-    scope(exit) closeReactorEpoll();
+    scope(success) theReactor.teardown();
 
     Pipe pipeRead, pipeWrite;
     Pipe.create(pipeRead, pipeWrite);

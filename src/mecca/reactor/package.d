@@ -445,6 +445,12 @@ public:
 
         if( options.threadDeferralEnabled )
             threadPool.open(options.numThreadsInPool, options.threadStackSize);
+
+        import mecca.reactor.io.fd;
+        _openReactorEpoll();
+
+        import mecca.reactor.io.signals;
+        reactorSignal._open();
     }
 
     /**
@@ -454,6 +460,12 @@ public:
         ASSERT!"reactor teardown called on non-open reactor"(_open);
         ASSERT!"reactor teardown called on still running reactor"(!_running);
         ASSERT!"reactor teardown called inside a critical section"(criticalSectionNesting==0);
+
+        import mecca.reactor.io.signals;
+        reactorSignal._close();
+
+        import mecca.reactor.io.fd;
+        _closeReactorEpoll();
 
         foreach(i, ref fib; allFibers) {
             fib.teardown(i==0);
@@ -1401,14 +1413,9 @@ private bool /* thread local */ _isReactorThread;
 }
 
 version (unittest) {
-    void testWithReactor(bool withEpoller = false)(void delegate() dg, Reactor.OpenOptions options = Reactor.OpenOptions.init) {
+    void testWithReactor(void delegate() dg, Reactor.OpenOptions options = Reactor.OpenOptions.init) {
         theReactor.setup(options);
         scope(success) theReactor.teardown();
-        static if( withEpoller ) {
-            import mecca.reactor.io.fd;
-            openReactorEpoll();
-            scope(exit) closeReactorEpoll();
-        }
 
         bool succ = false;
 

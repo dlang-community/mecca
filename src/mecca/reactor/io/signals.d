@@ -73,7 +73,7 @@ public:
      *
      * Must be called after the reactor is open, and also after ReactorFS.openReactor has already been called.
      */
-    void open() @safe @nogc {
+    void _open() @safe @nogc {
         ASSERT!"ReactorSignal.open called without first calling ReactorFD.openReactor"(epoller.isOpen);
         sigemptyset(signals);
         handlers[] = null;
@@ -86,15 +86,12 @@ public:
     }
 
     /// Call this when shutting down the reactor. Mostly necessary for unit tests
-    void close() @safe @nogc {
+    void _close() @safe @nogc {
         verifyOpen();
         signalFd.close();
         errnoEnforceNGC( sigprocmask( SIG_UNBLOCK, &signals, null )>=0, "sigprocmask unblocking signals failed" );
-        if( fiberHandle.isValid ) {
-            theReactor.throwInFiber!TerminateFiber(fiberHandle);
-        } else {
-            WARN!"ReactorSignal.close called with no fiber, probably after reactor close"();
-        }
+        ASSERT!"_close called while reactor still running"( !fiberHandle.isValid );
+        // theReactor.throwInFiber!TerminateFiber(fiberHandle);
     }
 
     /**
@@ -206,13 +203,7 @@ unittest {
     options.utGcDisabled = true;
 
     theReactor.setup(options);
-    scope(exit) theReactor.teardown();
-
-    openReactorEpoll();
-    scope(exit) closeReactorEpoll();
-
-    reactorSignal.open();
-    scope(exit) reactorSignal.close();
+    scope(success) theReactor.teardown();
 
     uint sigcount;
 

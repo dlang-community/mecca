@@ -1,14 +1,14 @@
 module mecca.reactor.subsystems.epoll;
 
+import core.stdc.errno;
 import core.sys.linux.epoll;
+import core.sys.posix.fcntl;
+import unistd = core.sys.posix.unistd;
 import std.conv;
 import std.exception;
 import std.meta;
 import std.traits;
 import std.string;
-
-import unistd = core.sys.posix.unistd;
-import core.sys.posix.fcntl;
 
 import mecca.reactor;
 import mecca.containers.pools;
@@ -118,6 +118,12 @@ private:
             intTimeout = 1;
         DEBUG!"Calling epoll_wait with a timeout of %sms"(intTimeout);
         int res = epollFd.osCall!epoll_wait(events.ptr, NUM_BATCH_EVENTS, intTimeout);
+
+        if( res<0 &&  errno==EINTR ) {
+            DEBUG!"epoll call interrupted by signal"();
+            return;
+        }
+
         errnoEnforceNGC( res>=0, "epoll_wait failed" );
 
         foreach( ref event; events[0..res] ) {

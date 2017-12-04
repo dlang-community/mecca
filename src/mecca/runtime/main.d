@@ -4,7 +4,6 @@ module mecca.runtime.main;
 import std.stdio;
 import std.string;
 import mecca.reactor: theReactor;
-import mecca.reactor.io.fd: openReactorEpoll, closeReactorEpoll;
 import mecca.reactor.io.signals: reactorSignal;
 import mecca.runtime.services;
 
@@ -26,12 +25,6 @@ struct ServiceManager {
 
         theReactor.setup();
         scope(success) theReactor.teardown();
-
-        openReactorEpoll();
-        scope(exit) closeReactorEpoll();
-
-        reactorSignal.open();
-        scope(exit) reactorSignal.close();
 
         setupServices();
         scope(success) teardownServices();
