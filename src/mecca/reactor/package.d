@@ -363,7 +363,7 @@ private:
     LinkedQueueWithLength!(ReactorFiber*) freeFibers;
     LinkedQueueWithLength!(ReactorFiber*) scheduledFibers;
 
-    ReactorFiber* thisFiber;
+    ReactorFiber* _thisFiber;
     ReactorFiber* prevFiber;
     ReactorFiber* mainFiber;
     ReactorFiber* idleFiber;
@@ -395,13 +395,18 @@ public:
         return _open;
     }
 
+    /// Report whether the reactor is currently running
+    @property bool isRunning() const pure nothrow @safe @nogc {
+        return _running;
+    }
+
     /**
       Set the reactor up for doing work.
 
       All options must be set before calling this function.
      */
     void setup(OpenOptions options = OpenOptions.init) {
-        assert (!_open, "reactor.setup called twice");
+        assert (!isOpen, "reactor.setup called twice");
         _open = true;
         assert (thread_isMainThread);
         _isReactorThread = true;
@@ -412,7 +417,7 @@ public:
         fiberStacks.allocate(stackPerFib * options.numFibers);
         allFibers.allocate(options.numFibers);
 
-        thisFiber = null;
+        _thisFiber = null;
         criticalSectionNesting = 0;
         idleCallbacks.length = 0;
 
@@ -457,8 +462,8 @@ public:
       Shut the reactor down.
      */
     void teardown() {
-        ASSERT!"reactor teardown called on non-open reactor"(_open);
-        ASSERT!"reactor teardown called on still running reactor"(!_running);
+        ASSERT!"reactor teardown called on non-open reactor"(isOpen);
+        ASSERT!"reactor teardown called on still running reactor"(!isRunning);
         ASSERT!"reactor teardown called inside a critical section"(criticalSectionNesting==0);
 
         import mecca.reactor.io.signals;
@@ -488,7 +493,7 @@ public:
         setToInit(freeFibers);
         setToInit(scheduledFibers);
 
-        thisFiber = null;
+        _thisFiber = null;
         prevFiber = null;
         mainFiber = null;
         idleFiber = null;
@@ -905,6 +910,11 @@ public:
     }
 
 private:
+    @property inout(ReactorFiber)* thisFiber() inout nothrow pure @safe @nogc {
+        DBG_ASSERT!"No current fiber as reactor was not started"(isRunning);
+        return _thisFiber;
+    }
+
     @property bool shouldRunTimedCallbacks() nothrow @safe @nogc {
         return timeQueue.cyclesTillNextEntry(TscTimePoint.hardNow()) == 0;
     }
@@ -943,7 +953,7 @@ private:
                 prevFiber.state = ReactorFiber.State.None;
             }
 
-            thisFiber = scheduledFibers.popHead();
+            _thisFiber = scheduledFibers.popHead();
 
             assert (thisFiber.flag!"SCHEDULED");
             thisFiber.flag!"SCHEDULED" = false;
@@ -1297,9 +1307,9 @@ private:
     }
 
     void mainloop() {
-        assert (_open);
-        assert (!_running);
-        assert (thisFiber is null);
+        assert (isOpen);
+        assert (!isRunning);
+        assert (_thisFiber is null);
 
         _running = true;
         GC.disable();
@@ -1319,8 +1329,8 @@ private:
                 deregisterHangDetector();
         }
 
-        thisFiber = mainFiber;
-        scope(exit) thisFiber = null;
+        _thisFiber = mainFiber;
+        scope(exit) _thisFiber = null;
 
         bool needGcCollect;
         static void gcEnabler(bool* needGcCollect) {

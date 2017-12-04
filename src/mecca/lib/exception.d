@@ -335,8 +335,10 @@ void ABORT(string msg, string file = __FILE__, size_t line = __LINE__) nothrow @
     DIE(msg, file, line, true);
 }
 
-void ASSERT(string fmt, string file = __FILE__, string mod = __MODULE__, size_t line = __LINE__, T...)(bool cond, scope lazy T args)
-    nothrow @trusted @nogc
+void ASSERT
+    (string fmt, string file = __FILE__, string mod = __MODULE__, size_t line = __LINE__, T...)
+    (bool cond, scope lazy T args)
+    pure nothrow @trusted @nogc
 {
     pragma(inline, true);
     if (cond) {
@@ -356,7 +358,10 @@ void ASSERT(string fmt, string file = __FILE__, string mod = __MODULE__, size_t 
         as!"@nogc pure nothrow"({throw new AssertError("Assertion failure", file, line);});
     }
     else {
-        DIE("Assertion failure", file, line);
+        as!"@nogc pure nothrow"({
+            import std.string: format;
+            DIE(format( "Assertion failure: " ~ fmt, args), file, line);
+        });
     }
 }
 
