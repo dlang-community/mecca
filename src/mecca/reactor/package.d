@@ -610,7 +610,10 @@ public:
     /**
       Stop the reactor, killing all fibers.
 
-      This will trigger a return from the call to Reactor.start.
+      This will kill all running fibers and trigger a return from the original call to Reactor.start.
+
+      Typically, this function call never returns (throws ReactorExit). However, if stop is called while already in the
+      process of stopping, it will just return. It is, therefor, not wise to rely on that fact.
      */
     void stop() @safe @nogc {
         if( _stopping ) {
@@ -621,11 +624,9 @@ public:
         _stopping = true;
         if( !isMain() ) {
             resumeSpecialFiber(mainFiber);
-            thisFiber.flag!"SPECIAL" = false;
-            yieldThisFiber();
-
-            assert(false, "Woke up after stopping reactor");
         }
+
+        throw mkEx!ReactorExit("Reactor is quitting");
     }
 
     /**
@@ -1345,19 +1346,23 @@ private:
         if( !optionsInEffect.utGcDisabled )
             TimerHandle gcTimer = registerRecurringTimer!gcEnabler(optionsInEffect.gcInterval, &needGcCollect);
 
-        while (!_stopping) {
-            runTimedCallbacks();
-            if( needGcCollect ) {
-                needGcCollect = false;
-                TscTimePoint.hardNow(); // Update the hard now value
-                INFO!"Beginning GC collection cycle"();
-                GC.collect();
-                TscTimePoint.hardNow(); // Update the hard now value
-                INFO!"GC collection cycle ended"();
-            }
+        try {
+            while (!_stopping) {
+                runTimedCallbacks();
+                if( needGcCollect ) {
+                    needGcCollect = false;
+                    TscTimePoint.hardNow(); // Update the hard now value
+                    INFO!"Beginning GC collection cycle"();
+                    GC.collect();
+                    TscTimePoint.hardNow(); // Update the hard now value
+                    INFO!"GC collection cycle ended"();
+                }
 
-            if( !_stopping )
-                switchToNext();
+                if( !_stopping )
+                    switchToNext();
+            }
+        } catch( ReactorExit ex ) {
+            ASSERT!"Main loop threw ReactorExit, but reactor is not stopping"(_stopping);
         }
 
         performStopReactor();

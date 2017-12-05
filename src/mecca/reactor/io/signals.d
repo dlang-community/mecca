@@ -27,28 +27,28 @@ extern(C) private nothrow @trusted @nogc {
 
 // @safe wrappers
 private {
-    int signalfd (int __fd, const ref sigset_t __mask, int __flags) nothrow @trusted @nogc {
+    @notrace int signalfd (int __fd, const ref sigset_t __mask, int __flags) nothrow @trusted @nogc {
         return signalfd( __fd, &__mask, __flags );
     }
 
-    int sigemptyset(ref sigset_t set) nothrow @trusted @nogc {
+    @notrace int sigemptyset(ref sigset_t set) nothrow @trusted @nogc {
         return sigemptyset(&set);
     }
 
-    int sigaddset(ref sigset_t set, int signum) nothrow @trusted @nogc {
+    @notrace int sigaddset(ref sigset_t set, int signum) nothrow @trusted @nogc {
         return sigaddset( &set, signum );
     }
 
-    int sigismember(ref sigset_t set, int signum) nothrow @trusted @nogc {
+    @notrace int sigismember(ref sigset_t set, int signum) nothrow @trusted @nogc {
         return sigismember(&set, signum);
     }
-    int sigdelset(ref sigset_t set, int signum) nothrow @trusted @nogc {
+    @notrace int sigdelset(ref sigset_t set, int signum) nothrow @trusted @nogc {
         return sigdelset( &set, signum );
     }
-    int sigprocmask(int op, const ref sigset_t newMask) nothrow @trusted @nogc {
+    @notrace int sigprocmask(int op, const ref sigset_t newMask) nothrow @trusted @nogc {
         return sigprocmask( op, &newMask, null );
     }
-    int sigprocmask(int op, const ref sigset_t newMask, ref sigset_t oldMask) nothrow @trusted @nogc {
+    @notrace int sigprocmask(int op, const ref sigset_t newMask, ref sigset_t oldMask) nothrow @trusted @nogc {
         return sigprocmask( op, &newMask, &oldMask );
     }
 }
