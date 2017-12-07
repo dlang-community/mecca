@@ -1,6 +1,7 @@
 /// Various utilities for hacking the D type system
 module mecca.lib.reflection;
 
+import std.algorithm: move, moveEmplace;
 public import std.traits;
 public import std.meta;
 import std.conv;
@@ -77,8 +78,8 @@ public:
     }
 
     void set(F, T...)(F f, T args) pure nothrow @nogc @trusted if (isFunctionPointer!F) {
-        static assert (is(ReturnType!F == void));
-        static assert (is(typeof(f(args))));
+        static assert (is(ReturnType!F == void), "Delegate must return void");
+        static assert (is(typeof(f(args))), "Args don't match passed delegate");
 
         static if (T.length == 0) {
             _wrapper = DIRECT_FN;
@@ -92,18 +93,22 @@ public:
             static assert (Typed.sizeof <= argsBuf.sizeof, "Args too big");
 
             static void wrapper(Closure* closure) {
-                (cast(F)closure._funcptr)((cast(Typed*)closure.argsBuf.ptr).args);
+                mixin( genMoveArgument(
+                            T.length,
+                            "(cast(F)closure._funcptr)",
+                            "(cast(Typed*)closure.argsBuf.ptr).args") );
             }
             _funcptr = f;
             _wrapper = &wrapper;
-            (cast(Typed*)argsBuf.ptr).args = args;
+            foreach( i, ref arg; args )
+                moveEmplace( arg, (cast(Typed*)argsBuf.ptr).args[i] );
             argsBuf[Typed.sizeof .. $] = 0;
         }
     }
 
     void set(D, T...)(D dg, T args) pure nothrow @nogc @trusted if (isDelegate!D) {
-        static assert (is(ReturnType!D == void));
-        static assert (is(typeof(dg(args))));
+        static assert (is(ReturnType!D == void), "Delegate must return void");
+        static assert (is(typeof(dg(args))), "Args don't match passed delegate");
 
         static if (T.length == 0) {
             _wrapper = DIRECT_DG;
@@ -120,19 +125,21 @@ public:
 
             static void wrapper(Closure* closure) {
                 auto typed = cast(Typed*)closure.argsBuf.ptr;
-                typed.dg(typed.args);
+                mixin( genMoveArgument(args.length, "typed.dg", "typed.args") );
             }
             _wrapper = &wrapper;
             _funcptr = dg.funcptr;
             auto typed = cast(Typed*)argsBuf.ptr;
             typed.dg = dg;
-            typed.args = args;
+            foreach(i, ref arg; args) {
+                moveEmplace( arg, typed.args[i] );
+            }
             argsBuf[Typed.sizeof .. $] = 0;
         }
     }
 
-    void set(alias F)(Parameters!F args) pure nothrow @nogc @trusted {
-        static assert (is(ReturnType!F == void));
+    void set(alias F)(Parameters!F args) nothrow @nogc @trusted {
+        static assert (is(ReturnType!F == void), "Delegate must return void");
         static assert (Filter!(badStorageClass, ParameterStorageClassTuple!F).length == 0,
             "Bad storage class " ~ ParameterStorageClassTuple!F.stringof);
 
@@ -146,12 +153,15 @@ public:
                 staticMap!(Unqual, Parameters!F) args;
             }
             static void wrapper(Closure* closure) {
-                F((cast(Typed*)closure.argsBuf.ptr).args);
+                Typed* typed = cast(Typed*)closure.argsBuf.ptr;
+                mixin( genMoveArgument(args.length, "F", "typed.args") );
             }
 
             _wrapper = &wrapper;
             _funcptr = &F;
-            (cast(Typed*)argsBuf.ptr).args = args;
+            foreach(i, ref arg; args ) {
+                moveEmplace( arg, (cast(Typed*)argsBuf.ptr).args[i] );
+            }
             argsBuf[Typed.sizeof .. $] = 0;
         }
     }
@@ -170,6 +180,7 @@ public:
             (cast(void function(Closure*))_wrapper)(&this);
         }
     }
+
 }
 
 unittest {
@@ -600,4 +611,31 @@ unittest {
     alias AF = ForeachTypeof!(A[]);
     alias BF = ForeachTypeof!B;
     alias IF = ForeachTypeof!(int[5]);
+}
+
+/**
+ * A CTFE function for generating a mixin string of a function call moving arguments
+ *
+ * Params:
+ * numArgs = number of arguments in generated function call
+ * callString = the string used to call the function
+ * argumentString = the string used to specify a specific argument
+ * ret = optional variable to receive the function's return
+ */
+string genMoveArgument(size_t numArgs, string callString, string argumentString, string ret = null) @safe pure {
+    import std.string: format;
+
+    string retVal;
+    if( ret !is null )
+        retVal ~= "%s = ".format(ret);
+    retVal ~= "%s( ".format(callString);
+    foreach(i; 0..numArgs) {
+        if( i>0 )
+            retVal ~= ", ";
+        retVal ~= "move(%s[%s])".format(argumentString, i);
+    }
+
+    retVal ~= " );";
+
+    return retVal;
 }

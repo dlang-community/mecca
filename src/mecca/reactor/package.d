@@ -553,7 +553,9 @@ public:
      */
     @notrace FiberHandle spawnFiber(alias F)(Parameters!F args) {
         auto fib = _spawnFiber(false);
-        fib.params.fiberBody.set!F(args);
+        import std.algorithm: move;
+        mixin( genMoveArgument( args.length, "fib.params.fiberBody.set!F", "args" ) );
+
         return FiberHandle(fib);
     }
 
