@@ -54,10 +54,10 @@ shared static this() {
 
     foreach(m; modules) {
         counter++;
+        DEBUG!"#LOADAVG %s"(cast(immutable char[])read("/proc/loadavg"));
         META!"Running UT of %s"(m.name);
         logLine(FG.yellow("Running UT of ") ~ FG.iwhite(m.name));
         try {
-            DEBUG!"#LOADAVG %s"(cast(immutable char[])read("/proc/loadavg"));
             auto ut = m.unitTest;
             ut();
         }
@@ -91,23 +91,26 @@ shared static this() {
     }
     auto endTime = MonoTime.currTime();
     auto secs = (endTime - startTime).total!"msecs" / 1000.0;
-    DEBUG!"#LOADAVG %s"(cast(immutable char[])read("/proc/loadavg"));
 
+    int retVal;
     if (failed) {
         META!"Failed. Ran %s unittests in %.2f seconds"(counter, secs);
         logLine(FG.ired("Failed. Ran %s unittests in %.2f seconds".format(counter, secs)));
-        return 1;
+        retVal = 1;
     }
     else if (counter == 0) {
         META!"Did not find any unittest to run"();
         logLine(FG.ired("Did not find any unittests to run"));
-        return 2;
+        retVal = 2;
     }
     else {
         META!"Success. Ran %s unittests in %.2f seconds"(counter, secs);
         logLine(FG.igreen("Success. Ran %s unittests in %.2f seconds".format(counter, secs)));
-        return 0;
+        retVal = 0;
     }
+    DEBUG!"#LOADAVG %s"(cast(immutable char[])read("/proc/loadavg"));
+
+    return retVal;
 }
 
 struct mecca_ut {}
