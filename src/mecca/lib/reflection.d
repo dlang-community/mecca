@@ -81,22 +81,19 @@ public:
         static assert (is(ReturnType!F == void), "Delegate must return void");
         static assert (is(typeof(f(args))), "Args don't match passed delegate");
 
-        static if (__VERSION__ >= 2075) {
-            foreach( i; IOTA!(T.length) ) {
-                import std.string: format;
+        alias PSCT = ParameterStorageClassTuple!F;
+        foreach( i; IOTA!(T.length) ) {
+            import std.string: format;
 
-                foreach( storageClass; __traits(getParameterStorageClasses, F, i) ) {
-                    static assert(
-                            storageClass != "ref",
-                            "Closure cannot be used over functions with a ref variables (argument %s)".format(i+1) );
-                    static assert(
-                            storageClass != "out",
-                            "Closure cannot be used over functions with an out variables (argument %s)".format(i+1) );
-                    static assert(
-                            storageClass != "lazy",
-                            "Closure cannot be used over functions with a lazy variables (argument %s)".format(i+1) );
-                }
-            }
+            static assert(
+                    PSCT[i] != ParameterStorageClass.ref_,
+                    "Closure cannot be used over functions with a ref variables (argument %s)".format(i+1) );
+            static assert(
+                    PSCT[i] != ParameterStorageClass.out_,
+                    "Closure cannot be used over functions with an out variables (argument %s)".format(i+1) );
+            static assert(
+                    PSCT[i] != ParameterStorageClass.lazy_,
+                    "Closure cannot be used over functions with a lazy variables (argument %s)".format(i+1) );
         }
 
         static if (T.length == 0) {
@@ -128,22 +125,19 @@ public:
         static assert (is(ReturnType!D == void), "Delegate must return void");
         static assert (is(typeof(dg(args))), "Args don't match passed delegate");
 
-        static if (__VERSION__ >= 2075) {
-            foreach( i; IOTA!(T.length) ) {
-                import std.string: format;
+        alias PSCT = ParameterStorageClassTuple!D;
+        foreach( i; IOTA!(T.length) ) {
+            import std.string: format;
 
-                foreach( storageClass; __traits(getParameterStorageClasses, D, i) ) {
-                    static assert(
-                            storageClass != "ref",
-                            "Closure cannot be used over functions with a ref variables (argument %s)".format(i+1) );
-                    static assert(
-                            storageClass != "out",
-                            "Closure cannot be used over functions with an out variables (argument %s)".format(i+1) );
-                    static assert(
-                            storageClass != "lazy",
-                            "Closure cannot be used over functions with a lazy variables (argument %s)".format(i+1) );
-                }
-            }
+            static assert(
+                    PSCT[i] != ParameterStorageClass.ref_,
+                    "Closure cannot be used over functions with a ref variables (argument %s)".format(i+1) );
+            static assert(
+                    PSCT[i] != ParameterStorageClass.out_,
+                    "Closure cannot be used over functions with an out variables (argument %s)".format(i+1) );
+            static assert(
+                    PSCT[i] != ParameterStorageClass.lazy_,
+                    "Closure cannot be used over functions with a lazy variables (argument %s)".format(i+1) );
         }
 
         static if (T.length == 0) {
@@ -179,22 +173,19 @@ public:
         static assert (Filter!(badStorageClass, ParameterStorageClassTuple!F).length == 0,
             "Bad storage class " ~ ParameterStorageClassTuple!F.stringof);
 
-        static if (__VERSION__ >= 2075) {
-            foreach( i; IOTA!((Parameters!F).length) ) {
-                import std.string: format;
+        alias PSCT = ParameterStorageClassTuple!F;
+        foreach( i, sc; PSCT ) {
+            import std.string: format;
 
-                foreach( storageClass; __traits(getParameterStorageClasses, F, i) ) {
-                    static assert(
-                            storageClass != "ref",
-                            "Closure cannot be used over functions with a ref variables (argument %s)".format(i+1) );
-                    static assert(
-                            storageClass != "out",
-                            "Closure cannot be used over functions with an out variables (argument %s)".format(i+1) );
-                    static assert(
-                            storageClass != "lazy",
-                            "Closure cannot be used over functions with a lazy variables (argument %s)".format(i+1) );
-                }
-            }
+            static assert(
+                    sc != ParameterStorageClass.ref_,
+                    "Closure cannot be used over functions with a ref variables (argument %s)".format(i+1) );
+            static assert(
+                    sc != ParameterStorageClass.out_,
+                    "Closure cannot be used over functions with an out variables (argument %s)".format(i+1) );
+            static assert(
+                    sc != ParameterStorageClass.lazy_,
+                    "Closure cannot be used over functions with a lazy variables (argument %s)".format(i+1) );
         }
 
         static if (Parameters!F.length == 0) {
@@ -297,10 +288,8 @@ unittest {
 
     int var;
 
-    static if (__VERSION__ >= 2075) {
-        // This check depends on an advanced enough version of the compiler
-        static assert( !__traits(compiles, c.set(&func, var)) );
-    }
+    // This check depends on an advanced enough version of the compiler
+    static assert( !__traits(compiles, c.set(&func, var)) );
 }
 
 void setToInit(T)(ref T val) nothrow @trusted @nogc if (!isPointer!T) {
