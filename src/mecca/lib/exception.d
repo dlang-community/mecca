@@ -365,12 +365,20 @@ void ASSERT
     }
 }
 
-void errnoEnforceNGC(string file = __FILE__, size_t line = __LINE__) (bool value, lazy string msg = null) @trusted @nogc {
+void enforceNGC(Ex : Throwable = Exception, string file = __FILE__, size_t line = __LINE__)
+    (bool value, scope lazy string msg = null) @trusted @nogc
+{
     if( !value ) {
         string evaluatedMsg;
         as!"@nogc"({evaluatedMsg = msg;});
-        throw mkEx!ErrnoException(evaluatedMsg, file, line);
+        throw mkEx!Ex(evaluatedMsg, file, line);
     }
+}
+
+void errnoEnforceNGC(string file = __FILE__, size_t line = __LINE__)
+    (bool value, scope lazy string msg = null) @trusted @nogc
+{
+    as!"@nogc"({ enforceNGC!(ErrnoException, file, line)(value, msg); });
 }
 
 version(assert) {

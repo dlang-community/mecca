@@ -126,14 +126,16 @@ struct ConnectedDatagramSocket {
      *  Returns the connected socket.
      *
      * Throws:
-     * ErrnoException if the connection fails (e.g. - EINVAL if accepting from a non-listening socket, or ECONNABORTED if a connection was
-     *                                         aborted). Also throws this if one of the system calls fails.
+     * ErrnoException if the connection fails (e.g. - EINVAL if accepting from a non-listening socket, or ECONNABORTED
+     * if a connection was aborted). Also throws this if one of the system calls fails.
+     *
+     * TimeoutExpired if the timeout expires
      *
      * Anything else: May throw any exception injected using throwInFiber.
      */
-    @notrace ConnectedDatagramSocket accept(out SockAddr clientAddr) @trusted @nogc {
+    @notrace ConnectedDatagramSocket accept(out SockAddr clientAddr, Timeout timeout = Timeout.infinite) @trusted @nogc {
         socklen_t len = SockAddr.sizeof;
-        int clientFd = sock.blockingCall!(.accept)(&clientAddr.base, &len);
+        int clientFd = sock.blockingCall!(.accept)(&clientAddr.base, &len, timeout);
 
         auto clientSock = ConnectedDatagramSocket( Socket( ReactorFD( clientFd ) ) );
 
@@ -224,14 +226,18 @@ struct ConnectedSocket {
      *  Returns the connected socket.
      *
      * Throws:
-     * ErrnoException if the connection fails (e.g. - EINVAL if accepting from a non-listening socket, or ECONNABORTED if a connection was
-     *                                         aborted). Also throws this if one of the system calls fails.
+     * ErrnoException if the connection fails (e.g. - EINVAL if accepting from a non-listening socket, or ECONNABORTED
+     * if a connection was aborted). Also throws this if one of the system calls fails.
+     *
+     * TimeoutExpired if the timeout expires
      *
      * Anything else: May throw any exception injected using throwInFiber.
      */
-    @notrace ConnectedSocket accept(out SockAddr clientAddr, bool nodelay = true) @trusted @nogc {
+    @notrace ConnectedSocket accept(out SockAddr clientAddr, bool nodelay = true, Timeout timeout = Timeout.infinite)
+            @trusted @nogc
+    {
         socklen_t len = SockAddr.sizeof;
-        int clientFd = sock.blockingCall!(.accept)(&clientAddr.base, &len);
+        int clientFd = sock.blockingCall!(.accept)(&clientAddr.base, &len, timeout);
 
         auto clientSock = ConnectedSocket( Socket( ReactorFD( clientFd ) ) );
         if( nodelay && (clientAddr.family == AF_INET || clientAddr.family == AF_INET6) )
@@ -282,44 +288,85 @@ struct Socket {
     /**
      * send data over a connected socket
      */
-    ssize_t send(const void[] data, int flags) @trusted @nogc {
-        return fd.blockingCall!(.send)(data.ptr, data.length, flags);
+    ssize_t send(const void[] data, int flags, Timeout timeout = Timeout.infinite) @trusted @nogc {
+        return fd.blockingCall!(.send)(data.ptr, data.length, flags, timeout);
+    }
+
+    void sendObj(T)(T* data, int flags, Timeout timeout = Timeout.infinite) @safe @nogc {
+        objectCall!send(data, flags, timeout);
     }
 
     /**
      * send data over an unconnected socket
      */
-    ssize_t sendto(const void[] data, int flags, const ref SockAddr destAddr) @trusted @nogc {
-        return fd.blockingCall!(.sendto)(data.ptr, data.length, flags, &destAddr.base, SockAddr.sizeof); 
+    ssize_t sendto(const void[] data, int flags, const ref SockAddr destAddr, Timeout timeout = Timeout.infinite)
+            @trusted @nogc
+    {
+        return fd.blockingCall!(.sendto)(data.ptr, data.length, flags, &destAddr.base, SockAddr.sizeof, timeout); 
     }
 
     /**
      * Implementation of sendmsg.
      */
-    ssize_t sendmsg(const ref msghdr msg, int flags) @trusted @nogc {
-        return fd.blockingCall!(.sendmsg)(&msg, flags);
+    ssize_t sendmsg(const ref msghdr msg, int flags, Timeout timeout = Timeout.infinite) @trusted @nogc {
+        return fd.blockingCall!(.sendmsg)(&msg, flags, timeout);
     }
 
     /**
      * recv data from a connected socket
      *
      * Can be used on unconnected sockets as well, but then it is not possible to know who the sender was.
+     *
+     * Params:
+     * buffer = the buffer range to send
+     * flags = flags argument as defined for the standard socket recv
+     *
+     * Returns:
+     * The number of bytes actually received
+     *
+     * Throws:
+     * May throw an ErrnoException in case of error
+     *
+     * Will throw TimeoutExpired if the timeout expired
      */
-    ssize_t recv(void[] buffer, int flags) @trusted @nogc {
-        return fd.blockingCall!(.recv)(buffer.ptr, buffer.length, flags);
+    ssize_t recv(void[] buffer, int flags, Timeout timeout = Timeout.infinite) @trusted @nogc {
+        return fd.blockingCall!(.recv)(buffer.ptr, buffer.length, flags, timeout);
     }
+
+    /**
+     * recv whole object from a connected socket
+     *
+     * Can be used on unconnected sockets as well, but then it is not possible to know who the sender was. This form of
+     * the call is intended for recieving object of absolute know size.
+     *
+     * Params:
+     * data = pointer to data to be received.
+     * flags = flags ardument as defined for the standard socket recv
+     * timeout = timeout
+     *
+     * Throws:
+     * May throw an ErrnoException in case of a socket error. If amount of bytes received is not identical to sizeof(T),
+     * errno will be EREMOTEIO (remote IO error).
+     *
+     * Will throw TimeoutExpired if the timeout expired
+     */
+    void recvObj(T)(T* data, int flags, Timeout timeout = Timeout.infinite) @safe @nogc {
+        objectCall!recv(data, flags, timeout);
+    }
+
 
     /**
      * recv data from an unconnected socket
      */
-    ssize_t recvfrom(void[] buffer, int flags, out SockAddr srcAddr) @trusted @nogc {
+    ssize_t recvfrom(void[] buffer, int flags, out SockAddr srcAddr, Timeout timeout = Timeout.infinite) @trusted @nogc
+    {
         socklen_t addrLen = SockAddr.sizeof;
-        return fd.blockingCall!(.recvfrom)(buffer.ptr, buffer.length, flags, &srcAddr.base, &addrLen);
+        return fd.blockingCall!(.recvfrom)(buffer.ptr, buffer.length, flags, &srcAddr.base, &addrLen, timeout);
     }
 
     /// Implement the recvmsg system call in a reactor friendly way.
-    ssize_t recvmsg(ref msghdr msg, int flags) @trusted @nogc {
-        return fd.blockingCall!(.recvmsg)(&msg, flags);
+    ssize_t recvmsg(ref msghdr msg, int flags, Timeout timeout = Timeout.infinite ) @trusted @nogc {
+        return fd.blockingCall!(.recvmsg)(&msg, flags, timeout);
     }
 
     /**
@@ -352,6 +399,14 @@ private:
         errnoEnforceNGC( fd>=0, "socket creation failed" );
 
         return Socket( ReactorFD(fd) );
+    }
+
+    @notrace void objectCall(alias F, T)(T* object, Parameters!F[1..$] args) @trusted @nogc {
+        auto size = F(object[0..1], args);
+        if( size!=T.sizeof ) {
+            errno = EREMOTEIO; // Inject a "remote IO error"
+            throw mkExFmt!ErrnoException("%s(%s)", __traits(identifier, F), fd.get().fileNo);
+        }
     }
 }
 
@@ -533,20 +588,20 @@ public:
     }
 
     /// Perform reactor aware @safe read
-    ssize_t read(void[] buffer) @trusted @nogc {
-        return blockingCall!(unistd.read)( buffer.ptr, buffer.length );
+    ssize_t read(void[] buffer, Timeout timeout = Timeout.infinite) @trusted @nogc {
+        return blockingCall!(unistd.read)( buffer.ptr, buffer.length, timeout );
     }
 
     /// Perform reactor aware @safe write
-    ssize_t write(void[] buffer) @trusted @nogc {
-        return blockingCall!(unistd.write)( buffer.ptr, buffer.length );
+    ssize_t write(void[] buffer, Timeout timeout = Timeout.infinite) @trusted @nogc {
+        return blockingCall!(unistd.write)( buffer.ptr, buffer.length, timeout );
     }
 
     alias fcntl = osCallErrno!(.fcntl.fcntl);
     alias ioctl = osCallErrno!(.ioctl);
 
 package:
-    auto blockingCall(alias F)(Parameters!F[1 .. $] args) @system @nogc {
+    auto blockingCall(alias F)(Parameters!F[1 .. $] args, Timeout timeout) @system @nogc {
         static assert (is(Parameters!F[0] == int));
         static assert (isSigned!(ReturnType!F));
 
@@ -554,7 +609,7 @@ package:
             auto ret = fd.osCall!F(args);
             if (ret < 0) {
                 if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                    epoller.waitForEvent(ctx);
+                    epoller.waitForEvent(ctx, timeout);
                 }
                 else {
                     throw mkExFmt!ErrnoException("%s(%s)", __traits(identifier, F), fd.fileNo);

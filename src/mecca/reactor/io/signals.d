@@ -8,6 +8,7 @@ public import core.sys.linux.sys.signalfd : signalfd_siginfo;
 
 import mecca.lib.exception;
 import mecca.lib.reflection;
+import mecca.lib.time;
 import mecca.log;
 public import mecca.platform.linux : OSSignal;
 import mecca.platform.linux;
@@ -162,7 +163,7 @@ private:
             while(true) {
                 // XXX Consider placing the array in the struct, so it's not on the stack
                 signalfd_siginfo[BATCH_SIZE] info;
-                ssize_t readSize = signalFd.blockingCall!(read)(&info, typeof(info).sizeof);
+                ssize_t readSize = signalFd.blockingCall!(read)(&info, typeof(info).sizeof, Timeout.infinite);
                 ASSERT!"read from signalfd returned misaligned size %s, expected a multiple of %s"(
                         (readSize%signalfd_siginfo.sizeof) == 0, readSize, signalfd_siginfo.sizeof);
 

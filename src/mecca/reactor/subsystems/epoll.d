@@ -88,8 +88,8 @@ public:
 
     void deregisterFd(ref FD fd, FdContext* ctx) nothrow @safe @nogc {
         fdPool.release(ctx);
-        // We do not call EPOLL_CTL_DEL, as the caller of this function will soon call close, which achieves the same result. No reason to
-        // waste a syscall.
+        // We do not call EPOLL_CTL_DEL, as the caller of this function will soon call close, which achieves the same
+        // result. No reason to waste a syscall.
     }
 
     void waitForEvent(FdContext* ctx, Timeout timeout = Timeout.infinite) @safe @nogc {
