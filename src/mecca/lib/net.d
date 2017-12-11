@@ -411,6 +411,7 @@ struct SockAddrUnix {
 }
 
 struct SockAddr {
+    align(1):
     union {
         sockaddr base = sockaddr(AF_UNSPEC);
         SockAddrIPv4 ipv4;
@@ -449,7 +450,7 @@ struct SockAddr {
         ASSERT!"Called with mismatching address family. Expected Unix domain(%s), got %s"( AF_UNIX == family, AF_UNIX, family );
     }
 
-    @property sa_family_t family() const pure @safe @nogc {
+    @property sa_family_t family() const pure nothrow @safe @nogc {
         return base.sa_family;
     }
 
@@ -487,5 +488,20 @@ struct SockAddr {
         scope(exit) freeaddrinfo(res);
 
         return SockAddr(res.ai_addr, res.ai_addrlen);
+    }
+
+    @property uint length() const pure nothrow @safe @nogc {
+        switch(family) {
+        case AF_UNSPEC:
+            return SockAddr.sizeof;
+        case AF_INET:
+            return SockAddrIPv4.sizeof;
+        case AF_INET6:
+            return SockAddrIPv6.sizeof;
+        case AF_UNIX:
+            return SockAddrUnix.sizeof;
+        default:
+            assert(false, "Unknown family");
+        }
     }
 }

@@ -108,7 +108,7 @@ struct ConnectedDatagramSocket {
     @notrace static ConnectedDatagramSocket listen(SockAddr sa) @trusted @nogc {
         ConnectedDatagramSocket sock = ConnectedDatagramSocket( Socket.socket(sa.family, SOCK_SEQPACKET, 0) );
 
-        sock.osCallErrno!(.bind)(&sa.base, SockAddr.sizeof);
+        sock.osCallErrno!(.bind)(&sa.base, sa.length);
         sock.osCallErrno!(.listen)(LISTEN_BACKLOG);
 
         return sock;
@@ -206,7 +206,7 @@ struct ConnectedSocket {
     @notrace static ConnectedSocket listen(SockAddr sa) @trusted @nogc {
         ConnectedSocket sock = ConnectedSocket( Socket.socket(sa.family, SOCK_STREAM, 0) );
 
-        sock.osCallErrno!(.bind)(&sa.base, SockAddr.sizeof);
+        sock.osCallErrno!(.bind)(&sa.base, sa.length);
         sock.osCallErrno!(.listen)(LISTEN_BACKLOG);
 
         return sock;
