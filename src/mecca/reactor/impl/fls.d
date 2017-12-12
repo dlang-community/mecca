@@ -1,5 +1,6 @@
 module mecca.reactor.impl.fls;
 
+import mecca.log;
 
 enum FLS_AREA_SIZE = 512;
 
@@ -15,7 +16,7 @@ struct FLSArea {
         data[] = flsAreaInit.data[];
     }
 
-    void switchTo() nothrow @trusted @nogc {
+    @notrace void switchTo() nothrow @trusted @nogc {
         pragma(inline, true);
         thisFls = &this;
     }

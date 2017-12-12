@@ -119,7 +119,7 @@ align(1):
         _flags = 0;
     }
 
-    void teardown(bool main) nothrow @nogc {
+    @notrace void teardown(bool main) nothrow @nogc {
         fibril.reset();
         if (!main) {
             params.stackDescriptor.remove();
@@ -999,7 +999,7 @@ private:
         }
     }
 
-    package void suspendThisFiber(Timeout timeout) @trusted @nogc {
+    @notrace package void suspendThisFiber(Timeout timeout) @trusted @nogc {
         if (timeout == Timeout.infinite)
             return suspendThisFiber();
 

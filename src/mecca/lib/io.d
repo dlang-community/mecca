@@ -35,6 +35,19 @@ public:
     }
 
     /**
+     * Wrapper for adopting an fd immediately after being returned from external function
+     *
+     * The usage should be `FD fd = FD.adopt!"open"( .open("/path/to/file", O_RDWR) );`
+     *
+     * Throws:
+     * ErrnoException in case fd is invalid
+     */
+    static FD adopt(string errorMsg)(int fd) @safe @nogc {
+        errnoEnforceNGC(fd>=0, errorMsg);
+        return FD(fd);
+    }
+
+    /**
      * Call an OS function that accepts an FD as the first argument.
      *
      * Parameters:
@@ -43,14 +56,30 @@ public:
      * Returns:
      * Whatever the original OS function returns.
      */
-    auto osCall(alias F)(Parameters!F[1..$] args) nothrow @nogc if( is( Parameters!F[0]==int ) ) {
+    auto osCall(alias F, T...)(T args) nothrow @nogc if( is( Parameters!F[0]==int ) ) {
         import mecca.lib.reflection : as;
 
-        static assert( fullyQualifiedName!F != fullyQualifiedName!(.close), "Do not try to close the fd directly. Use FD.close instead." );
+        static assert( fullyQualifiedName!F != fullyQualifiedName!(.close),
+                "Do not try to close the fd directly. Use FD.close instead." );
         ReturnType!F res;
         as!"nothrow @nogc"({ res = F(fd, args); });
 
         return res;
+    }
+
+    /**
+     * Run an fd based function and throw if it fails
+     *
+     * This function behave the same as `osCall`, except if the return is -1, it will throw an ErrnoException
+     */
+    auto checkedCall(alias F, string errorMessage, T...)(T args) @system @nogc
+            if( is( Parameters!F[0]==int ) )
+    {
+        auto ret = osCall!F(args);
+
+        errnoEnforceNGC(ret!=-1, errorMessage);
+
+        return ret;
     }
 
     /**
@@ -108,7 +137,7 @@ unittest {
     int fd1copy, fd2copy;
 
     {
-        auto fd = FD(open("/tmp/meccaUTfile1", O_CREAT|O_RDWR|O_TRUNC, octal!666));
+        auto fd = FD.adopt!"open"(open("/tmp/meccaUTfile1", O_CREAT|O_RDWR|O_TRUNC, octal!666));
         fd1copy = fd.fileNo;
 
         fd.osCall!write("Hello, world\n".ptr, 13);
@@ -117,7 +146,7 @@ unittest {
 
         unlink("/tmp/meccaUTfile1");
 
-        fd = FD(open("/tmp/meccaUTfile2", O_CREAT|O_RDWR|O_TRUNC, octal!666));
+        fd = FD.adopt!"open"( open("/tmp/meccaUTfile2", O_CREAT|O_RDWR|O_TRUNC, octal!666) );
         fd2copy = fd.fileNo;
 
         unlink("/tmp/meccaUTfile2");

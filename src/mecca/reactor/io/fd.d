@@ -288,11 +288,11 @@ struct Socket {
     /**
      * send data over a connected socket
      */
-    ssize_t send(const void[] data, int flags, Timeout timeout = Timeout.infinite) @trusted @nogc {
+    @notrace ssize_t send(const void[] data, int flags, Timeout timeout = Timeout.infinite) @trusted @nogc {
         return fd.blockingCall!(.send)(data.ptr, data.length, flags, timeout);
     }
 
-    void sendObj(T)(T* data, int flags, Timeout timeout = Timeout.infinite) @safe @nogc {
+    @notrace void sendObj(T)(T* data, int flags, Timeout timeout = Timeout.infinite) @safe @nogc {
         objectCall!send(data, flags, timeout);
     }
 
@@ -329,7 +329,7 @@ struct Socket {
      *
      * Will throw TimeoutExpired if the timeout expired
      */
-    ssize_t recv(void[] buffer, int flags, Timeout timeout = Timeout.infinite) @trusted @nogc {
+    @notrace ssize_t recv(void[] buffer, int flags, Timeout timeout = Timeout.infinite) @trusted @nogc {
         return fd.blockingCall!(.recv)(buffer.ptr, buffer.length, flags, timeout);
     }
 
@@ -350,7 +350,7 @@ struct Socket {
      *
      * Will throw TimeoutExpired if the timeout expired
      */
-    void recvObj(T)(T* data, int flags, Timeout timeout = Timeout.infinite) @safe @nogc {
+    @notrace void recvObj(T)(T* data, int flags, Timeout timeout = Timeout.infinite) @safe @nogc {
         objectCall!recv(data, flags, timeout);
     }
 
@@ -626,16 +626,14 @@ package:
     }
 
     auto osCallErrno(alias F)(Parameters!F[1..$] args) @system @nogc if(isSigned!(ReturnType!F) && isIntegral!(ReturnType!F)) {
-        alias RetType = ReturnType!F;
-        RetType ret = osCall!F(args);
-
         enum FuncFullName = fullyQualifiedName!F;
 
         import std.string : lastIndexOf;
         enum FuncName = FuncFullName[ lastIndexOf(FuncFullName, '.')+1 .. $ ];
 
         enum ErrorMessage = "Running " ~ FuncName ~ " failed";
-        errnoEnforceNGC(ret>=0, ErrorMessage);
+        alias RetType = ReturnType!F;
+        RetType ret = fd.checkedCall!(F, ErrorMessage)(args);
 
         return ret;
     }
