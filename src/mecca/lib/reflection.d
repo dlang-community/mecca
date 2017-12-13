@@ -34,6 +34,9 @@ unittest {
 
 private enum badStorageClass(uint cls) = (cls != ParameterStorageClass.none);
 
+/**
+ * Non-GC postponed function call with arguments (closure)
+ */
 struct Closure {
     enum ARGS_SIZE = 64;
 
@@ -383,6 +386,7 @@ unittest {
 
 ubyte[] asBytes(T)(const ref T val) nothrow @nogc if (!isPointer!T) {
     pragma(inline, true);
+    static assert( !hasElaborateDestructor!T, "Cannot convert to bytes a type with destructor" );
     return (cast(ubyte*)&val)[0 .. T.sizeof];
 }
 
@@ -695,3 +699,32 @@ string genMoveArgument(size_t numArgs, string callString, string argumentString,
 
     return retVal;
 }
+
+/+
+XXX Disabled due to compiler bug in __traits(parent)
+
+/**
+ * CTFE function for selecting a specific overload of a function
+ */
+template getOverload(alias F, Args...) {
+    bool predicate(Func)() {
+        static if( Parameters!Func == Args ) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    pragma(msg, "id ", __traits(identifier, F));
+    pragma(msg, "type   ", fullyQualifiedName!F, " = ", typeof(F));
+    pragma(msg, "parent ", fullyQualifiedName!(__traits(parent, F)), " = ", typeof(__traits(parent, F)));
+    pragma(msg, "parent 2 ", fullyQualifiedName!(__traits(parent, __traits(parent, F))), " = ", typeof(__traits(parent, __traits(parent, F))));
+    pragma(msg, __traits(getOverloads, __traits(parent, F), __traits(identifier, F)) );
+    /+
+    alias getOverload = Filter!("predicate",
+            __traits(getOverloads, __traits(parent, F), __traits(identifier, F)));
+    +/
+    alias getOverload = void;
+    pragma(msg, typeof(getOverload));
+}
++/
