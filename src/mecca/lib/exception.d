@@ -16,8 +16,13 @@ import mecca.lib.reflection: as;
 private extern(C) nothrow @nogc {
     int backtrace(void** buffer, int size);
 
-    pragma(mangle, "_D4core7runtime19defaultTraceHandlerFPvZ16DefaultTraceInfo6__ctorMFZC4core7runtime19defaultTraceHandlerFPvZ16DefaultTraceInfo")
-        void defaultTraceInfoCtor(Object);
+    static if (__VERSION__ < 2077) {
+        pragma(mangle, "_D4core7runtime19defaultTraceHandlerFPvZ16DefaultTraceInfo6__ctorMFZC4core7runtime19defaultTraceHandlerFPvZ16DefaultTraceInfo")
+            void defaultTraceInfoCtor(Object);
+    } else {
+        pragma(mangle, "_D4core7runtime19defaultTraceHandlerFPvZ16DefaultTraceInfo6__ctorMFZCQCpQCnQCiFQBqZQBr")
+            void defaultTraceInfoCtor(Object);
+    }
 }
 private __gshared static TypeInfo_Class defaultTraceTypeInfo;
 
