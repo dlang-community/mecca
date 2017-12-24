@@ -101,6 +101,7 @@ public:
 
     long cyclesTillNextEntry(TscTimePoint now) nothrow @safe @nogc {
         ulong binsToGo = binsTillNextEntry();
+        // DEBUG!"XXX Bins to go %s"(binsToGo);
 
         if( binsToGo == ulong.max )
             return long.max;
@@ -134,7 +135,9 @@ public:
 
 private:
     bool _insert(T entry) nothrow @safe @nogc {
+        // DEBUG!"XXX insert entry %s popped time %s base time %s offset %s"( entry.timePoint - baseTime, poppedTime, baseTime, offset );
         if (entry.timePoint <= poppedTime) {
+            // DEBUG!"XXX insert at first bin, level 0 bin %s"(offset%numBins);
             bins[0][offset % numBins].append(entry);
             return true;
         }
@@ -150,6 +153,7 @@ private:
                         enum effectiveOffset = 0;
                     }
                     bins[i][(effectiveOffset + idx) % numBins].append(entry);
+                    // DEBUG!"XXX insert at level %s bin %s"(i, (effectiveOffset + idx) % numBins);
                     return true;
                 }
                 idx = idx / numBins - 1;
@@ -162,9 +166,12 @@ private:
         ulong binsToGo;
         foreach(level; IOTA!numLevels) {
             enum ResPerBin = numBins ^^ level; // Number of resolution units in a single level bin
+            // DEBUG!"XXX Level %s with %s bins/bin"(level, ResPerBin);
             foreach( bin; ((offset / ResPerBin) % numBins) .. numBins ) {
-                if( !bins[level][bin].empty )
+                if( !bins[level][bin].empty ) {
+                    // DEBUG!"XXX found at level %s bin %s at %s bins from now. Offset %s"(level, bin, binsToGo, offset);
                     return binsToGo;
+                }
 
                 binsToGo += ResPerBin;
             }
@@ -425,4 +432,185 @@ unittest {
             DEBUG!"Got empty entry from queue"();
         }
     }
+}
+
+unittest {
+    import mecca.reactor;
+    Reactor.OpenOptions options;
+    options.timerGranularity = 100.usecs;
+
+    int numRuns;
+
+    void looper() {
+        DEBUG!"Num runs %s"(numRuns);
+        if( ++numRuns > 100 )
+            theReactor.stop();
+    }
+
+    void testBody() {
+        theReactor.registerRecurringTimer(dur!"seconds"(1), &looper);
+
+        theReactor.suspendThisFiber();
+    }
+
+    testWithReactor(&testBody, options);
+
+    DEBUG!"Total runs %s"(numRuns);
+}
+
+unittest {
+    // Test the cascading
+    import std.random;
+
+    Mt19937 random;
+    random.seed(unpredictableSeed);
+
+    enum long resolution = 4;
+    enum numBins = 4;
+    enum numLevels = 4;
+
+    struct Entry {
+        TscTimePoint timePoint;
+        uint id;
+        Entry* _next;
+        Entry* _prev;
+    }
+
+    TscTimePoint[uint] entries;
+    uint nextId;
+
+    CascadingTimeQueue!(Entry*, numBins, numLevels) ctq;
+    auto now = TscTimePoint(0);
+    ctq.open(resolution, now);
+
+    void insert() {
+        Entry* entry;
+        entry = new Entry;
+
+        uint level = uniform(0, numLevels-1, random);
+        ulong range = 0;
+        uint startTime = 0;
+        foreach( l; 0..level+1 ) {
+            startTime += range;
+            range = resolution * numBins ^^ (level+1);
+        }
+
+        entry.timePoint = TscTimePoint( now.cycles + startTime + uniform(0, range, random) );
+        entry.id = nextId++;
+
+        entries[entry.id] = entry.timePoint;
+
+        DEBUG!"Pushing entry %s timepoint %s"(entry.id, entry.timePoint);
+        ctq.insert(entry);
+    }
+
+    void popAll() {
+        Entry* entry;
+        while( (entry = ctq.pop(now)) !is null ) {
+            DEBUG!"At %s popped entry %s timepoint %s"(now, entry.id, entry.timePoint);
+            assert( entries[entry.id] == entry.timePoint );
+            entries.remove(entry.id);
+
+            // Make sure the time is correct
+            assert( entry.timePoint>TscTimePoint(now.cycles - resolution) &&
+                    entry.timePoint<TscTimePoint(now.cycles+resolution) );
+        }
+    }
+
+    foreach(i; 0..10) {
+        insert();
+    }
+
+    while( entries.length > 0 ) {
+        popAll();
+
+        now = TscTimePoint( now.cycles + ctq.cyclesTillNextEntry(now) );
+        if( nextId<1000 ) {
+            insert();
+            insert();
+        }
+    }
+}
+
+unittest {
+    // Expose a specific problem not visible under random testing
+
+    enum long resolution = 10;
+    enum numBins = 4;
+    enum numLevels = 3;
+
+    struct Entry {
+        TscTimePoint timePoint;
+        uint id;
+        Entry* _next;
+        Entry* _prev;
+    }
+
+    TscTimePoint[uint] entries;
+    uint nextId;
+
+    CascadingTimeQueue!(Entry*, numBins, numLevels) ctq;
+    auto now = TscTimePoint(0);
+    ctq.open(resolution, now);
+
+    void insert(TscTimePoint time) {
+        Entry* entry;
+        entry = new Entry;
+
+        entry.timePoint = time;
+        entry.id = nextId++;
+
+        entries[entry.id] = entry.timePoint;
+
+        DEBUG!"Pushing entry %s timepoint %s"(entry.id, entry.timePoint);
+        ctq.insert(entry);
+    }
+
+    bool popAll() {
+        Entry* entry;
+        bool foundSomething;
+
+        while( (entry = ctq.pop(now)) !is null ) {
+            DEBUG!"At %s popped entry %s timepoint %s"(now, entry.id, entry.timePoint);
+            assert( entries[entry.id] == entry.timePoint );
+            entries.remove(entry.id);
+
+            // Make sure the time is correct
+            assert( entry.timePoint>TscTimePoint(now.cycles - resolution) &&
+                    entry.timePoint<TscTimePoint(now.cycles+resolution) );
+
+            foundSomething = true;
+        }
+
+        return foundSomething;
+    }
+
+    void wait() {
+        auto oldNow = now;
+        auto delta = ctq.cyclesTillNextEntry(now);
+        now = TscTimePoint( now.cycles + delta );
+        DEBUG!"Advanced from %s to %s (delta %s)"(oldNow, now, delta);
+        assert(delta>0);
+    }
+
+    void popOne() {
+        while( !popAll() ) {
+            wait();
+        }
+    }
+
+    // insert a point that goes in the first bin of the second level
+    insert( TscTimePoint(9) );
+    popOne();
+    //now += 9; // Give it a time point that is almost, but not quite, to the next bucket
+    Entry* tmpRes = ctq.pop(now); // This should not return anything
+    assert( tmpRes is null );
+
+    /* Now insert something that is distant enough from our current time to be in the first bucket of the second level,
+       but from the starting point should go into the second bucket of the second level.
+     */
+    insert( TscTimePoint(91) );
+    insert( TscTimePoint(99) );
+    popOne();
+    popOne();
 }
