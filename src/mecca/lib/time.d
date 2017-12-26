@@ -161,7 +161,7 @@ public:
         }
     }
     /// ditto
-    static Duration toDuration(long cycles) @safe @nogc nothrow {
+    static Duration toDuration(long cycles) pure @safe @nogc nothrow {
         return hnsecs((cycles / cyclesPerSecond) * HECTONANO + ((cycles % cyclesPerSecond) * HECTONANO) / cyclesPerSecond);
     }
     /// ditto
@@ -199,8 +199,8 @@ public:
         return TscTimePoint(cycles + toCycles(dur));
     }
 
-    Duration opBinary(string op: "-")(long cycles) const @nogc @safe nothrow {
-        return TscTimePoint.toDuration(this.cycles - cycles);
+    TscTimePoint opBinary(string op: "-")(long cycles) const @nogc @safe nothrow {
+        return TscTimePoint(this.cycles - cycles);
     }
     Duration opBinary(string op: "-")(TscTimePoint rhs) const @nogc @safe nothrow {
         return TscTimePoint.toDuration(cycles - rhs.cycles);
