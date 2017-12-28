@@ -259,11 +259,14 @@ struct GCStackDescriptor {
     GCStackDescriptor* prev;
 
     static assert (__traits(classInstanceSize, Mutex) == 72); // This size is part of the mangle
-    pragma(mangle, "_D4core6thread6Thread6_locksG2G72v") extern __gshared static align(Mutex.alignof) void[__traits(classInstanceSize, Mutex)][2] _locks;
+    pragma(mangle, "_D4core6thread6Thread6_locksG2G72v") extern __gshared static
+            void[__traits(classInstanceSize, Mutex)][2] _locks;
     static if (__VERSION__ < 2077) {
-        pragma(mangle, "_D4core6thread6Thread7sm_cbegPS4core6thread6Thread7Context") extern __gshared static  GCStackDescriptor* sm_cbeg;
+        pragma(mangle, "_D4core6thread6Thread7sm_cbegPS4core6thread6Thread7Context") extern __gshared static
+                GCStackDescriptor* sm_cbeg;
     } else {
-        pragma(mangle, "_D4core6thread6Thread7sm_cbegPSQBdQBbQx7Context") extern __gshared static  GCStackDescriptor* sm_cbeg;
+        pragma(mangle, "_D4core6thread6Thread7sm_cbegPSQBdQBbQx7Context") extern __gshared static
+                GCStackDescriptor* sm_cbeg;
     }
 
     @notrace void add() nothrow @nogc {
