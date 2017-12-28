@@ -253,7 +253,7 @@ private:
         nextEntryHint = ulong.max;
     }
 
-    void advancePhase( ulong advanceCount ) {
+    @notrace void advancePhase( ulong advanceCount ) {
         assertOp!"<="( advanceCount, nextEntryHint, "Tried to advance the phase past the next entry" );
         uint[numLevels] oldPhases = -1;
         oldPhases[0] = phaseInLevel(0);
@@ -297,7 +297,7 @@ private:
         cascadeLevel( maxAffectedLevel );
     }
 
-    void cascadeLevel( uint maxLevel ) {
+    @notrace void cascadeLevel( uint maxLevel ) {
         bool firstCascaded = true;
 
         foreach( uint level; 1..maxLevel+1 ) {
