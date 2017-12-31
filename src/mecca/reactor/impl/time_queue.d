@@ -23,9 +23,10 @@ private:
     static assert (numLevels > 1);
     static assert (numBins * numLevels < 256*8);
     enum spanInBins = {
+        // All levels except the first one contribute at least one bin to the span
         ulong numBins;
-        foreach( uint level; 0..numLevels-1 )// The span does not include the last level, which may be completely full
-            numBins += binsInLevel(level);
+        foreach( uint level; 1..numLevels )
+            numBins += rawBinsInBin(level);
 
         return numBins;
     }();
