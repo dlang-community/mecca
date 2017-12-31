@@ -340,7 +340,7 @@ struct Reactor {
 private:
     enum MAX_IDLE_CALLBACKS = 16;
     enum TIMER_NUM_BINS = 256;
-    enum TIMER_NUM_LEVELS = 3;
+    enum TIMER_NUM_LEVELS = 4;
     enum MAX_DEFERRED_TASKS = 1024;
 
     enum GUARD_ZONE_SIZE = SYS_PAGE_SIZE;
