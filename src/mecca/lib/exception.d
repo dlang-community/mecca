@@ -245,7 +245,9 @@ RangeError rangeError(K, string file=__FILE__, size_t line=__LINE__)(K key) {
     }
 }
 
-void enforceFmt(T: Throwable = Exception, string file = __FILE__, size_t line = __LINE__, A...)(bool cond, string fmt, auto ref A args) {
+void enforceFmt(T: Throwable = Exception, string file = __FILE__, size_t line = __LINE__, A...)(
+        bool cond, string fmt, auto ref A args) @safe @nogc
+{
     pragma(inline, true); // Must inline because of __FILE__ as template parameter. https://github.com/ldc-developers/ldc/issues/1703
     if (!cond) {
         throw mkExFmt!(T, file, line)(fmt, args);

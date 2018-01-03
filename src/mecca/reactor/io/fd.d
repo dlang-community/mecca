@@ -25,6 +25,13 @@ enum LISTEN_BACKLOG = 10;
 private extern(C) nothrow @trusted @nogc {
     int pipe2(ref int[2], int flags);
 }
+version(linux) {
+    static if( __traits(compiles, fcntl.O_CLOEXEC) ) {
+        private enum O_CLOEXEC = fcntl.O_CLOEXEC;
+    } else {
+        private enum O_CLOEXEC = 0x80000;
+    }
+}
 
 /**
   Wrapper for datagram oriented socket (such as UDP)
@@ -463,27 +470,20 @@ unittest {
     theReactor.start();
 }
 
-/// Reactor aware FD wrapper for pipes
-struct Pipe {
-    ReactorFD fd;
+/**
+    * create an unnamed pipe pair
+    *
+    * Params:
+    *  readEnd = `ReactorFD` struct to receive the reading (output) end of the pipe
+    *  writeEnd = `ReactorFD` struct to receive the writing (input) end of the pipe
+    */
+void createPipe(out ReactorFD readEnd, out ReactorFD writeEnd) @trusted @nogc {
+    int[2] pipeRawFD;
 
-    alias fd this;
+    errnoEnforceNGC( pipe2(pipeRawFD, fcntl.O_NONBLOCK | O_CLOEXEC )>=0, "OS pipe creation failed" );
 
-    /**
-     * create an unnamed pipe pair
-     *
-     * Params:
-     *  readEnd = `Pipe` struct to receive the reading (output) end of the pipe
-     *  writeEnd = `Pipe` struct to receive the writing (input) end of the pipe
-     */
-    static void create(out Pipe readEnd, out Pipe writeEnd) @trusted @nogc {
-        int[2] pipeRawFD;
-
-        errnoEnforceNGC( pipe2(pipeRawFD, fcntl.O_NONBLOCK)>=0, "OS pipe creation failed" );
-
-        readEnd = Pipe( ReactorFD( FD( pipeRawFD[0] ) ) );
-        writeEnd = Pipe( ReactorFD( FD( pipeRawFD[1] ) ) );
-    }
+    readEnd = ReactorFD( FD( pipeRawFD[0] ), true );
+    writeEnd = ReactorFD( FD( pipeRawFD[1] ), true );
 }
 
 /// Reactor aware FD wrapper for files
@@ -600,6 +600,23 @@ public:
     alias fcntl = osCallErrno!(.fcntl.fcntl);
     alias ioctl = osCallErrno!(.ioctl);
 
+    /** Take an FD out of the control of the reactor
+     *
+     * This has the same effect as close, except the fd itself remains open.
+     *
+     * Returns:
+     * The FD (rvalue) controlling the underlying OS fd.
+     */
+    FD passivify() @safe @nogc {
+        if( !fd.isValid )
+            return FD();
+
+        epoller.deregisterFd( fd, ctx );
+        ctx = null;
+
+        return move(fd);
+    }
+
 package:
     auto blockingCall(alias F)(Parameters!F[1 .. $] args, Timeout timeout) @system @nogc {
         static assert (is(Parameters!F[0] == int));
@@ -656,8 +673,8 @@ unittest {
     theReactor.setup();
     scope(success) theReactor.teardown();
 
-    Pipe pipeRead, pipeWrite;
-    Pipe.create(pipeRead, pipeWrite);
+    ReactorFD pipeRead, pipeWrite;
+    createPipe(pipeRead, pipeWrite);
 
     void reader() {
         uint[1024] buffer;

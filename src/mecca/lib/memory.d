@@ -29,13 +29,13 @@ public import mecca.platform.x86: prefetch;
 struct MmapArray(T) {
     T[] arr;
 
-    void allocate(size_t numElements, bool registerWithGC = false) {
+    void allocate(size_t numElements, bool registerWithGC = false) @trusted @nogc {
         assert (arr is null, "Already open");
         assert (numElements > 0);
         auto size = T.sizeof * numElements;
         auto ptr = mmap(null, size, PROT_READ | PROT_WRITE,
             MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE, -1, 0);
-        errnoEnforce(ptr != MAP_FAILED, "mmap(%s bytes) failed".format(size));
+        enforceFmt!ErrnoException(ptr != MAP_FAILED, "mmap(%s bytes) failed", size);
         arr = (cast(T*)ptr)[0 .. numElements];
         if (registerWithGC) {
             import core.memory;
@@ -49,7 +49,7 @@ struct MmapArray(T) {
             }
         }
     }
-    void free() {
+    void free() nothrow @trusted @nogc {
         if (arr) {
             import core.memory;
             GC.removeRange(arr.ptr);

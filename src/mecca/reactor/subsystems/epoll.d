@@ -50,7 +50,7 @@ public:
 
     void open() @safe @nogc {
         assert(theReactor.isOpen, "Must call theReactor.setup before calling ReactorFD.openReactor");
-        int epollFdOs = epoll_create1(0);
+        int epollFdOs = epoll_create1(EPOLL_CLOEXEC);
         errnoEnforceNGC( epollFdOs>=0, "Failed to create epoll fd" );
         epollFd = FD(epollFdOs);
 
@@ -73,7 +73,7 @@ public:
         scope(failure) fdPool.release(ctx);
 
         if( !alreadyNonBlocking ) {
-            int res = .fcntl(fd.fileNo, F_SETFL, O_NONBLOCK);
+            int res = .fcntl(fd.fileNo, F_SETFL, O_NONBLOCK|FD_CLOEXEC);
             errnoEnforceNGC( res>=0, "Failed to set fd to non-blocking mode" );
         }
 
@@ -86,10 +86,13 @@ public:
         return ctx;
     }
 
-    void deregisterFd(ref FD fd, FdContext* ctx) nothrow @safe @nogc {
+    void deregisterFd(ref FD fd, FdContext* ctx) nothrow @trusted @nogc {
+        int res = epollFd.osCall!epoll_ctl(EPOLL_CTL_DEL, fd.fileNo, null);
+
+        // There is no reason for a registered FD to fail removal, so we assert instead of throwing
+        ASSERT!"Removing fd from epoll failed with errno %s"( res>=0, errno );
+
         fdPool.release(ctx);
-        // We do not call EPOLL_CTL_DEL, as the caller of this function will soon call close, which achieves the same
-        // result. No reason to waste a syscall.
     }
 
     void waitForEvent(FdContext* ctx, Timeout timeout = Timeout.infinite) @safe @nogc {

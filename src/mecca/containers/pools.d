@@ -216,7 +216,7 @@ struct SimplePool(T) {
         return elements.length - used;
     }
 
-    void open(size_t numElements, bool registerWithGC = false) {
+    void open(size_t numElements, bool registerWithGC = false) @trusted @nogc {
         assert (closed, "Already open");
         elements.allocate(numElements, registerWithGC);
         foreach(i, ref e; elements[0 .. $-1]) {
@@ -228,7 +228,7 @@ struct SimplePool(T) {
     @property bool closed() const pure nothrow @nogc {
         return elements.closed();
     }
-    void close() {
+    void close() nothrow @safe @nogc {
         // XXX: release all allocated elements?
         elements.free();
     }

@@ -127,6 +127,28 @@ public:
     @property bool isValid() pure const nothrow @safe @nogc {
         return fd != InvalidFd;
     }
+
+    /** Duplicate an FD
+     *
+     * Does the same as the `dup` system call.
+     *
+     * Returns:
+     * An FD representing a duplicate of the current FD.
+     */
+    FD dup() @trusted @nogc {
+        import fcntl = core.sys.posix.fcntl;
+        static if( __traits(compiles, fcntl.F_DUPFD_CLOEXEC) ) {
+            enum F_DUPFD_CLOEXEC = fcntl.F_DUPFD_CLOEXEC;
+        } else {
+            version(linux) {
+                enum F_DUPFD_CLOEXEC = 1030;
+            }
+        }
+
+        int newFd = osCall!(fcntl.fcntl)( F_DUPFD_CLOEXEC, 0 );
+        errnoEnforceNGC(newFd!=-1, "Failed to duplicate FD");
+        return FD( newFd );
+    }
 }
 
 unittest {
