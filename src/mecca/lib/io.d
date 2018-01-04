@@ -12,6 +12,10 @@ import std.conv;
 import mecca.lib.exception;
 import mecca.lib.string;
 
+private extern(C) nothrow @trusted @nogc {
+    int pipe2(ref int[2], int flags);
+}
+
 version(linux) {
     static if( __traits(compiles, O_CLOEXEC) ) {
         enum O_CLOEXEC = core.sys.posix.fcntl.O_CLOEXEC;
@@ -174,6 +178,22 @@ public:
         errnoEnforceNGC(newFd!=-1, "Failed to duplicate FD");
         return FD( newFd );
     }
+}
+
+/**
+ * create an unnamed pipe pair
+ *
+ * Params:
+ *  readEnd = `FD` struct to receive the reading (output) end of the pipe
+ *  writeEnd = `FD` struct to receive the writing (input) end of the pipe
+ */
+void createPipe(out FD readEnd, out FD writeEnd) @trusted @nogc {
+    int[2] pipeRawFD;
+
+    errnoEnforceNGC( pipe2(pipeRawFD, O_CLOEXEC )>=0, "OS pipe creation failed" );
+
+    readEnd = FD( pipeRawFD[0] );
+    writeEnd = FD( pipeRawFD[1] );
 }
 
 unittest {

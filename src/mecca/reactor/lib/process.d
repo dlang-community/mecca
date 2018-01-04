@@ -68,18 +68,18 @@ public:
         verifyManagerInitialized();
         ASSERT!"Cannot set redirection on child once it has been run"(pid==0);
 
-        ReactorFD childEnd;
-        ReactorFD* writeEnd, readEnd;
+        FD parentEnd;
+        FD* writeEnd, readEnd;
         if( io==StdIO.StdIn ) {
-            readEnd = &childEnd;
-            writeEnd = &stdIO[io];
+            writeEnd = &parentEnd;
+            readEnd = &childStdIO[io];
         } else {
-            readEnd = &stdIO[io];
-            writeEnd = &childEnd;
+            writeEnd = &childStdIO[io];
+            readEnd = &parentEnd;
         }
 
         createPipe( *readEnd, *writeEnd );
-        childStdIO[io] = childEnd.passivify;
+        stdIO[io] = ReactorFD( move(parentEnd) );
     }
 
     /** Redirect stderr to stdout

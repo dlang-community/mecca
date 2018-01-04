@@ -22,10 +22,6 @@ import mecca.reactor.subsystems.epoll;
 
 enum LISTEN_BACKLOG = 10;
 
-private extern(C) nothrow @trusted @nogc {
-    int pipe2(ref int[2], int flags);
-}
-
 /**
   Wrapper for datagram oriented socket (such as UDP)
  */
@@ -463,22 +459,6 @@ unittest {
     theReactor.start();
 }
 
-/**
-    * create an unnamed pipe pair
-    *
-    * Params:
-    *  readEnd = `ReactorFD` struct to receive the reading (output) end of the pipe
-    *  writeEnd = `ReactorFD` struct to receive the writing (input) end of the pipe
-    */
-void createPipe(out ReactorFD readEnd, out ReactorFD writeEnd) @trusted @nogc {
-    int[2] pipeRawFD;
-
-    errnoEnforceNGC( pipe2(pipeRawFD, fcntl.O_NONBLOCK | O_CLOEXEC )>=0, "OS pipe creation failed" );
-
-    readEnd = ReactorFD( FD( pipeRawFD[0] ), true );
-    writeEnd = ReactorFD( FD( pipeRawFD[1] ), true );
-}
-
 /// Reactor aware FD wrapper for files
 struct File {
     ReactorFD fd;
@@ -666,8 +646,10 @@ unittest {
     theReactor.setup();
     scope(success) theReactor.teardown();
 
-    ReactorFD pipeRead, pipeWrite;
-    createPipe(pipeRead, pipeWrite);
+    FD pipeReadFD, pipeWriteFD;
+    createPipe(pipeReadFD, pipeWriteFD);
+    ReactorFD pipeRead = ReactorFD(move(pipeReadFD));
+    ReactorFD pipeWrite = ReactorFD(move(pipeWriteFD));
 
     void reader() {
         uint[1024] buffer;
