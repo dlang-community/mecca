@@ -19,6 +19,8 @@ module mecca.containers.pools;
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 import std.string;
+
+import mecca.lib.exception;
 import mecca.lib.memory: MmapArray;
 import mecca.lib.reflection;
 import mecca.log;
@@ -253,8 +255,8 @@ struct SimplePool(T) {
     }
 
     @notrace void release(ref T* obj) nothrow @trusted @nogc {
-        assert (!closed);
-        assert (used > 0);
+        ASSERT!"release called with a closed pool"(!closed);
+        ASSERT!"release called on an object with use count 0" (used > 0);
         static if (__traits(hasMember, T, "_poolElementFini")) {
             obj._poolElementFini();
         }

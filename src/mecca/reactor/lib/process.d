@@ -13,6 +13,7 @@ import mecca.lib.exception;
 import mecca.lib.io;
 import mecca.lib.time;
 import mecca.log;
+import mecca.reactor;
 import mecca.reactor.io.fd;
 import mecca.reactor.io.signals;
 import mecca.reactor.sync.event;
@@ -143,6 +144,17 @@ public:
         INFO!"Launched child process %s"(pid);
     }
 
+    /** Send the process a signal
+     *
+     * Params:
+     * signal = Signal to send. SIGTERM by default
+     */
+    void kill(OSSignal signal = OSSignal.SIGTERM) @trusted @nogc {
+        ASSERT!"Cannot kill process before it was started"(pid!=0);
+
+        errnoEnforceNGC( .kill( pid, signal )==0, "Failed to send signal to process" );
+    }
+
     /// Returns the pid of the child.
     ///
     /// Returns 0 if child has not started running
@@ -192,6 +204,8 @@ private:
 /// Process tracking management
 struct ProcessManager {
 private:
+    enum OUTPUT_BUFF_SIZE = 1024;
+
     SimplePool!Process processPool;
     Process*[pid_t] processes; // XXX change to a nogc construct
     void delegate(pid_t pid, int exitStatus) nothrow @system customHandler;
@@ -253,6 +267,27 @@ public:
         return ProcessPtr(ptr);
     }
 
+    alias OutputHandlerDlg = void delegate(Process* child, const(char)[] output) nothrow;
+    /**
+     * Run a command and pass its output to a callback
+     *
+     * Run a command with the supplied command line. Call `outputProcessor` whenever the command outputs anything on
+     * stdout or stderr.
+     *
+     * In addition to those, outputProcessor gets called three more times. The first time is right before the process is
+     * started (with `output` set to empty). This allows outputProcessor to do any additional manipulations (such as
+     * redirecting the input). This can be tested for because `child.pid` is 0.
+     *
+     * The second time is when the output closes. Again, this call will have a `output` set to an empty range.
+     *
+     * The third time is after the process has already exit. This can be tested for because `child.isAlive` will be
+     * false.
+     */
+    void collectCommandOutput( OutputHandlerDlg outputProcessor, string[] cmdline... ) {
+        ASSERT!"cmdline must have at least one argument (command to run)"(cmdline.length > 0);
+        theReactor.spawnFiber!_commandOutputFiber(outputProcessor, cmdline);
+    }
+
     /** Register custom SIGCHLD handler
      *
      * With this function you can register a custom SIGCHLD handler. This handler will be called only for child
@@ -286,6 +321,31 @@ private:
                 ERROR!"Received child exit notification from unknown child %s status 0x%x"( siginfo.ssi_pid, status );
             }
         }
+    }
+
+    // Fiber function for collectCommandOutput
+    // DMDBUG public because otherwise we can't template on it
+    public static void _commandOutputFiber( OutputHandlerDlg outputProcessor, string[] cmdline ) {
+        auto child = theProcessManager.alloc();
+        child.redirectIO( Process.StdIO.StdOut );
+        child.redirectErrToOut();
+
+        // First call, before we run anything
+        outputProcessor(child, null);
+
+        child.run(cmdline);
+
+        char[OUTPUT_BUFF_SIZE] buffer;
+        ssize_t numRead;
+        do {
+            numRead = child.stdIO[Process.StdIO.StdOut].read(buffer);
+            // Call with what we got. This will be the empty range the last time we call
+            outputProcessor( child, buffer[0..numRead] );
+        } while( numRead>0 );
+
+        child.wait();
+
+        outputProcessor( child, null );
     }
 }
 
@@ -323,5 +383,54 @@ unittest {
 
             ASSERT!"Child closed stdout but is still running"(!child.isRunning);
             ASSERT!"Child output is \"%s\", not as expected"( buffer == "Hello\r world\n", buffer );
+        });
+}
+
+unittest {
+    import mecca.reactor;
+
+    struct RunContext {
+        Event done;
+        uint howManyWaysMustAManWalkDown;
+        bool killed;
+
+        void callback( Process* child, const(char)[] buffer ) nothrow {
+            try {
+                if( child.pid == 0 ) {
+                    // First call, before we started
+                    child.redirectIO(Process.StdIO.StdIn, FD( "/dev/zero", O_RDONLY ));
+
+                    return;
+                }
+
+                foreach(i, c; buffer) {
+                    ASSERT!"buffer not filled with 0, has %s instead at offset %s"(
+                            c=='\0', c, i+howManyWaysMustAManWalkDown);
+                }
+
+                howManyWaysMustAManWalkDown += buffer.length;
+                if( !killed && howManyWaysMustAManWalkDown > 8196 ) {
+                    child.kill();
+                    killed = true;
+                }
+
+                if( !child.isRunning )
+                    done.set();
+            } catch(Exception ex) {
+                ERROR!"Failed: %s"(ex.msg);
+                assert(false);
+            }
+        }
+    }
+
+    testWithReactor({
+            theProcessManager.open(24);
+            scope(exit) theProcessManager.close();
+
+            RunContext ctx;
+
+            theProcessManager.collectCommandOutput( &ctx.callback, "cat" );
+
+            ctx.done.wait();
         });
 }

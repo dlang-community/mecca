@@ -49,7 +49,7 @@ private: // Not that this does anything, as the struct itself is only visible to
 public:
 
     void open() @safe @nogc {
-        assert(theReactor.isOpen, "Must call theReactor.setup before calling ReactorFD.openReactor");
+        ASSERT!"Must call theReactor.setup before calling ReactorFD.openReactor"(theReactor.isOpen);
         int epollFdOs = epoll_create1(EPOLL_CLOEXEC);
         errnoEnforceNGC( epollFdOs>=0, "Failed to create epoll fd" );
         epollFd = FD(epollFdOs);
@@ -68,7 +68,7 @@ public:
     }
 
     FdContext* registerFD(ref FD fd, bool alreadyNonBlocking = false) @trusted @nogc {
-        assert( epollFd.isValid, "registerFD called without first calling ReactorFD.openReactor" );
+        ASSERT!"registerFD called without first calling ReactorFD.openReactor"( epollFd.isValid );
         FdContext* ctx = fdPool.alloc();
         scope(failure) fdPool.release(ctx);
 
@@ -100,7 +100,7 @@ public:
             TODO: In the future, we might wish to allow one fiber to read from an ReactorFD while another writes to the same ReactorFD. As the code
             currently stands, this will trigger the assert below
          */
-        assert( !ctx.fibHandle.isValid, "Two fibers cannot wait on the same ReactorFD at once" );
+        ASSERT!"Two fibers cannot wait on the same ReactorFD at once"( !ctx.fibHandle.isValid );
         ctx.fibHandle = theReactor.runningFiberHandle;
         scope(exit) destroy(ctx.fibHandle);
 

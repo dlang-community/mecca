@@ -25,13 +25,6 @@ enum LISTEN_BACKLOG = 10;
 private extern(C) nothrow @trusted @nogc {
     int pipe2(ref int[2], int flags);
 }
-version(linux) {
-    static if( __traits(compiles, fcntl.O_CLOEXEC) ) {
-        private enum O_CLOEXEC = fcntl.O_CLOEXEC;
-    } else {
-        private enum O_CLOEXEC = 0x80000;
-    }
-}
 
 /**
   Wrapper for datagram oriented socket (such as UDP)

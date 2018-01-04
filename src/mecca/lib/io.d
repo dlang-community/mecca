@@ -2,9 +2,23 @@
 module mecca.lib.io;
 
 import core.sys.posix.unistd;
+public import core.sys.posix.fcntl :
+    O_ACCMODE, O_RDONLY, O_WRONLY, O_RDWR, O_CREAT, O_EXCL, O_TRUNC, O_APPEND, O_DSYNC, O_RSYNC, O_SYNC, O_NOCTTY;
+    /* O_NOATIME, O_NOFOLLOW not included because not defined */
+import core.sys.posix.fcntl;
 import std.traits;
+import std.conv;
 
 import mecca.lib.exception;
+import mecca.lib.string;
+
+version(linux) {
+    static if( __traits(compiles, O_CLOEXEC) ) {
+        enum O_CLOEXEC = core.sys.posix.fcntl.O_CLOEXEC;
+    } else {
+        enum O_CLOEXEC = 0x80000;
+    }
+}
 
 /**
  * File descriptor wrapper
@@ -28,6 +42,17 @@ public:
     this(int fd) nothrow @safe @nogc {
         ASSERT!"FD initialized with an invalid FD %s"(fd>=0, fd);
         this.fd = fd;
+    }
+
+    /**
+     * Open a new file.
+     *
+     * Parameters:
+     * Same as for the `open`(2) command;
+     */
+    this(string path, int flags, mode_t mode = octal!666) @trusted @nogc {
+        fd = .open(path.toStringzNGC, flags | O_CLOEXEC, mode);
+        errnoEnforceNGC(fd>=0, "File open failed");
     }
 
     ~this() nothrow @safe @nogc {
