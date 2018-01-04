@@ -11,6 +11,7 @@ import std.conv;
 
 import mecca.lib.exception;
 import mecca.lib.string;
+import mecca.log;
 
 private extern(C) nothrow @trusted @nogc {
     int pipe2(ref int[2], int flags);
@@ -71,7 +72,7 @@ public:
      * Throws:
      * ErrnoException in case fd is invalid
      */
-    static FD adopt(string errorMsg)(int fd) @safe @nogc {
+    @notrace static FD adopt(string errorMsg)(int fd) @safe @nogc {
         errnoEnforceNGC(fd>=0, errorMsg);
         return FD(fd);
     }
@@ -164,7 +165,7 @@ public:
      * Returns:
      * An FD representing a duplicate of the current FD.
      */
-    FD dup() @trusted @nogc {
+    @notrace FD dup() @trusted @nogc {
         import fcntl = core.sys.posix.fcntl;
         static if( __traits(compiles, fcntl.F_DUPFD_CLOEXEC) ) {
             enum F_DUPFD_CLOEXEC = fcntl.F_DUPFD_CLOEXEC;
