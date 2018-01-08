@@ -170,6 +170,9 @@ public:
 private:
     void runChildHelper(string[] args) nothrow @trusted {
         try {
+            sigset_t emptyMask;
+            errnoEnforceNGC( sigprocmask( SIG_SETMASK, &emptyMask, null )==0, "sigprocmask failed" );
+
             // Perform IO redirection
             foreach( int ioNum, ref fd ; childStdIO ) {
                 // Leave IO streams that were not redirected as they are
@@ -426,6 +429,15 @@ unittest {
     testWithReactor({
             theProcessManager.open(24);
             scope(exit) theProcessManager.close();
+
+            import mecca.reactor.io.signals;
+
+            void termHandler(const ref signalfd_siginfo si) {
+                // Nothing. We don't expect this to get called
+            }
+
+            // Register a TERM handler so that the signal is masked in the parent
+            reactorSignal.registerHandler(OSSignal.SIGTERM, &termHandler);
 
             RunContext ctx;
 

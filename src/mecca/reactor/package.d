@@ -1431,6 +1431,9 @@ private bool /* thread local */ _isReactorThread;
 
 version (unittest) {
     void testWithReactor(void delegate() dg, Reactor.OpenOptions options = Reactor.OpenOptions.init) {
+        sigset_t emptyMask;
+        errnoEnforceNGC( sigprocmask( SIG_SETMASK, &emptyMask, null )==0, "sigprocmask failed" );
+
         theReactor.setup(options);
         scope(success) theReactor.teardown();
 
