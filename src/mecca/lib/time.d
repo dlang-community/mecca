@@ -4,6 +4,7 @@ module mecca.lib.time;
 public import std.datetime;
 import mecca.lib.division: S64Divisor;
 public import mecca.platform.x86: readTSC;
+import mecca.log;
 
 /**
  * A time point maintained through the TSC timer
@@ -265,6 +266,7 @@ struct Timeout {
     this(TscTimePoint expiry) {
         this.expiry = expiry;
     }
+
     /**
      * Construct a timeout from Duration
      *
@@ -272,7 +274,7 @@ struct Timeout {
      * dur = Duration until timeout expires
      * now = If provided, the base time to compute the timeout relative to
      */
-    this(Duration dur, TscTimePoint now = TscTimePoint.hardNow) @safe @nogc {
+    this(Duration dur, TscTimePoint now = TscTimePoint.now) nothrow @safe @nogc {
         if (dur == Duration.max) {
             this.expiry = TscTimePoint.max;
         }
@@ -282,15 +284,36 @@ struct Timeout {
     }
 
     /**
+     * Report how much time until the timeout expires
+     */
+    @notrace @property Duration remaining(TscTimePoint now = TscTimePoint.now) const @safe nothrow {
+        if (expiry == TscTimePoint.max) {
+            return Duration.max;
+        }
+        if (expiry.cycles < now.cycles) {
+            return Duration.zero;
+        }
+        return expiry - now;
+    }
+
+    /**
      * Checks whether a Timeout has expired.
      *
      * Params:
      * now = time point relative to which to check.
      */
-    bool expired(TscTimePoint now = TscTimePoint.now) const nothrow @safe @nogc {
+    @notrace @property bool expired(TscTimePoint now = TscTimePoint.now) pure const nothrow @safe @nogc {
         if( this == infinite )
             return false;
 
         return expiry <= now;
+    }
+
+    @notrace int opCmp(in Timeout rhs) const nothrow @safe @nogc {
+        return expiry.opCmp(rhs.expiry);
+    }
+
+    @notrace bool opEquals()(in Timeout rhs) const nothrow @safe @nogc {
+        return expiry == rhs.expiry;
     }
 }
