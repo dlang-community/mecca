@@ -204,7 +204,7 @@ private:
         } else {
             FLSArea.switchToNone();
         }
-        logSwitchFiber(&params.logsSavedContext, cast( Parameters!logSwitchFiber[1] )identity);
+        logSwitchFiber(&params.logsSavedContext, cast( Parameters!logSwitchFiber[1] )identity.value);
 
         if (flag!"HAS_EXCEPTION") {
             Throwable ex = params.currExcBuf.get();

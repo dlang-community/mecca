@@ -405,8 +405,8 @@ unittest {
 //
 // useful assert variants
 //
-void assertOp(string op, L, R, string file = __FILE__, string mod = __MODULE__, size_t line = __LINE__)(L lhs, R rhs, string msg="")
-    nothrow @nogc
+@notrace void assertOp(string op, L, R, string file = __FILE__, string mod = __MODULE__, size_t line = __LINE__)
+    (L lhs, R rhs, string msg="") nothrow @nogc
 {
     import std.meta: staticIndexOf;
     enum idx = staticIndexOf!(op, "==", "!=", ">", "<", ">=", "<=");
@@ -418,22 +418,22 @@ void assertOp(string op, L, R, string file = __FILE__, string mod = __MODULE__, 
     ASSERT!("%s %s %s%s", file, mod, line)(mixin("lhsVal " ~ op ~ " rhsVal"), lhs, inverseOp, rhs, msg);
 }
 
-void assertEQ(L, R, string file = __FILE__, string mod = __MODULE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow @nogc {
+@notrace void assertEQ(L, R, string file = __FILE__, string mod = __MODULE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow @nogc {
     assertOp!("==", L, R, file, mod, line)(lhs, rhs, msg);
 }
-void assertNE(L, R, string file = __FILE__, string mod = __MODULE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow @nogc {
+@notrace void assertNE(L, R, string file = __FILE__, string mod = __MODULE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow @nogc {
     assertOp!("!=", L, R, file, mod, line)(lhs, rhs, msg);
 }
-void assertGT(L, R, string file = __FILE__, string mod = __MODULE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow @nogc {
+@notrace void assertGT(L, R, string file = __FILE__, string mod = __MODULE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow @nogc {
     assertOp!(">", L, R, file, mod, line)(lhs, rhs, msg);
 }
-void assertGE(L, R, string file = __FILE__, string mod = __MODULE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow @nogc {
+@notrace void assertGE(L, R, string file = __FILE__, string mod = __MODULE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow @nogc {
     assertOp!(">=", L, R, file, mod, line)(lhs, rhs, msg);
 }
-void assertLT(L, R, string file = __FILE__, string mod = __MODULE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow @nogc {
+@notrace void assertLT(L, R, string file = __FILE__, string mod = __MODULE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow @nogc {
     assertOp!("<", L, R, file, mod, line)(lhs, rhs, msg);
 }
-void assertLE(L, R, string file = __FILE__, string mod = __MODULE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow @nogc {
+@notrace void assertLE(L, R, string file = __FILE__, string mod = __MODULE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow @nogc {
     assertOp!("<=", L, R, file, mod, line)(lhs, rhs, msg);
 }
 

@@ -4,8 +4,11 @@ import std.traits;
 import std.conv;
 
 import mecca.lib.exception;
+import mecca.log : FMT, notrace;
 
-struct TypedIdentifier(string _name, T, T _invalid = T.max, T _init=_invalid, bool algebraic=false) if (isIntegral!T) {
+struct RawTypedIdentifier(string _name, T, T _invalid, T _init, FMT fmt, bool algebraic)
+    if (isIntegral!T)
+{
 private:
     T _value = _init;
 
@@ -13,7 +16,7 @@ private:
 
 public:
     alias UnderlyingType = T;
-    enum TypedIdentifier invalid = TypedIdentifier(_invalid);
+    enum RawTypedIdentifier invalid = RawTypedIdentifier(_invalid);
     enum name = _name;
 
     this(T value) @safe pure nothrow @nogc {
@@ -21,56 +24,72 @@ public:
     }
     // Default this(this) does the right thing
 
+    // For some reason, this form is not covered by this(this)
+    this(RawTypedIdentifier that) @safe pure nothrow @nogc {
+        this._value = that.value;
+    }
+
+    this(string str) @safe {
+        setFromString(str);
+    }
+
     @property T value() const pure nothrow @safe @nogc {
         return _value;
     }
     @property bool isValid() const pure nothrow @safe @nogc {
         return _value != _invalid;
     }
-    ref TypedIdentifier opAssign(T val) nothrow @safe @nogc {
+    // XXX do we want this?
+    ref RawTypedIdentifier opAssign(T val) nothrow @safe @nogc {
         _value = val;
         return this;
     }
 
     // Default opEquals does the right thing
 
-    static if (algebraic) {
-        enum TypedIdentifier min = T.min;
-        enum TypedIdentifier max = T.max;
+    int opCmp(in T rhs) const pure nothrow @safe @nogc {
+        return value > rhs ? 1 : (value < rhs ? -1 : 0);
+    }
 
-        int opCmp(in TypedIdentifier rhs) const pure nothrow @safe @nogc {
-            return value > rhs.value ? 1 : (value < rhs.value ? -1 : 0);
+    static if (algebraic) {
+        enum RawTypedIdentifier min = T.min;
+        enum RawTypedIdentifier max = T.max;
+
+        int opCmp(in RawTypedIdentifier rhs) const pure nothrow @safe @nogc {
+            return opCmp(rhs.value);
         }
 
         // Pointer like semantics:
-        // Can add integer to TypedIdentifier to get TypedIdentifier
-        ref TypedIdentifier opOpAssign(string op)(in T rhs) nothrow @safe @nogc if (op == "+" || op == "-") {
+        // Can add integer to RawTypedIdentifier to get RawTypedIdentifier
+        ref RawTypedIdentifier opOpAssign(string op)(in T rhs) nothrow @safe @nogc if (op == "+" || op == "-") {
             mixin("_value "~op~"= rhs;");
             return this;
         }
 
-        TypedIdentifier opBinary(string op)(in T rhs) const pure nothrow @safe @nogc if (op == "+" || op == "-") {
-            TypedIdentifier res = this;
+        // Can do any op at all on another TypedId
+        ref RawTypedIdentifier opOpAssign(string op)(in RawTypedIdentifier rhs) nothrow @safe @nogc {
+            mixin("_value "~op~"= rhs.value;");
+            return this;
+        }
+
+        RawTypedIdentifier opBinary(string op)(in T rhs) const pure nothrow @safe @nogc if (op == "+" || op == "-") {
+            RawTypedIdentifier res = this;
             //return mixin("res "~op~"= rhs;");
             res += rhs;
             return res;
         }
 
-        ref TypedIdentifier opUnary(string op)() nothrow @safe @nogc if (op == "++" || op == "--") {
+        ref RawTypedIdentifier opUnary(string op)() nothrow @safe @nogc if (op == "++" || op == "--") {
             if (isValid)
                 mixin("_value" ~ op ~ ";");
 
             return this;
         }
 
-        // Can subtract two TypedIdentifier to get an integer
-        T opBinary(string op : "-")(in TypedIdentifier rhs) const pure nothrow @safe @nogc {
+        // Can subtract two RawTypedIdentifier to get an integer
+        T opBinary(string op : "-")(in RawTypedIdentifier rhs) const pure nothrow @safe @nogc {
             return value - rhs.value;
         }
-    }
-
-    U opCast(U)() const pure @safe nothrow if (isImplicitlyConvertible!(T, U)) {
-        return value;
     }
 
     // toString is not @nogc
@@ -78,10 +97,32 @@ public:
         return name ~ "<" ~ (isValid ? to!string(_value) : "INVALID") ~ ">";
     }
 
+    @notrace void setFromString(string str) @safe {
+        import std.conv : ConvException, parse;
+        import std.string : indexOf;
+        auto idx = str.indexOf('<');
+        if (idx > 0 && str[$ - 1] == '>') {
+            import std.uni: sicmp;
+            enforceFmt!ConvException(sicmp(str[0 .. idx], name) == 0, "Expected %s not %s", name, str[0 .. idx]);
+            auto tmp2 = str[idx + 1 .. $-1];
+            if (tmp2 == "INVALID") {
+                _value = _invalid;
+            } else {
+                _value = parse!T(tmp2);
+            }
+        }
+        else {
+            _value = parse!T(str);
+        }
+    }
+
     static assert (this.sizeof == T.sizeof);
 }
 
-alias AlgebraicTypedIdentifier(string name, T, T invalid = T.max, T init = invalid) = TypedIdentifier!(name, T, invalid, init, true);
+alias TypedIdentifier(string name, T, T invalid = T.max, T _init = invalid, FMT fmt = FMT("")) =
+    RawTypedIdentifier!(name, T, invalid, _init, fmt, false);
+alias AlgebraicTypedIdentifier(string name, T, T invalid = T.max, T _init = invalid, FMT fmt = FMT("")) =
+    RawTypedIdentifier!(name, T, invalid, _init, fmt, true);
 
 unittest {
     import std.string;
@@ -108,16 +149,22 @@ unittest {
     assert( newval.value == 18 );
 }
 
-enum isTypedIdentifier(T) = isInstanceOf!(TypedIdentifier, T);
-enum isAlgebricTypedIdentifier(T) = isTypedIdentifier!T && T.Algebraic;
+enum isTypedIdentifier(T) = isInstanceOf!(RawTypedIdentifier, T);
+enum isAlgebraicTypedIdentifier(T) = {
+    static if( isTypedIdentifier!T ) {
+        return T.Algebraic;
+    } else {
+        return false;
+    }
+} ();
 
-auto iota(T)(const T start, const T end) nothrow @safe @nogc if (isAlgebricTypedIdentifier!T) {
+auto iota(T)(const T start, const T end) nothrow @safe @nogc if (isAlgebraicTypedIdentifier!T) {
     import std.range : iota;
     import std.algorithm : map;
     return iota(start.value, end.value).map!(x => T(x));
 }
 
-auto iota(T)(const T end) nothrow @safe @nogc if (isAlgebricTypedIdentifier!T) {
+auto iota(T)(const T end) nothrow @safe @nogc if (isAlgebraicTypedIdentifier!T) {
     return iota(T(0), end);
 }
 
@@ -148,7 +195,7 @@ unittest {
 import std.range : isInputRange, ElementType;
 import std.array : empty, front, popFront;
 
-struct TypedIndexArray(KEY, VALUE, size_t LENGTH) if (isAlgebricTypedIdentifier!KEY) {
+struct TypedIndexArray(KEY, VALUE, size_t LENGTH) if (isAlgebraicTypedIdentifier!KEY) {
 private:
     VALUE[LENGTH] _array;
 
@@ -300,7 +347,7 @@ unittest {
     assert(meters[].map!(x => x*2).take(5).equal([0, 2, 4, 6, 8]));
 }
 
-struct TypedIndexSlice(KEY, VALUE) if (isAlgebricTypedIdentifier!KEY) {
+struct TypedIndexSlice(KEY, VALUE) if (isAlgebraicTypedIdentifier!KEY) {
 private:
     VALUE[] _slice;
     KEY.UnderlyingType _offset = 0;
@@ -414,7 +461,7 @@ unittest {
     MoisheId z = 19;
 
     assert(to!string(x) == "XXNodeId<5>");
-    assert(cast(int)y == 17);
+    assert(y.value == 17);
     // assert(z == 19);
     static assert (XXNodeId.invalid == XXNodeId(int.max));
     static assert (XXBucketId.invalid == XXBucketId(0));

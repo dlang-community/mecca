@@ -21,6 +21,11 @@ enum notrace = "notrace";
 // All implementations must define this enum to say whether logs sent find their way to the console
 enum LogToConsole = true;
 
+// UDA for modifying a variable formatting (currently ignored)
+struct FMT {
+    immutable string __log_customFormatString;
+}
+
 /*
    These functions are mostly placeholders. Since we'd sometimes want to replace them with functions that
    do binary logging, the format is part of the function's template.
