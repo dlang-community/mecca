@@ -6,117 +6,121 @@ import std.conv;
 import mecca.lib.exception;
 import mecca.log : FMT, notrace;
 
-struct RawTypedIdentifier(string _name, T, T _invalid, T _init, FMT fmt, bool algebraic)
+template RawTypedIdentifier(string _name, T, T _invalid, T _init, FMT fmt, bool algebraic)
     if (isIntegral!T)
 {
-private:
-    T _value = _init;
+    @fmt
+    struct RawTypedIdentifier {
+    private:
+        T _value = _init;
 
-    enum Algebraic = algebraic;
+        enum Algebraic = algebraic;
 
-public:
-    alias UnderlyingType = T;
-    enum RawTypedIdentifier invalid = RawTypedIdentifier(_invalid);
-    enum name = _name;
+    public:
+        alias UnderlyingType = T;
+        enum RawTypedIdentifier invalid = RawTypedIdentifier(_invalid);
+        enum name = _name;
 
-    this(T value) @safe pure nothrow @nogc {
-        this._value = value;
-    }
-    // Default this(this) does the right thing
+        this(T value) @safe pure nothrow @nogc {
+            this._value = value;
+        }
+        // Default this(this) does the right thing
 
-    // For some reason, this form is not covered by this(this)
-    this(RawTypedIdentifier that) @safe pure nothrow @nogc {
-        this._value = that.value;
-    }
+        // For some reason, this form is not covered by this(this)
+        this(RawTypedIdentifier that) @safe pure nothrow @nogc {
+            this._value = that.value;
+        }
 
-    this(string str) @safe {
-        setFromString(str);
-    }
+        this(string str) @safe {
+            setFromString(str);
+        }
 
-    @property T value() const pure nothrow @safe @nogc {
-        return _value;
-    }
-    @property bool isValid() const pure nothrow @safe @nogc {
-        return _value != _invalid;
-    }
-    // XXX do we want this?
-    ref RawTypedIdentifier opAssign(T val) nothrow @safe @nogc {
-        _value = val;
-        return this;
-    }
+        @property T value() const pure nothrow @safe @nogc {
+            return _value;
+        }
+        @property bool isValid() const pure nothrow @safe @nogc {
+            return _value != _invalid;
+        }
+        // XXX do we want this?
+        ref RawTypedIdentifier opAssign(T val) nothrow @safe @nogc {
+            _value = val;
+            return this;
+        }
 
-    // Default opEquals does the right thing
-
-    int opCmp(in T rhs) const pure nothrow @safe @nogc {
-        return value > rhs ? 1 : (value < rhs ? -1 : 0);
-    }
-
-    static if (algebraic) {
-        enum RawTypedIdentifier min = T.min;
-        enum RawTypedIdentifier max = T.max;
+        // Default opEquals does the right thing
 
         int opCmp(in RawTypedIdentifier rhs) const pure nothrow @safe @nogc {
-            return opCmp(rhs.value);
+            return value > rhs.value ? 1 : (value < rhs.value ? -1 : 0);
         }
 
-        // Pointer like semantics:
-        // Can add integer to RawTypedIdentifier to get RawTypedIdentifier
-        ref RawTypedIdentifier opOpAssign(string op)(in T rhs) nothrow @safe @nogc if (op == "+" || op == "-") {
-            mixin("_value "~op~"= rhs;");
-            return this;
-        }
+        static if (algebraic) {
+            enum RawTypedIdentifier min = T.min;
+            enum RawTypedIdentifier max = T.max;
 
-        // Can do any op at all on another TypedId
-        ref RawTypedIdentifier opOpAssign(string op)(in RawTypedIdentifier rhs) nothrow @safe @nogc {
-            mixin("_value "~op~"= rhs.value;");
-            return this;
-        }
+            int opCmp(in T rhs) const pure nothrow @safe @nogc {
+                return opCmp( RawTypedIdentifier(rhs) );
+                // return value > rhs ? 1 : (value < rhs ? -1 : 0);
+            }
 
-        RawTypedIdentifier opBinary(string op)(in T rhs) const pure nothrow @safe @nogc if (op == "+" || op == "-") {
-            RawTypedIdentifier res = this;
-            //return mixin("res "~op~"= rhs;");
-            res += rhs;
-            return res;
-        }
+            // Pointer like semantics:
+            // Can add integer to RawTypedIdentifier to get RawTypedIdentifier
+            ref RawTypedIdentifier opOpAssign(string op)(in T rhs) nothrow @safe @nogc if (op == "+" || op == "-") {
+                mixin("_value "~op~"= rhs;");
+                return this;
+            }
 
-        ref RawTypedIdentifier opUnary(string op)() nothrow @safe @nogc if (op == "++" || op == "--") {
-            if (isValid)
-                mixin("_value" ~ op ~ ";");
+            // Can do any op at all on another TypedId
+            ref RawTypedIdentifier opOpAssign(string op)(in RawTypedIdentifier rhs) nothrow @safe @nogc {
+                mixin("_value "~op~"= rhs.value;");
+                return this;
+            }
 
-            return this;
-        }
+            RawTypedIdentifier opBinary(string op)(in T rhs) const pure nothrow @safe @nogc if (op == "+" || op == "-") {
+                RawTypedIdentifier res = this;
+                //return mixin("res "~op~"= rhs;");
+                res += rhs;
+                return res;
+            }
 
-        // Can subtract two RawTypedIdentifier to get an integer
-        T opBinary(string op : "-")(in RawTypedIdentifier rhs) const pure nothrow @safe @nogc {
-            return value - rhs.value;
-        }
-    }
+            ref RawTypedIdentifier opUnary(string op)() nothrow @safe @nogc if (op == "++" || op == "--") {
+                if (isValid)
+                    mixin("_value" ~ op ~ ";");
 
-    // toString is not @nogc
-    string toString() const pure nothrow @safe {
-        return name ~ "<" ~ (isValid ? to!string(_value) : "INVALID") ~ ">";
-    }
+                return this;
+            }
 
-    @notrace void setFromString(string str) @safe {
-        import std.conv : ConvException, parse;
-        import std.string : indexOf;
-        auto idx = str.indexOf('<');
-        if (idx > 0 && str[$ - 1] == '>') {
-            import std.uni: sicmp;
-            enforceFmt!ConvException(sicmp(str[0 .. idx], name) == 0, "Expected %s not %s", name, str[0 .. idx]);
-            auto tmp2 = str[idx + 1 .. $-1];
-            if (tmp2 == "INVALID") {
-                _value = _invalid;
-            } else {
-                _value = parse!T(tmp2);
+            // Can subtract two RawTypedIdentifier to get an integer
+            T opBinary(string op : "-")(in RawTypedIdentifier rhs) const pure nothrow @safe @nogc {
+                return value - rhs.value;
             }
         }
-        else {
-            _value = parse!T(str);
-        }
-    }
 
-    static assert (this.sizeof == T.sizeof);
+        // toString is not @nogc
+        string toString() const pure nothrow @safe {
+            return name ~ "<" ~ (isValid ? to!string(_value) : "INVALID") ~ ">";
+        }
+
+        @notrace void setFromString(string str) @safe {
+            import std.conv : ConvException, parse;
+            import std.string : indexOf;
+            auto idx = str.indexOf('<');
+            if (idx > 0 && str[$ - 1] == '>') {
+                import std.uni: sicmp;
+                enforceFmt!ConvException(sicmp(str[0 .. idx], name) == 0, "Expected %s not %s", name, str[0 .. idx]);
+                auto tmp2 = str[idx + 1 .. $-1];
+                if (tmp2 == "INVALID") {
+                    _value = _invalid;
+                } else {
+                    _value = parse!T(tmp2);
+                }
+            }
+            else {
+                _value = parse!T(str);
+            }
+        }
+
+        static assert (this.sizeof == T.sizeof);
+    }
 }
 
 alias TypedIdentifier(string name, T, T invalid = T.max, T _init = invalid, FMT fmt = FMT("")) =
