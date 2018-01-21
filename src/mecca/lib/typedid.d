@@ -123,9 +123,9 @@ template RawTypedIdentifier(string _name, T, T _invalid, T _init, FMT fmt, bool 
     }
 }
 
-alias TypedIdentifier(string name, T, T invalid = T.max, T _init = invalid, FMT fmt = FMT("")) =
+alias TypedIdentifier(string name, T, T invalid = T.max, T _init = T.init, FMT fmt = FMT("")) =
     RawTypedIdentifier!(name, T, invalid, _init, fmt, false);
-alias AlgebraicTypedIdentifier(string name, T, T invalid = T.max, T _init = invalid, FMT fmt = FMT("")) =
+alias AlgebraicTypedIdentifier(string name, T, T invalid = T.max, T _init = T.init, FMT fmt = FMT("")) =
     RawTypedIdentifier!(name, T, invalid, _init, fmt, true);
 
 unittest {
