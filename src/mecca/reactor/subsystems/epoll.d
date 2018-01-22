@@ -95,12 +95,13 @@ public:
         fdPool.release(ctx);
     }
 
-    void waitForEvent(FdContext* ctx, Timeout timeout = Timeout.infinite) @safe @nogc {
+    void waitForEvent(FdContext* ctx, int fd, Timeout timeout = Timeout.infinite) @safe @nogc {
         /*
             TODO: In the future, we might wish to allow one fiber to read from an ReactorFD while another writes to the same ReactorFD. As the code
             currently stands, this will trigger the assert below
          */
-        ASSERT!"Two fibers cannot wait on the same ReactorFD at once"( !ctx.fibHandle.isValid );
+        ASSERT!"Two fibers cannot wait on the same ReactorFD %s at once: %s asked to wait with %s already waiting"(
+                !ctx.fibHandle.isValid, fd, theReactor.runningFiberHandle, ctx.fibHandle );
         ctx.fibHandle = theReactor.runningFiberHandle;
         scope(exit) destroy(ctx.fibHandle);
 

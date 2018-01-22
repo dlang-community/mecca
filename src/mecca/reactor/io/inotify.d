@@ -19,7 +19,7 @@ private extern(C) nothrow @nogc {
 }
 
 /// Watch point handle type
-alias WatchDescriptor = TypedIdentifier!("WatchDescriptor", int, -1);
+alias WatchDescriptor = TypedIdentifier!("WatchDescriptor", int, -1, -1);
 
 /**
  * iNotify type.

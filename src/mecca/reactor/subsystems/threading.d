@@ -79,7 +79,7 @@ class DeferredTaskFailed: Exception {
     mixin ExceptionBody;
 }
 
-alias DeferredTaskCookie = TypedIdentifier!("DeferredTaskCookie", ulong);
+alias DeferredTaskCookie = TypedIdentifier!("DeferredTaskCookie", ulong, ulong.max, ulong.max);
 
 struct DeferredTask {
     Closure closure;

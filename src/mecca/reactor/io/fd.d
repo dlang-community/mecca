@@ -262,7 +262,7 @@ private void connectHelper(ref Socket sock, SockAddr sa, Timeout timeout) @trust
     ASSERT!"connect returned unexpected value %s errno %s"(result<0 && errno == EINPROGRESS, result, errno);
 
     // Wait for connect to finish
-    epoller.waitForEvent(sock.ctx, timeout);
+    epoller.waitForEvent(sock.ctx, sock.get.fileNo, timeout);
 
     socklen_t reslen = result.sizeof;
     sock.osCallErrno!(.getsockopt)( SOL_SOCKET, SO_ERROR, &result, &reslen);
@@ -599,7 +599,7 @@ package:
             auto ret = fd.osCall!F(args);
             if (ret < 0) {
                 if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                    epoller.waitForEvent(ctx, timeout);
+                    epoller.waitForEvent(ctx, fd.fileNo, timeout);
                 }
                 else {
                     throw mkExFmt!ErrnoException("%s(%s)", __traits(identifier, F), fd.fileNo);

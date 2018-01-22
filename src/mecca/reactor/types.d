@@ -5,7 +5,7 @@ import mecca.lib.exception;
 import mecca.lib.typedid;
 
 /// Fibers' ID type
-alias FiberId = TypedIdentifier!("FiberId", ushort);
+alias FiberId = TypedIdentifier!("FiberId", ushort, ushort.max, ushort.max);
 
 /// Exception thrown when a fiber is suspended for too long.
 class TimeoutExpired : Exception {
