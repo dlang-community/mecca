@@ -390,6 +390,7 @@ unittest {
 
 mixin template hookSyscall(alias F, Syscall nr, alias preFunc) {
     import std.traits: Parameters;
+    import mecca.platform.linux: syscall;
     enum name = __traits(identifier, F);
     mixin("extern(C) pragma(mangle, \"" ~ name ~ "\") @system int " ~ name ~ "(Parameters!F args) {
             preFunc(args);
