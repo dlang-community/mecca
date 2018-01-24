@@ -119,6 +119,40 @@ template RawTypedIdentifier(string _name, T, T _invalid, T _init, FMT fmt, bool 
             }
         }
 
+        static struct Allocator(bool SkipInvalid = true, T Min = T.min, T Max = T.max) {
+        private:
+            T nextValue = Min;
+
+        public:
+            this( RawTypedIdentifier initValue ) {
+                this.nextValue = initValue.value;
+            }
+
+            @notrace RawTypedIdentifier getNext() nothrow @safe @nogc {
+                T next = nextValue++;
+
+                if( next>Max ) {
+                    nextValue = Min;
+                    return getNext();
+                }
+
+                static if(SkipInvalid) {
+                    if( next==_invalid )
+                        return getNext();
+                }
+
+                return RawTypedIdentifier(next);
+            }
+
+            void reset(RawTypedIdentifier value = RawTypedIdentifier(Min)) nothrow @safe @nogc {
+                DBG_ASSERT!"Reset value must be in legal range %s<=%s<=%s"(
+                        value.value>=Min && value.value<=Max, Min, value, Max);
+                nextValue = value.value;
+            }
+
+            static assert (Allocator.sizeof == RawTypedIdentifier.sizeof);
+        }
+
         static assert (this.sizeof == T.sizeof);
     }
 }
