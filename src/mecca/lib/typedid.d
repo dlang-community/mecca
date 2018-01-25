@@ -119,7 +119,8 @@ template RawTypedIdentifier(string _name, T, T _invalid, T _init, FMT fmt, bool 
             }
         }
 
-        static struct Allocator(bool SkipInvalid = true, T Min = T.min, T Max = T.max) {
+        alias Allocator = CustomAllocator!true;
+        static struct CustomAllocator(bool SkipInvalid, T Min = T.min, T Max = T.max) {
         private:
             T nextValue = Min;
 
