@@ -408,6 +408,10 @@ mixin template hookSyscall(alias F, Syscall nr, alias traceFunc, SyscallTracePoi
             return res;
         }"
     );
+    import std.traits: fullyQualifiedName;
+    enum hookFunctionScope = fullyQualifiedName!(__traits(parent, name));
+    static assert(_module_ == hookFunctionScope,
+        "syscall hook should be mixed into the global scope of a module in order for the linker to find it (instantiated on " ~ file ~ "(" ~ line.to!string ~ ")");
 }
 
 /+version (unittest) {
