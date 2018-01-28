@@ -75,10 +75,12 @@ template RawTypedIdentifier(string _name, T, T _invalid, T _init, FMT fmt, bool 
                 return this;
             }
 
+            // Non-modifying op with integer
             RawTypedIdentifier opBinary(string op)(in T rhs) const pure nothrow @safe @nogc if (op == "+" || op == "-") {
                 RawTypedIdentifier res = this;
-                //return mixin("res "~op~"= rhs;");
-                res += rhs;
+                // Forward to opOpAssign
+                mixin("res "~op~"= rhs;");
+
                 return res;
             }
 
@@ -186,6 +188,9 @@ unittest {
 
     static assert( is( typeof(newval) == typeof(val) ) );
     assert( newval.value == 18 );
+
+    newval = val - 4;
+    assert( newval.value == 11 );
 }
 
 enum isTypedIdentifier(T) = isInstanceOf!(RawTypedIdentifier, T);
