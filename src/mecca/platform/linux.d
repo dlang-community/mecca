@@ -325,13 +325,13 @@ enum Syscall: int {
 }
 
 extern(C) nothrow @system @nogc {
-    int syscall(int number, ...) nothrow;
+    long syscall(int number, ...) nothrow;
 
     int gettid() nothrow @trusted {
-        return syscall(Syscall.NR_gettid);
+        return cast(int)syscall(Syscall.NR_gettid);
     }
     int tgkill(int tgid, int tid, int sig) nothrow @trusted {
-        return syscall(Syscall.NR_tgkill, tgid, tid, sig);
+        return cast(int)syscall(Syscall.NR_tgkill, tgid, tid, sig);
     }
 }
 
@@ -388,13 +388,24 @@ unittest {
     assert (SIGRTMAX < NUM_SIGS);
 }
 
-mixin template hookSyscall(alias F, Syscall nr, alias preFunc) {
-    import std.traits: Parameters;
+enum SyscallTracePoint {
+    PRE_SYSCALL,
+    POST_SYSCALL,
+}
+
+mixin template hookSyscall(alias F, Syscall nr, alias traceFunc, SyscallTracePoint tracePoint=SyscallTracePoint.PRE_SYSCALL, string file = __FILE__, size_t line = __LINE__, string _module_ = __MODULE__) {
+    import std.traits: Parameters, ReturnType;
     import mecca.platform.linux: syscall;
     enum name = __traits(identifier, F);
-    mixin("extern(C) pragma(mangle, \"" ~ name ~ "\") @system int " ~ name ~ "(Parameters!F args) {
-            preFunc(args);
-            return syscall(nr, args);
+    mixin("extern(C) pragma(mangle, \"" ~ name ~ "\") @system ReturnType!F " ~ name ~ "(Parameters!F args) {
+            static if (tracePoint == SyscallTracePoint.PRE_SYSCALL) {
+                traceFunc(args);
+            }
+            auto res = cast(ReturnType!F)syscall(nr, args);
+            static if (tracePoint == SyscallTracePoint.POST_SYSCALL) {
+                traceFunc(res, args);
+            }
+            return res;
         }"
     );
 }
@@ -412,7 +423,3 @@ mixin template hookSyscall(alias F, Syscall nr, alias preFunc) {
         assert (hitPreFunc);
     }
 }+/
-
-
-
-
