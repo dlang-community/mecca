@@ -212,7 +212,7 @@ template splitFmt(string fmt) {
 @notrace @nogc char[] formatDecimal(size_t W = 0, char fillChar = ' ', T)(char[] buf, T val) pure nothrow if (is(typeof({ulong v = val;}))) {
     const neg = (isSigned!T) && (val < 0);
     size_t len = neg ? 1 : 0;
-    ulong v = neg ? -val : val;
+    ulong v = neg ? -long(val) : val;
 
     auto tmp = v;
     while (tmp) {

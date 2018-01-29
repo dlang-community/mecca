@@ -385,4 +385,30 @@ unittest {
     assert( cast(short)((a - 5).value) == cast(short)-3 );
 }
 
+/// Flip each bit of the input. Returns the same type as the input.
+/// See https://dlang.org/changelog/2.078.0.html#fix16997
+T bitComplement(T)(T val) pure nothrow @nogc {
+    static if (T.sizeof < int.sizeof) {
+        return cast(T)( ~ cast(int)val );
+    } else {
+        return ~val;
+    }
+}
 
+unittest {
+    {
+        ulong sum = 1;
+        ubyte val = 0xFE;
+        sum += bitComplement(val);
+        assert(sum == 2);
+    }
+    {
+        ushort s1 = 0x0101;
+        ushort s2 = 0xF00F;
+        s1 &= bitComplement(s2);
+        assert(s1 == 0x0100);
+    }
+
+    static assert( bitComplement(0x0F) == 0xFFFF_FFF0 );
+    static assert( bitComplement(ushort(0x0F)) == 0xFFF0 );
+}

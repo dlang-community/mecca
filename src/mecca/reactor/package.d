@@ -139,7 +139,8 @@ align(1):
             _flags |= __traits(getMember, Flags, NAME);
         }
         else {
-            _flags &= ~__traits(getMember, Flags, NAME);
+            import mecca.lib.integers: bitComplement;
+            _flags &= bitComplement(__traits(getMember, Flags, NAME));
         }
     }
 
