@@ -22,14 +22,8 @@ private:
     static assert ((numBins & (numBins - 1)) == 0, "numBins must be a power of 2");
     static assert (numLevels > 1);
     static assert (numBins * numLevels < 256*8);
-    enum spanInBins = {
-        // All levels except the first one contribute at least one bin to the span
-        ulong numBins;
-        foreach( uint level; 1..numLevels )
-            numBins += rawBinsInBin(level);
-
-        return numBins;
-    }();
+    // Minimal maximal span is the size of all bins in the last level + one bin of the first level
+    enum spanInBins = (numBins-1) * rawBinsInBin(numLevels-1) + 1;
 
     alias Phase = ulong;
 
@@ -45,7 +39,7 @@ private:
     }
 
     static if( hasOwner )
-            alias ListType = LinkedListWithOwner!T;
+        alias ListType = LinkedListWithOwner!T;
     else
         alias ListType = LinkedList!T;
 
@@ -127,7 +121,7 @@ public:
     ulong cyclesTillNextEntry(TscTimePoint now) nothrow @safe @nogc {
         DBG_ASSERT!"time moved backwards %s=>%s"(now>=poppedTime, now, poppedTime);
         ulong binsToGo = binsTillNextEntry();
-        // DEBUG!"XXX Bins to go %s"(binsToGo);
+        // DEBUG!"XXX Bins to go %s phase %s"(binsToGo, phase);
 
         if( binsToGo == ulong.max )
             return ulong.max;
@@ -204,7 +198,13 @@ private:
             DBG_ASSERT!"Phase %s in level %s bigger than idxInLevel %s. Base time %s cycles per bin %s(%s)"(
                     idxInLevel >= phaseInLevel(level), phaseInLevel(level), level, idxInLevel, baseTimes[level],
                     resolutionCycles*rawBinsInBin(level), resolutionCycles );
-            binsInFuture += (idxInLevel - phaseInLevel(level)) * rawBinsInBin(level);
+            ulong binsInFutureDelta = (idxInLevel - phaseInLevel(level)) * rawBinsInBin(level);
+            DBG_ASSERT!
+                    "Insert %s bins in future %s(+%s) bigger than level %s size %s. Base time %s cycles per bin %s(%s)"
+                (binsInFutureDelta<binsInLevel(level), entry.timePoint, binsInFuture, binsInFutureDelta, level,
+                    binsInLevel(level), baseTimes[level], resolutionCycles*rawBinsInBin(level), resolutionCycles);
+            binsInFuture += binsInFutureDelta;
+            idxInLevel %= numBins;
 
             if( nextEntryHint > binsInFuture )
                 nextEntryHint = binsInFuture;
@@ -242,11 +242,28 @@ private:
             return;
 
         foreach( uint level; 0..numLevels ) {
-            foreach( idx; phaseInLevel(level)..numBins ) {
+            foreach( idx; phaseInLevel(level) .. numBins ) {
                 if( !bins[level][idx].empty )
                     return;
 
                 nextEntryHint += rawBinsInBin(level);
+            }
+
+            if( level==numLevels-1 || !bins[level+1][phaseInLevel(level+1)].empty ) {
+                // The first bin of the next level is not empty. We have to unwrap it before we can figure out what's
+                // the next event to be handled.
+                continue;
+            }
+
+            // First bin of next level is empty, but we might have entries in this level after the fold
+            ulong speculativeHintDelta;
+            foreach( idx; 0 .. phaseInLevel(level) ) {
+                if( !bins[level][idx].empty ) {
+                    nextEntryHint += speculativeHintDelta;
+                    return;
+                }
+
+                speculativeHintDelta += rawBinsInBin(level);
             }
         }
 
@@ -273,7 +290,8 @@ private:
         poppedTime += advanceCount * resolutionCycles;
 
         if( !needCascading ) {
-            // Stayed in same level. Nothing else to do
+            // Stayed in same level. Almost nothing to do.
+            endTimes[0] += advanceCount * resolutionCycles;
             return;
         }
 
@@ -282,15 +300,18 @@ private:
         foreach( uint level; 0..numLevels ) {
             maxAffectedLevel = level;
 
-            levelsAdvanced += oldPhases[level];
+            endTimes[level] += levelsAdvanced * rawBinsInBin(level) * resolutionCycles;
 
+            levelsAdvanced += oldPhases[level];
             levelsAdvanced /= numBins;
             if( levelsAdvanced==0 )
                 break;
 
             ulong cyclesAdvanced = levelsAdvanced * binsInLevel(level) * resolutionCycles;
             baseTimes[level] += cyclesAdvanced;
-            endTimes[level] += cyclesAdvanced;
+            DBG_ASSERT!"Level %s end level time %s does not match start level time %s (should be %s)"(
+                (endTimes[level].cycles - baseTimes[level].cycles) / (binsInLevel(level)*resolutionCycles) == 1,
+                level, endTimes[level], baseTimes[level], baseTimes[level] + binsInLevel(level)*resolutionCycles);
         }
 
         DBG_ASSERT!"maxAffectedLevel is zero in slow path"( maxAffectedLevel>0 );
@@ -305,23 +326,8 @@ private:
             // The bin to clear is the one right *before* the current one
             uint binToClearIdx = previousBinIdx(level);
 
-            version(assert) {
-                uint lowerLevel = level-1;
-
-                foreach( idx, ref bin; bins[lowerLevel] ) {
-                    DBG_ASSERT!"level %s bin %s is not empty while cascading level %s"(
-                            bin.empty, lowerLevel, idx, level);
-                }
-
-                foreach( idx; 0..binToClearIdx ) {
-                    DBG_ASSERT!"bin %s at top level %s is not empty while cascading"(
-                            bins[level][idx].empty, idx, level );
-                }
-            }
-
             auto binToClear = &bins[level][ binToClearIdx ];
             if( !binToClear.empty && firstCascaded ) {
-                nextEntryHint = ulong.max;
                 firstCascaded = false;
             }
 
@@ -417,7 +423,7 @@ unittest {
     enum numLevels = 3;
     CascadingTimeQueue!(Entry*, numBins, numLevels) ctq;
     ctq.open(resolution, TscTimePoint(0));
-    static assert (ctq.spanInBins == 16 + 16^^2);
+    static assert (ctq.spanInBins == (numBins-1) * 16^^2 + 1);
 
     bool[Entry*] entries;
     Entry* insert(TscTimePoint tp, string name) {
@@ -547,7 +553,7 @@ unittest {
 
         writeln(totalInserted, " ", totalPopped, " ", ctq.stats);
         foreach(i, s; ctq.stats) {
-            assert (s > 0, "i=%s s=%s".format(i, s));
+            assert (s > 0, "level %s never received events".format(i));
         }
 
         assert (totalInserted - totalPopped == pool.numInUse, "(1) pool.used=%s inserted=%s popped=%s".format(pool.numInUse, totalInserted, totalPopped));
@@ -667,7 +673,9 @@ unittest {
     import std.random;
 
     Mt19937 random;
-    random.seed(unpredictableSeed);
+    auto seed = unpredictableSeed;
+    random.seed(seed);
+    scope(failure) INFO!"Running with seed %s"(seed);
 
     enum long resolution = 4;
     enum numBins = 4;
@@ -714,8 +722,13 @@ unittest {
             entries.remove(entry.id);
 
             // Make sure the time is correct
-            assert( entry.timePoint>TscTimePoint(now.cycles - resolution) &&
-                    entry.timePoint<TscTimePoint(now.cycles+resolution) );
+            ASSERT!"entry %s popped at incorrect time. %s<%s<%s"(
+                    entry.timePoint>TscTimePoint(now.cycles - resolution) &&
+                    entry.timePoint<TscTimePoint(now.cycles+resolution),
+                    entry.id,
+                    TscTimePoint(now.cycles - resolution),
+                    entry.timePoint,
+                    TscTimePoint(now.cycles + resolution));
         }
     }
 
@@ -730,7 +743,9 @@ unittest {
             insert();
             insert();
         }
+        auto oldNow = now;
         now = TscTimePoint( now.cycles + ctq.cyclesTillNextEntry(now) );
+        DEBUG!"Advanced from %s to %s phase %s(%s)"(oldNow, now, ctq.phaseInLevel(0), ctq.phase);
     }
 }
 
