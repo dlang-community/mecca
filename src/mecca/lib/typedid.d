@@ -85,8 +85,7 @@ template RawTypedIdentifier(string _name, T, T _invalid, T _init, FMT fmt, bool 
             }
 
             ref RawTypedIdentifier opUnary(string op)() nothrow @safe @nogc if (op == "++" || op == "--") {
-                if (isValid)
-                    mixin("_value" ~ op ~ ";");
+                mixin("_value" ~ op ~ ";");
 
                 return this;
             }
@@ -179,7 +178,7 @@ unittest {
     val++;
     inv++;
     assert( val == UtId(13) );
-    assert( !inv.isValid );
+    //assert( !inv.isValid );
 
     val += 2;
     assert( val == UtId(15) );
