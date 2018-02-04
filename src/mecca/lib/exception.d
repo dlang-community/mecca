@@ -36,7 +36,24 @@ shared static this() {
     }
 }
 
+extern(C) private void ALREADY_EXTRACTING_STACK() {
+    assert (false, "you're not supposed to call this function");
+}
+
 void*[] extractStack(void*[] callstack, size_t skip = 0) nothrow @trusted @nogc {
+    /* thread local */ static bool alreadyExtractingStack = false;
+    if (alreadyExtractingStack) {
+        // stack extraction is apparently non re-entrant, and because we want signal handlers
+        // to be able to use this function, we just return a mock stack in this case.
+        callstack[0] = &ALREADY_EXTRACTING_STACK;
+        callstack[1] = &ALREADY_EXTRACTING_STACK;
+        callstack[2] = &ALREADY_EXTRACTING_STACK;
+        callstack[3] = null;
+        return callstack[0 .. 4];
+    }
+    alreadyExtractingStack = true;
+    scope(exit) alreadyExtractingStack = false;
+
     auto numFrames = backtrace(callstack.ptr, cast(int)callstack.length);
     auto res = callstack[skip .. numFrames];
 
