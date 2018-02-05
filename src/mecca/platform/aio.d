@@ -102,23 +102,23 @@ extern(C) private struct aio_ring {
 // maxevents - up to `/proc/sys/fs/aio-max-nr`
 //             update system-wide `sysctl -w fs.aio-max-nr = 1048576`
 int io_setup(uint maxevents, aio_context_t* ctxp) nothrow @nogc @system {
-    return syscall(Syscall.NR_io_setup, maxevents, ctxp);
+    return cast(int)syscall(Syscall.NR_io_setup, maxevents, ctxp);
 }
 int io_destroy(aio_context_t ctx_id) nothrow @nogc @system {
-    return syscall(Syscall.NR_io_destroy, ctx_id);
+    return cast(int)syscall(Syscall.NR_io_destroy, ctx_id);
 }
 int io_submit(aio_context_t ctx_id, long nr, iocb** ios) nothrow @nogc @system {
-    return syscall(Syscall.NR_io_submit, ctx_id, nr, ios);
+    return cast(int)syscall(Syscall.NR_io_submit, ctx_id, nr, ios);
 }
 int io_cancel(aio_context_t ctx_id, iocb* iocb, io_event* result) nothrow @nogc @system {
-    return syscall(Syscall.NR_io_cancel, ctx_id, iocb, result);
+    return cast(int)syscall(Syscall.NR_io_cancel, ctx_id, iocb, result);
 }
 int io_getevents(aio_context_t ctx_id, long min_nr, long nr, io_event* events, timespec* timeout) nothrow @nogc @system {
     auto ring = cast(aio_ring*)ctx_id;
     if (ring !is null && min_nr == 0 && ring.magic == aio_ring.RING_MAGIC && ring.head == ring.tail) {
         return 0;
     }
-    return syscall(Syscall.NR_io_getevents, ctx_id, min_nr, nr, events, timeout);
+    return cast(int)syscall(Syscall.NR_io_getevents, ctx_id, min_nr, nr, events, timeout);
 }
 
 
