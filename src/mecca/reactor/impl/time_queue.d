@@ -34,6 +34,7 @@ private:
     ulong nextEntryHint = ulong.max; // Next active bin not before this number of bins (max = invalid)
     S64Divisor[numLevels] resolutionDividers;
     Phase phase;
+    size_t _length; // Number of elements in the queue
     version(unittest) {
         ulong[numLevels] stats;
     }
@@ -84,10 +85,18 @@ public:
     void close() nothrow @safe @nogc {
         foreach(ref lvl; bins) {
             foreach(ref bin; lvl) {
-                while( !bin.empty )
+                while( !bin.empty ) {
+                    _length--;
                     bin.popHead;
+                }
             }
         }
+
+        ASSERT!"At end of CascadingTimeQueue.close() _length is %s (expected 0)"(_length==0, _length);
+    }
+
+    @property size_t length() pure const nothrow @safe @nogc {
+        return _length;
     }
 
     @property Duration span() pure const nothrow @safe @nogc {
@@ -138,8 +147,11 @@ public:
 
         // If there are expired events, return those first
         auto event = bins[0][phase % numBins].popHead();
-        if( event !is T.init )
+        if( event !is T.init ) {
+            ASSERT!"Successfully popped element from cascaded time queue, but length is 0"(_length>0);
+            _length--;
             return event;
+        }
 
         ulong cyclesInPast = max(now.cycles - poppedTime.cycles, 0);
         ulong binsInPast = cyclesInPast / resolutionDividers[0];
@@ -155,8 +167,11 @@ public:
             binsInPast -= advanceCount;
 
             event = bins[0][phase % numBins].popHead();
-            if( event !is T.init )
+            if( event !is T.init ) {
+                ASSERT!"Successfully popped element from cascaded time queue, but length is 0"(_length>0);
+                _length--;
                 return event;
+            }
         }
 
         DBG_ASSERT!"Time isn't \"now\" at end of unsuccessful pop. unpopped %s now %s"(
@@ -213,6 +228,7 @@ private:
             // DEBUG!"XXX insert at level %s bin %s binsInFuture %s"(level, idxInLevel, binsInFuture);
         }
 
+        _length++;
         return true;
     }
 
@@ -333,6 +349,8 @@ private:
 
             while( !binToClear.empty ) {
                 auto event = binToClear.popHead();
+                ASSERT!"During cascading, length is 0 when bins have entries"(_length>0);
+                _length--;
                 _insert(event);
             }
         }
@@ -384,6 +402,8 @@ unittest {
         ctq.insert( &entry );
     }
 
+    assertEQ(entries.length, ctq.length);
+
     auto now = TscTimePoint(0);
     while( true ) {
         long wait = ctq.cyclesTillNextEntry(now);
@@ -403,6 +423,8 @@ unittest {
 
         now += wait;
     }
+
+    assertEQ(0, ctq.length);
 }
 
 unittest {
@@ -694,6 +716,7 @@ unittest {
     CascadingTimeQueue!(Entry*, numBins, numLevels) ctq;
     auto now = TscTimePoint(0);
     ctq.open(resolution, now);
+    size_t numEntriesInQueue;
 
     void insert() {
         Entry* entry;
@@ -712,12 +735,16 @@ unittest {
 
         DEBUG!"Pushing entry %s timepoint %s"(entry.id, entry.timePoint);
         ctq.insert(entry);
+        numEntriesInQueue++;
+        assertEQ( ctq.length, numEntriesInQueue );
     }
 
     void popAll() {
         Entry* entry;
         while( (entry = ctq.pop(now)) !is null ) {
             DEBUG!"At %s popped entry %s timepoint %s"(now, entry.id, entry.timePoint);
+            numEntriesInQueue--;
+            assertEQ( numEntriesInQueue, ctq.length );
             assert( entries[entry.id] == entry.timePoint );
             entries.remove(entry.id);
 
@@ -747,6 +774,8 @@ unittest {
         now = TscTimePoint( now.cycles + ctq.cyclesTillNextEntry(now) );
         DEBUG!"Advanced from %s to %s phase %s(%s)"(oldNow, now, ctq.phaseInLevel(0), ctq.phase);
     }
+
+    assertEQ( ctq.length, 0 );
 }
 
 unittest {
