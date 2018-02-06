@@ -1,5 +1,7 @@
 module mecca.platform.linux;
 
+import mecca.log: notrace;
+
 version(linux):
 version(X86_64):
 
@@ -327,11 +329,19 @@ enum Syscall: int {
 extern(C) nothrow @system @nogc {
     long syscall(int number, ...) nothrow;
 
-    int gettid() nothrow @trusted {
-        return cast(int)syscall(Syscall.NR_gettid);
+    @notrace
+    int syscall_int(ARGS...)(int number, auto ref ARGS args) nothrow {
+        return cast(int)syscall(number, args);
     }
+
+    @notrace
+    int gettid() nothrow @trusted {
+        return syscall_int(Syscall.NR_gettid);
+    }
+
+    @notrace
     int tgkill(int tgid, int tid, int sig) nothrow @trusted {
-        return cast(int)syscall(Syscall.NR_tgkill, tgid, tid, sig);
+        return syscall_int(Syscall.NR_tgkill, tgid, tid, sig);
     }
 }
 
