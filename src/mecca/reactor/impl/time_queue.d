@@ -57,6 +57,7 @@ public:
 
     void open(long resolutionCycles, TscTimePoint startTime) @safe @nogc {
         assert (resolutionCycles > 0);
+        assertEQ (_length, 0);
         this.resolutionCycles = resolutionCycles;
         foreach( uint level; 0..numLevels ) {
             this.resolutionDividers[level] = S64Divisor(resolutionCycles*rawBinsInBin(level));
@@ -103,7 +104,7 @@ public:
         return TscTimePoint.toDuration(resolutionCycles * spanInBins);
     }
 
-    void insert(T entry) @safe @nogc {
+    void insert(T entry) nothrow @safe @nogc {
         if (!_insert(entry)) {
             throw mkExFmt!TooFarAhead(
                     "tp=%s baseTime=%s poppedTime=%s (%.3fs in future) phase=%s resolutionCycles=%s",
@@ -115,6 +116,7 @@ public:
     static if( hasOwner ) {
         void cancel(T entry) nothrow @safe @nogc {
             ListType.discard(entry);
+            _length--;
         }
     }
 
@@ -142,7 +144,7 @@ public:
         return wait;
     }
 
-    @notrace T pop(TscTimePoint now) {
+    @notrace T pop(TscTimePoint now) nothrow @safe @nogc {
         assertOp!"<="(poppedTime, now, "current time moved backwards");
 
         // If there are expired events, return those first
@@ -287,7 +289,7 @@ private:
         nextEntryHint = ulong.max;
     }
 
-    @notrace void advancePhase( ulong advanceCount ) {
+    @notrace void advancePhase( ulong advanceCount ) nothrow @safe @nogc {
         assertOp!"<="( advanceCount, nextEntryHint, "Tried to advance the phase past the next entry" );
         uint[numLevels] oldPhases = -1;
         oldPhases[0] = phaseInLevel(0);
@@ -335,7 +337,7 @@ private:
         cascadeLevel( maxAffectedLevel );
     }
 
-    @notrace void cascadeLevel( uint maxLevel ) {
+    @notrace void cascadeLevel( uint maxLevel ) nothrow @safe @nogc {
         bool firstCascaded = true;
 
         foreach( uint level; 1..maxLevel+1 ) {
