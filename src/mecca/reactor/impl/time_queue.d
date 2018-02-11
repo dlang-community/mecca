@@ -10,6 +10,8 @@ import mecca.log;
 import mecca.containers.lists;
 import mecca.lib.division: S64Divisor;
 
+// DMDBUG define a global for the sole purpose of forcing functions to not be misidentified as pure. See notPure()
+private __gshared uint notPureDMDBUG;
 
 struct CascadingTimeQueue(T, size_t numBins, size_t numLevels, bool hasOwner = false) {
 private:
@@ -19,6 +21,7 @@ private:
         enum INTERNAL_VERBOSITY = false;
     }
 
+    static assert (numBins>1, "Seriously? What were you thining?");
     static assert ((numBins & (numBins - 1)) == 0, "numBins must be a power of 2");
     static assert (numLevels > 1);
     static assert (numBins * numLevels < 256*8);
@@ -173,6 +176,8 @@ public:
     }
 
     void insert(T entry) nothrow @safe @nogc {
+        notPure();
+
         void updateHint(ulong binsInFuture) {
             if( nextEntryHint <= binsInFuture )
                 return;
@@ -420,6 +425,12 @@ private:
 
     uint previousBinIdx( uint level ) pure const nothrow @safe @nogc {
         return (phaseInLevel(level) + numBins - 1) % numBins;
+    }
+
+    void notPure() const nothrow @trusted @nogc {
+        // DMDBUG compile by package sometimes thing this function is pure, which causes linker errors :-(
+        if( numBins==0 ) // Which it never is
+            notPureDMDBUG++; // Cannot be pure.
     }
 }
 
