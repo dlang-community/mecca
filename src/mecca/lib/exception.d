@@ -432,7 +432,7 @@ unittest {
 
     auto lhsVal = lhs;
     auto rhsVal = rhs;
-    ASSERT!("%s %s %s%s", file, mod, line)(mixin("lhsVal " ~ op ~ " rhsVal"), lhs, inverseOp, rhs, msg);
+    ASSERT!("%s %s %s %s", file, mod, line)(mixin("lhsVal " ~ op ~ " rhsVal"), lhs, inverseOp, rhs, msg);
 }
 
 @notrace void assertEQ(L, R, string file = __FILE__, string mod = __MODULE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow @nogc {

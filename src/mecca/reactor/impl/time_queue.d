@@ -11,18 +11,19 @@ import mecca.containers.lists;
 import mecca.lib.division: S64Divisor;
 
 
-class TooFarAhead: Error {
-    this(string msg, string file=__FILE__, size_t line=__LINE__) {
-        super(msg, file, line);
-    }
-}
-
 struct CascadingTimeQueue(T, size_t numBins, size_t numLevels, bool hasOwner = false) {
 private:
+    debug(timeq_verbosity) {
+        enum INTERNAL_VERBOSITY = true;
+    } else {
+        enum INTERNAL_VERBOSITY = false;
+    }
+
     static assert ((numBins & (numBins - 1)) == 0, "numBins must be a power of 2");
     static assert (numLevels > 1);
     static assert (numBins * numLevels < 256*8);
-    // Minimal maximal span is the size of all bins in the last level + one bin of the first level
+    // Minimal maximal span is the size of all bins in the last level + one bin of the first level. Not exported because
+    // meaningless, as we have the overflow to catch uses outside this span.
     enum spanInBins = (numBins-1) * rawBinsInBin(numLevels-1) + 1;
 
     alias Phase = ulong;
@@ -36,7 +37,7 @@ private:
     Phase phase;
     size_t _length; // Number of elements in the queue
     version(unittest) {
-        ulong[numLevels] stats;
+        ulong[numLevels+1] stats;
     }
 
     static if( hasOwner )
@@ -45,6 +46,8 @@ private:
         alias ListType = LinkedList!T;
 
     ListType[numBins][numLevels] bins;
+    ListType[2] overflow;
+    uint activeOverflow;
 
 public:
     static if( hasOwner ) {
@@ -100,19 +103,6 @@ public:
         return _length;
     }
 
-    @property Duration span() pure const nothrow @safe @nogc {
-        return TscTimePoint.toDuration(resolutionCycles * spanInBins);
-    }
-
-    void insert(T entry) nothrow @safe @nogc {
-        if (!_insert(entry)) {
-            throw mkExFmt!TooFarAhead(
-                    "tp=%s baseTime=%s poppedTime=%s (%.3fs in future) phase=%s resolutionCycles=%s",
-                    entry.timePoint, baseTimes[0], poppedTime,
-                    (entry.timePoint - baseTimes[0]).total!"msecs" / 1000.0, phase, resolutionCycles);
-        }
-    }
-
     static if( hasOwner ) {
         void cancel(T entry) nothrow @safe @nogc {
             ListType.discard(entry);
@@ -132,7 +122,7 @@ public:
     ulong cyclesTillNextEntry(TscTimePoint now) nothrow @safe @nogc {
         DBG_ASSERT!"time moved backwards %s=>%s"(now>=poppedTime, now, poppedTime);
         ulong binsToGo = binsTillNextEntry();
-        // DEBUG!"XXX Bins to go %s phase %s"(binsToGo, phase);
+        static if(INTERNAL_VERBOSITY) DEBUG!"XXX Bins to go %s phase %s"(binsToGo, phase);
 
         if( binsToGo == ulong.max )
             return ulong.max;
@@ -182,14 +172,39 @@ public:
         return T.init;
     }
 
-private:
-    bool _insert(T entry) nothrow @safe @nogc {
-        // DEBUG!"XXX insert entry %s popped time %s base time %s phase %s"( entry.timePoint, poppedTime, baseTimes[0], phase );
+    void insert(T entry) nothrow @safe @nogc {
+        void updateHint(ulong binsInFuture) {
+            if( nextEntryHint <= binsInFuture )
+                return;
+
+            static if(INTERNAL_VERBOSITY)
+                DEBUG!"XXX entry hint moved %s=>%s"(nextEntryHint, binsInFuture);
+
+            nextEntryHint = binsInFuture;
+        }
+
+        static if(INTERNAL_VERBOSITY)
+            DEBUG!"XXX insert entry %s popped time %s base time %s phase %s"(
+                    entry.timePoint, poppedTime, baseTimes[0], phase );
+
         if (entry.timePoint <= poppedTime) {
             // Already expired entries all go to the same bin
-            // DEBUG!"XXX insert at first bin, level 0 bin %s"(phase%numBins);
+            static if(INTERNAL_VERBOSITY)
+                DEBUG!"XXX insert at first bin, level 0 bin %s"(phase%numBins);
             bins[0][phase % numBins].append(entry);
-            nextEntryHint = 0;
+            updateHint(0);
+        } else if(entry.timePoint>=endTimes[numLevels-1]) {
+            static if(INTERNAL_VERBOSITY)
+                DEBUG!"XXX No room for entry %s in cascaded queue (ending at %s). Inserted in overflow"(
+                        entry.timePoint, endTimes[numLevels-1] );
+            overflow[activeOverflow].append(entry);
+
+            ulong binsInFuture = (endTimes[numLevels-1].cycles - poppedTime.cycles) / resolutionDividers[0];
+            updateHint(binsInFuture);
+
+            version (unittest) {
+                stats[numLevels]++;
+            }
         } else {
             ulong binsInFuture;
 
@@ -198,12 +213,7 @@ private:
             while( entry.timePoint >= endTimes[level] ) {
                 binsInFuture += (numBins - phaseInLevel(level)) * rawBinsInBin(level);
                 level++;
-
-                if( level==numLevels ) {
-                    ERROR!"Trying to insert entry at %s which is past the end of the queue at %s"(
-                            entry.timePoint, endTimes[level-1]);
-                    return false;
-                }
+                DBG_ASSERT!"Entry %s is pass end of queue %s"(level<numLevels, entry.timePoint, endTimes[numLevels-1]);
             }
 
             version (unittest) {
@@ -223,18 +233,18 @@ private:
             binsInFuture += binsInFutureDelta;
             idxInLevel %= numBins;
 
-            if( nextEntryHint > binsInFuture )
-                nextEntryHint = binsInFuture;
+            updateHint(binsInFuture);
 
             bins[level][idxInLevel].append(entry);
-            // DEBUG!"XXX insert at level %s bin %s binsInFuture %s"(level, idxInLevel, binsInFuture);
+            static if(INTERNAL_VERBOSITY)
+                DEBUG!"XXX insert at level %s bin %s binsInFuture %s"(level, idxInLevel, binsInFuture);
         }
 
         _length++;
-        return true;
     }
 
-    @notrace private ulong binsTillNextEntry() nothrow @safe @nogc {
+private:
+    @notrace ulong binsTillNextEntry() nothrow @safe @nogc {
         calcNextEntryHint();
 
         return nextEntryHint;
@@ -259,6 +269,14 @@ private:
         if( nextEntryHint!=0 )
             return;
 
+        ref ListType nextLevelList(uint level) pure {
+            if( level<numLevels-1 ) {
+                return bins[level+1][phaseInLevel(level+1)];
+            } else {
+                return overflow[activeOverflow];
+            }
+        }
+
         foreach( uint level; 0..numLevels ) {
             foreach( idx; phaseInLevel(level) .. numBins ) {
                 if( !bins[level][idx].empty )
@@ -267,9 +285,9 @@ private:
                 nextEntryHint += rawBinsInBin(level);
             }
 
-            if( level==numLevels-1 || !bins[level+1][phaseInLevel(level+1)].empty ) {
+            if( !nextLevelList(level).empty ) {
                 // The first bin of the next level is not empty. We have to unwrap it before we can figure out what's
-                // the next event to be handled.
+                // the next event to be handled, so set the hint to point to it.
                 continue;
             }
 
@@ -278,6 +296,9 @@ private:
             foreach( idx; 0 .. phaseInLevel(level) ) {
                 if( !bins[level][idx].empty ) {
                     nextEntryHint += speculativeHintDelta;
+                    static if(INTERNAL_VERBOSITY)
+                        DEBUG!"XXX calculated new hint %s"(nextEntryHint);
+
                     return;
                 }
 
@@ -285,16 +306,24 @@ private:
             }
         }
 
-        // If we've reached here, then the entire CTQ is empty
-        nextEntryHint = ulong.max;
+        if( overflow[activeOverflow].empty ) {
+            // If we've reached here, then the entire CTQ is empty
+            nextEntryHint = ulong.max;
+        }
+
+        static if(INTERNAL_VERBOSITY)
+            DEBUG!"XXX calculated new hint %s"(nextEntryHint);
     }
 
     @notrace void advancePhase( ulong advanceCount ) nothrow @safe @nogc {
+        if( advanceCount==0 )
+            return;
+
         assertOp!"<="( advanceCount, nextEntryHint, "Tried to advance the phase past the next entry" );
         uint[numLevels] oldPhases = -1;
         oldPhases[0] = phaseInLevel(0);
 
-        bool needCascading = oldPhases[0] + advanceCount >= numBins;
+        bool needCascading = oldPhases[0] + advanceCount >= numBins-1;
         if( needCascading ) {
             foreach( uint level; 1..numLevels ) {
                 oldPhases[level] = phaseInLevel(level);
@@ -308,39 +337,43 @@ private:
         poppedTime += advanceCount * resolutionCycles;
 
         if( !needCascading ) {
-            // Stayed in same level. Almost nothing to do.
+            // Stayed in same level. Only thing to do is update the level's end
             endTimes[0] += advanceCount * resolutionCycles;
             return;
         }
 
         uint maxAffectedLevel;
-        ulong levelsAdvanced = advanceCount;
+        ulong levelBinsToAdvance = advanceCount;
         foreach( uint level; 0..numLevels ) {
             maxAffectedLevel = level;
 
-            endTimes[level] += levelsAdvanced * rawBinsInBin(level) * resolutionCycles;
+            endTimes[level] += levelBinsToAdvance * rawBinsInBin(level) * resolutionCycles;
 
-            levelsAdvanced += oldPhases[level];
-            levelsAdvanced /= numBins;
-            if( levelsAdvanced==0 )
+            levelBinsToAdvance += oldPhases[level];
+            levelBinsToAdvance /= numBins;
+            if( levelBinsToAdvance==0 )
                 break;
 
-            ulong cyclesAdvanced = levelsAdvanced * binsInLevel(level) * resolutionCycles;
+            ulong cyclesAdvanced = levelBinsToAdvance * binsInLevel(level) * resolutionCycles;
             baseTimes[level] += cyclesAdvanced;
             DBG_ASSERT!"Level %s end level time %s does not match start level time %s (should be %s)"(
                 (endTimes[level].cycles - baseTimes[level].cycles) / (binsInLevel(level)*resolutionCycles) == 1,
                 level, endTimes[level], baseTimes[level], baseTimes[level] + binsInLevel(level)*resolutionCycles);
         }
 
-        DBG_ASSERT!"maxAffectedLevel is zero in slow path"( maxAffectedLevel>0 );
+        if( (phase % (numBins ^^ numLevels)) == 0 && !overflow[activeOverflow].empty ) {
+            maxAffectedLevel = numLevels;
+        }
 
-        cascadeLevel( maxAffectedLevel );
+        if( maxAffectedLevel>0 )
+            cascadeLevel( maxAffectedLevel );
     }
 
     @notrace void cascadeLevel( uint maxLevel ) nothrow @safe @nogc {
         bool firstCascaded = true;
 
-        foreach( uint level; 1..maxLevel+1 ) {
+        uint effectiveMaxLevel = min(maxLevel, numLevels-1);
+        foreach( uint level; 1..effectiveMaxLevel+1 ) {
             // The bin to clear is the one right *before* the current one
             uint binToClearIdx = previousBinIdx(level);
 
@@ -353,7 +386,32 @@ private:
                 auto event = binToClear.popHead();
                 ASSERT!"During cascading, length is 0 when bins have entries"(_length>0);
                 _length--;
-                _insert(event);
+                insert(event);
+            }
+        }
+
+        if( maxLevel==numLevels ) {
+            // Cascade the overflow
+            auto outOverflow = &overflow[activeOverflow];
+            activeOverflow = (activeOverflow + 1) % 2; // Switch to other buffer
+            auto inOverflow = &overflow[activeOverflow];
+
+            DBG_ASSERT!"Passive overflow not empty before switch"( inOverflow.empty );
+
+            TscTimePoint ctqEnd = endTimes[numLevels-1];
+            while( !outOverflow.empty ) {
+                T entry = outOverflow.popHead();
+                if( entry.timePoint >= ctqEnd ) {
+                    inOverflow.append(entry);
+                } else {
+                    /*
+                      We could do only this, but as most entries in the overflow will usually remain in the overflow,
+                      this if should save a few cycles.
+                    */
+                    DBG_ASSERT!"Length is 0 while moving entries from overflow"(_length>0);
+                    _length--;
+                    insert(entry);
+                }
             }
         }
 
@@ -365,7 +423,38 @@ private:
     }
 }
 
+version(unittest):
+private:
+bool popOne(T, size_t numBins, size_t numLevels, bool hasOwner)
+    (ref CascadingTimeQueue!(T, numBins, numLevels, hasOwner) ctq, TscTimePoint now, void delegate(T) validate = null)
+{
+    T entry;
+    bool foundSomething;
+
+    while( (entry = ctq.pop(now)) !is null ) {
+        if( validate !is null )
+            validate(entry);
+
+        // Make sure the time is correct
+        assert( entry.timePoint>TscTimePoint(now.cycles - ctq.resolutionCycles) &&
+                entry.timePoint<TscTimePoint(now.cycles+ctq.resolutionCycles) );
+
+        foundSomething = true;
+    }
+
+    return foundSomething;
+}
+
+void wait(CTQ)(ref CTQ ctq, ref TscTimePoint now) {
+    auto oldNow = now;
+    auto delta = ctq.cyclesTillNextEntry(now);
+    now = TscTimePoint( now.cycles + delta );
+    DEBUG!"Advanced from %s to %s (delta %s)"(oldNow, now, delta);
+    assert(delta>0);
+}
+
 unittest {
+    META!"UT test time queue's levels test 1"();
     static struct Entry {
         TscTimePoint timePoint;
         string name;
@@ -430,6 +519,7 @@ unittest {
 }
 
 unittest {
+    META!"UT test time queue's levels test 2"();
     import std.stdio;
     import std.string;
     import std.algorithm: count, map;
@@ -480,20 +570,15 @@ unittest {
 
     auto e7 = insert(ctq.baseTimes[0] + resolution * (ctq.spanInBins), "e7");
 
-    auto caught = false;
-    try {
-        insert(ctq.baseTimes[0] + resolution * (ctq.spanInBins + ctq.binsInLevel(2)), "e8");
-    }
-    catch (TooFarAhead ex) {
-        caught = true;
-    }
-    assert (caught);
+    insert(ctq.baseTimes[0] + resolution * (ctq.spanInBins + ctq.binsInLevel(2)), "e8");
+    assert (ctq.stats[numLevels] == 1);
 
     auto e = ctq.pop(e7.timePoint + resolution);
     assert (e is e7, "%s".format(e));
 }
 
 unittest {
+    META!"UT test time queue with captured values"();
     import std.stdio;
     import std.string;
     import mecca.containers.pools;
@@ -576,7 +661,7 @@ unittest {
         assert (covered >= expectedCover - 2, "%s %s".format(covered, expectedCover));
 
         writeln(totalInserted, " ", totalPopped, " ", ctq.stats);
-        foreach(i, s; ctq.stats) {
+        foreach(i, s; ctq.stats[0..numLevels]) {
             assert (s > 0, "level %s never received events".format(i));
         }
 
@@ -595,6 +680,7 @@ unittest {
 }
 
 unittest {
+    META!"UT testing time queue with actual times"();
     import mecca.log;
     import std.string;
 
@@ -664,6 +750,7 @@ unittest {
 
 /+
 unittest {
+    META!"UT testing run with a reactor"();
     import mecca.reactor;
     Reactor.OpenOptions options;
     options.timerGranularity = 100.usecs;
@@ -693,6 +780,7 @@ unittest {
 +/
 
 unittest {
+    META!"UT testing random time queue operations"();
     // Test the cascading
     import std.random;
 
@@ -782,6 +870,7 @@ unittest {
 
 unittest {
     // Expose a specific problem not visible under random testing
+    META!"UT for specific problems found"();
 
     enum long resolution = 10;
     enum numBins = 4;
@@ -814,36 +903,19 @@ unittest {
         ctq.insert(entry);
     }
 
-    bool popOne() {
-        Entry* entry;
-        bool foundSomething;
-
-        while( (entry = ctq.pop(now)) !is null ) {
-            DEBUG!"At %s popped entry %s timepoint %s"(now, entry.id, entry.timePoint);
-            assert( entries[entry.id] == entry.timePoint );
-            entries.remove(entry.id);
-
-            // Make sure the time is correct
-            assert( entry.timePoint>TscTimePoint(now.cycles - resolution) &&
-                    entry.timePoint<TscTimePoint(now.cycles+resolution) );
-
-            foundSomething = true;
-        }
-
-        return foundSomething;
+    void validate(Entry* entry) {
+        DEBUG!"At %s popped entry %s timepoint %s"(now, entry.id, entry.timePoint);
+        assert( entries[entry.id] == entry.timePoint );
+        entries.remove(entry.id);
     }
 
-    void wait() {
-        auto oldNow = now;
-        auto delta = ctq.cyclesTillNextEntry(now);
-        now = TscTimePoint( now.cycles + delta );
-        DEBUG!"Advanced from %s to %s (delta %s)"(oldNow, now, delta);
-        assert(delta>0);
+    bool popOne() {
+        return .popOne(ctq, now, &validate);
     }
 
     void popAll() {
         while( !popOne() ) {
-            wait();
+            wait(ctq, now);
         }
     }
 
@@ -861,4 +933,55 @@ unittest {
     insert( TscTimePoint(99) );
     popOne();
     popOne();
+}
+
+unittest {
+    META!"UT for overflow support"();
+
+    enum long resolution = 4;
+    enum numBins = 4;
+    enum numLevels = 2;
+
+    struct Entry {
+        TscTimePoint timePoint;
+        Entry* _next;
+        Entry* _prev;
+    }
+
+    Entry[] entries;
+
+    entries.reserve(10);
+    CascadingTimeQueue!(Entry*, numBins, numLevels) ctq;
+    auto now = TscTimePoint(0);
+    ctq.open(resolution, now);
+    scope(exit) ctq.close();
+
+    void insert(TscTimePoint point) {
+        entries ~= Entry(point);
+        ctq.insert(&entries[$-1]);
+    }
+
+    void popOne() {
+        while( !.popOne(ctq, now) ) {
+            wait(ctq, now);
+        }
+    }
+
+    insert(TscTimePoint(74)); // Level 1 bin 3 => L0 b3
+    insert(TscTimePoint(101)); // Level 2 => L1 b1
+
+    popOne();
+    auto timeToWait = ctq.binsTillNextEntry();
+    assert( timeToWait!=ulong.max, "CTQ failed to account for entry in overflow" );
+
+    // After the pop pointer has moved, insert two points before and after the second point
+    insert(TscTimePoint(90)); // L1 b0
+    insert(TscTimePoint(120)); // L1 b2
+
+    popOne();
+    popOne();
+    popOne();
+
+    timeToWait = ctq.binsTillNextEntry();
+    assertEQ( timeToWait, ulong.max, "Empty CTQ does not return infinite wait" );
 }
