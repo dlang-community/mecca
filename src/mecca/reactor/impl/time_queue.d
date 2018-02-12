@@ -176,6 +176,7 @@ public:
     }
 
     void insert(T entry) nothrow @safe @nogc {
+        // DMDBUG compile by package sometimes thinks this function is pure, which causes linker errors :-(
         notPure();
 
         void updateHint(ulong binsInFuture) {
@@ -427,8 +428,7 @@ private:
         return (phaseInLevel(level) + numBins - 1) % numBins;
     }
 
-    void notPure() const nothrow @trusted @nogc {
-        // DMDBUG compile by package sometimes thing this function is pure, which causes linker errors :-(
+    @notrace void notPure() const nothrow @trusted @nogc {
         if( numBins==0 ) // Which it never is
             notPureDMDBUG++; // Cannot be pure.
     }
