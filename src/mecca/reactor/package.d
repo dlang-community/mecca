@@ -822,7 +822,7 @@ public:
         return TimerHandle(callback);
     }
 
-    // Cancel a currently registered timer
+    /// Cancel a currently registered timer
     void cancelTimer(TimerHandle handle) @safe @nogc {
         if( !handle.isValid )
             return;

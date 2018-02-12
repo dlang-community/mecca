@@ -1,3 +1,4 @@
+/// When things go wrong....
 module mecca.lib.exception;
 
 public import core.exception: AssertError, RangeError;
@@ -40,6 +41,19 @@ extern(C) private void ALREADY_EXTRACTING_STACK() {
     assert (false, "you're not supposed to call this function");
 }
 
+/**
+ * Extract the stack backtrace.
+ *
+ * The pointers returned from the function are one less than the actual number. This is so that a symbol lookup will report the
+ * correct function even when the call to _d_throw_exception was the last thing in it.
+ *
+ * Params:
+ * callstack = range to receive the call stack pointers
+ * skip = number of near frames to skip.
+ *
+ * Retruns:
+ * Range where the actual pointers reside.
+ */
 void*[] extractStack(void*[] callstack, size_t skip = 0) nothrow @trusted @nogc {
     /* thread local */ static bool alreadyExtractingStack = false;
     if (alreadyExtractingStack) {
@@ -91,6 +105,7 @@ struct DefaultTraceInfoABI {
     }
 }
 
+/// Static buffer for storing no GC exceptions
 struct ExcBuf {
     enum MAX_EXCEPTION_INSTANCE_SIZE = 256;
     enum MAX_EXCEPTION_MESSAGE_SIZE = 256;
@@ -100,6 +115,7 @@ struct ExcBuf {
     ubyte[MAX_TRACEBACK_SIZE] ti;
     char[MAX_EXCEPTION_MESSAGE_SIZE] msgBuf;
 
+    /// Get the Throwable stored in the buffer
     Throwable get() nothrow @trusted @nogc {
         if (*(cast(void**)ex.ptr) is null) {
             return null;
@@ -107,6 +123,7 @@ struct ExcBuf {
         return cast(Throwable)ex.ptr;
     }
 
+    /// Set the exception that buffer is to hold.
     Throwable set(Throwable t, bool setTraceback = false) nothrow @trusted @nogc {
         static assert (this.ex.offsetof == 0);
         if (t is null) {
@@ -147,7 +164,13 @@ struct ExcBuf {
         return tobj;
     }
 
-    void setTraceback(Throwable tobj = null) nothrow @trusted @nogc {
+    /**
+     * set a Throwable's backtrace to the current point.
+     *
+     * Params:
+     * tobj = the Throwable which backtrace to set. If null, set the buffer's Throwable (which must not be null).
+     */
+    void setTraceback(Throwable tobj) nothrow @trusted @nogc {
         if (tobj is null) {
             tobj = get();
             assert (tobj !is null, "setTraceback of unset exception");
