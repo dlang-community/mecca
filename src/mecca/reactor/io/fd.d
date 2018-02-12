@@ -400,7 +400,11 @@ private:
     @notrace void objectCall(alias F, T)(T* object, Parameters!F[1..$] args) @trusted @nogc {
         auto size = F(object[0..1], args);
         if( size!=T.sizeof ) {
-            errno = EREMOTEIO; // Inject a "remote IO error"
+            if( size==0 ) {
+                errno = ECONNRESET; // Other side closed. Inject "Connection reset by peer"
+            } else {
+                errno = EREMOTEIO; // Inject a "remote IO error"
+            }
             throw mkExFmt!ErrnoException("%s(%s)", __traits(identifier, F), fd.get().fileNo);
         }
     }
