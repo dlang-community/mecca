@@ -99,6 +99,12 @@ public:
             }
         }
 
+        ASSERT!"Standby overflow bin not empty"( overflow[1-activeOverflow].empty );
+        while( !overflow[activeOverflow].empty ) {
+            _length--;
+            overflow[activeOverflow].popHead;
+        }
+
         ASSERT!"At end of CascadingTimeQueue.close() _length is %s (expected 0)"(_length==0, _length);
     }
 
@@ -548,6 +554,7 @@ unittest {
     enum numLevels = 3;
     CascadingTimeQueue!(Entry*, numBins, numLevels) ctq;
     ctq.open(resolution, TscTimePoint(0));
+    scope(success) ctq.close();
     static assert (ctq.spanInBins == (numBins-1) * 16^^2 + 1);
 
     bool[Entry*] entries;
