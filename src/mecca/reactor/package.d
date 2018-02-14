@@ -355,6 +355,7 @@ private:
     bool _open;
     bool _running;
     bool _stopping;
+    bool _gcCollectionNeeded;
     int criticalSectionNesting;
     ulong idleCycles;
     OpenOptions optionsInEffect;
@@ -913,6 +914,23 @@ public:
         return true;
     }
 
+    /** Request that a GC collection take place ASAP
+     *  Params:
+     *  waitForCollection = whether to wait for the collection to finish before returning.
+     */
+    void requestGCCollection(bool waitForCollection = true) @safe @nogc {
+        if( theReactor._stopping )
+            return;
+
+        _gcCollectionNeeded = true;
+        if( theReactor.runningFiberId != MainFiberId ) {
+            theReactor.resumeSpecialFiber(theReactor.mainFiber);
+
+            if( waitForCollection )
+                yieldThisFiber();
+        }
+    }
+
 private:
     @property inout(ReactorFiber)* thisFiber() inout nothrow pure @safe @nogc {
         DBG_ASSERT!"No current fiber as reactor was not started"(isRunning);
@@ -1336,29 +1354,19 @@ private:
         _thisFiber = mainFiber;
         scope(exit) _thisFiber = null;
 
-        bool needGcCollect;
-        static void gcEnabler(bool* needGcCollect) {
-            if( theReactor._stopping )
-                return;
-
-            *needGcCollect = true;
-            if( theReactor.runningFiberId != MainFiberId )
-                theReactor.resumeSpecialFiber(theReactor.mainFiber);
-        }
-
         if( !optionsInEffect.utGcDisabled )
-            TimerHandle gcTimer = registerRecurringTimer!gcEnabler(optionsInEffect.gcInterval, &needGcCollect);
+            TimerHandle gcTimer = registerRecurringTimer!requestGCCollection(optionsInEffect.gcInterval, false);
 
         try {
             while (!_stopping) {
                 runTimedCallbacks();
-                if( needGcCollect ) {
-                    needGcCollect = false;
+                if( _gcCollectionNeeded ) {
+                    _gcCollectionNeeded = false;
                     TscTimePoint.hardNow(); // Update the hard now value
-                    INFO!"Beginning GC collection cycle"();
+                    INFO!"#GC collection cycle started"();
                     GC.collect();
                     TscTimePoint.hardNow(); // Update the hard now value
-                    INFO!"GC collection cycle ended"();
+                    INFO!"#GC collection cycle ended"();
                 }
 
                 if( !_stopping )
