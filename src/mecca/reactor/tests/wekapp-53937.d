@@ -2,12 +2,15 @@ module mecca.reactor.tests.wekapp_53937;
 
 version(unittest):
 
+import std.string;
+
+import mecca.log;
 import mecca.reactor;
-import mecca.runtime.ut;
 import mecca.reactor.sync.barrier;
+import mecca.runtime.ut;
 
 unittest {
-    enum numRuns = 100;
+    enum numRuns = 128;
 
     Barrier exitBarrier;
 
@@ -19,12 +22,14 @@ unittest {
         array.length=100;
         array[] = 100;
 
+        DEBUG!"%s array %s"(theReactor.runningFiberId, &array);
+
         theReactor.requestGCCollection();
 
         // Make sure that post GC everything is still here
         uint verified;
-        foreach( a; array ) {
-            assert(a==100);
+        foreach( i, a; array ) {
+            assert(a==100, "Comparison failed %s [%s]%s!=%s".format(theReactor.runningFiberId, i, a, 100));
             verified++;
         }
 

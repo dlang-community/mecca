@@ -36,7 +36,6 @@ public:
     void addWaiter() nothrow @safe @nogc {
         evt.reset();
         numWaiters++;
-        DEBUG!"Barrier addWaiter called. Now at %s"(numWaiters);
     }
 
     /**
@@ -45,7 +44,6 @@ public:
      * Call this when the completion event the barrier synchronizes on happens. This function does not sleep.
      */
     void markDone() nothrow @safe @nogc {
-        DEBUG!"Barrier markDone called. Reducing from %s"(numWaiters);
         assert (numWaiters > 0, "numWaiters=0");
         numWaiters--;
         if (numWaiters == 0) {

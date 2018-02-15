@@ -41,7 +41,7 @@ version (D_InlineAsm_X86_64) version (Posix) {
         }
     }
 
-    extern(C) void _fibril_switch(void** fromRSP /* RDI */, void* toRSP /* RSI */) {
+    extern(C) void _fibril_switch(void** fromRSP /* RDI */, void* toRSP /* RSI */, void** rspForGc /* RDX */) {
         pragma(inline, false);
         asm pure nothrow @nogc {
             naked;
@@ -55,6 +55,7 @@ version (D_InlineAsm_X86_64) version (Posix) {
             push R14;
             push R15;
             mov [RDI], RSP;
+            mov [RDX], RSP;
 
             // set RSP to `toRSP` and load state
             // and return to caller (RET is at TOS)
@@ -109,9 +110,9 @@ struct Fibril {
     void set(void[] stackArea, void delegate() nothrow dg) nothrow @nogc {
         set(stackArea, cast(void function(void*) nothrow)dg.funcptr, dg.ptr);
     }
-    void switchTo(ref Fibril next) nothrow @trusted @nogc {
+    void switchTo(ref Fibril next, void** rspForGc) nothrow @trusted @nogc {
         pragma(inline, true);
-        _fibril_switch(&this.rsp, next.rsp);
+        _fibril_switch(&this.rsp, next.rsp, rspForGc);
     }
 }
 
@@ -124,20 +125,21 @@ unittest {
     ubyte[4096] stack2;
 
     Fibril mainFib, fib1, fib2;
+    void*  mainGcRsp, fib1GcRsp, fib2GcRsp;
     char[] order;
 
     void func1() nothrow {
         while (true) {
             order ~= '1';
             //try{writefln("in fib1");} catch(Throwable){}
-            fib1.switchTo(fib2);
+            fib1.switchTo(fib2, &fib1GcRsp);
         }
     }
     void func2() nothrow {
         while (true) {
             order ~= '2';
             //try{writefln("in fib2");} catch(Throwable){}
-            fib2.switchTo(mainFib);
+            fib2.switchTo(mainFib, &fib2GcRsp);
         }
     }
 
@@ -150,7 +152,7 @@ unittest {
     foreach(_; 0 .. ITERS) {
         order ~= 'M';
         //try{writefln("in main");} catch(Throwable){}
-        mainFib.switchTo(fib1);
+        mainFib.switchTo(fib1, &mainGcRsp);
     }
 
     assert (order == "M12".repeat(ITERS).join(""), order);
@@ -163,17 +165,18 @@ unittest {
     ubyte[4096] stack2;
 
     Fibril mainFib, fib1, fib2;
+    void*  mainGcRsp, fib1GcRsp, fib2GcRsp;
     size_t counter;
 
     void func1() nothrow {
         while (true) {
             counter++;
-            fib1.switchTo(fib2);
+            fib1.switchTo(fib2, &fib1GcRsp);
         }
     }
     void func2() nothrow {
         while (true) {
-            fib2.switchTo(mainFib);
+            fib2.switchTo(mainFib, &fib2GcRsp);
         }
     }
 
@@ -185,7 +188,7 @@ unittest {
     import mecca.lib.time: TscTimePoint;
     auto t0 = TscTimePoint.hardNow;
     foreach(_; 0 .. ITERS) {
-        mainFib.switchTo(fib1);
+        mainFib.switchTo(fib1, &mainGcRsp);
     }
     auto dt = TscTimePoint.hardNow.diff!"cycles"(t0);
     assert (counter == ITERS);

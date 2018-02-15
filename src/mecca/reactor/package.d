@@ -109,7 +109,7 @@ align(1):
         setToInit(params);
 
         if( !main ) {
-            params.stackDescriptor.bstack = params;
+            params.stackDescriptor.bstack = params; // OnStackParams
             params.stackDescriptor.tstack = fibril.rsp;
             params.stackDescriptor.add();
         }
@@ -125,6 +125,11 @@ align(1):
             params.stackDescriptor.remove();
         }
         params = null;
+    }
+
+    @notrace void switchTo(ReactorFiber* next) nothrow @safe @nogc {
+        pragma(inline, true);
+        fibril.switchTo(next.fibril, &params.stackDescriptor.tstack);
     }
 
     @property FiberId identity() const nothrow @safe @nogc {
@@ -145,10 +150,6 @@ align(1):
     }
 
 private:
-    void updateStackDescriptor() nothrow @safe @nogc {
-        params.stackDescriptor.tstack = fibril.rsp;
-    }
-
     @notrace void wrapper() nothrow {
         while (true) {
             try {
@@ -366,7 +367,6 @@ private:
     LinkedQueueWithLength!(ReactorFiber*) scheduledFibers;
 
     ReactorFiber* _thisFiber;
-    ReactorFiber* prevFiber;
     ReactorFiber* mainFiber;
     ReactorFiber* idleFiber;
     alias IdleCallbackDlg = void delegate(Duration);
@@ -425,9 +425,8 @@ public:
 
         foreach(i, ref fib; allFibers) {
             auto stack = fiberStacks[i * stackPerFib .. (i + 1) * stackPerFib];
-            errnoEnforce(mprotect(stack.ptr, SYS_PAGE_SIZE, PROT_NONE) == 0);
-            //errnoEnforce(munmap(stack.ptr, GUARD_ZONE_SIZE) == 0, "munmap");
-            fib.setup(stack[SYS_PAGE_SIZE .. $], i==0);
+            errnoEnforce(mprotect(stack.ptr, GUARD_ZONE_SIZE, PROT_NONE) == 0, "Guard zone protection failed");
+            fib.setup(stack[GUARD_ZONE_SIZE .. $], i==0);
 
             if (i >= NUM_SPECIAL_FIBERS) {
                 freeFibers.append(&fib);
@@ -496,7 +495,6 @@ public:
         setToInit(scheduledFibers);
 
         _thisFiber = null;
-        prevFiber = null;
         mainFiber = null;
         idleFiber = null;
         idleCallbacks.length = 0;
@@ -967,12 +965,12 @@ private:
 
             assert (!scheduledFibers.empty, "scheduledList is empty");
 
-            prevFiber = thisFiber;
-            if( prevFiber.state==ReactorFiber.State.Running )
-                prevFiber.state = ReactorFiber.State.Sleeping;
+            auto currentFiber = thisFiber;
+            if( currentFiber.state==ReactorFiber.State.Running )
+                currentFiber.state = ReactorFiber.State.Sleeping;
             else {
-                assert( prevFiber.state==ReactorFiber.State.Done );
-                prevFiber.state = ReactorFiber.State.None;
+                assert( currentFiber.state==ReactorFiber.State.Done );
+                currentFiber.state = ReactorFiber.State.None;
             }
 
             _thisFiber = scheduledFibers.popHead();
@@ -981,18 +979,21 @@ private:
             thisFiber.flag!"SCHEDULED" = false;
             thisFiber.state = ReactorFiber.State.Running;
 
-            if (prevFiber !is thisFiber) {
+            if (currentFiber !is thisFiber) {
                 // make the switch
-                prevFiber.fibril.switchTo(thisFiber.fibril);
+                currentFiber.switchTo(thisFiber);
             }
         }
 
         // in destination fiber
         {
-            // note that GC cannot happen here since we disabled it in the mainloop() --
-            // otherwise this might have been race-prone
-            prevFiber.updateStackDescriptor();
-            //DEBUG!"SWITCH into %s"(thisFiber.identity);
+            /+
+               Important note:
+               Any code you place here *must* be replicated at the beginning of ReactorFiber.wrapper. Fibers launched
+               for the first time do not return from `switchTo` above.
+             +/
+
+            // DEBUG!"SWITCH into %s"(thisFiber.identity);
 
             // This might throw, so it needs to be the last thing we do
             thisFiber.switchInto();
@@ -1359,6 +1360,7 @@ private:
 
         try {
             while (!_stopping) {
+                DBG_ASSERT!"Switched to mainloop with wrong thisFiber %s"(thisFiber is mainFiber, thisFiber.identity);
                 runTimedCallbacks();
                 if( _gcCollectionNeeded ) {
                     _gcCollectionNeeded = false;
