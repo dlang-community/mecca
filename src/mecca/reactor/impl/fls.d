@@ -5,6 +5,7 @@ import mecca.log;
 enum FLS_AREA_SIZE = 512;
 
 struct FLSArea {
+    align( (void*).alignof ):
     __gshared static const FLSArea flsAreaInit;
     __gshared static int _flsOffset = 0;
     /* thread local */ static FLSArea* thisFls;
@@ -28,6 +29,9 @@ struct FLSArea {
 
     private static int alloc(T)(T initVal) {
         // Make sure allocation is properly aligned
+        import std.string : format;
+        static assert(T.alignof <= (void*).alignof, "Cannot allocate on FLS type %s with alignement %s > ptr alignement"
+                .format(T.stringof, T.alignof));
         _flsOffset += T.alignof - 1;
         _flsOffset -= _flsOffset % T.alignof;
 
@@ -38,6 +42,8 @@ struct FLSArea {
         return offset;
     }
 }
+static assert(FLSArea.alignof == (void*).alignof, "FLSArea must have same alignement as a pointer");
+static assert((FLSArea.data.offsetof % (void*).alignof) == 0, "FLSArea data must have same alignement as a pointer");
 
 template FiberLocal(T, string NAME, T initVal=T.init) {
     __gshared int offset = -1;
@@ -92,4 +98,10 @@ unittest {
 }
 
 
-
+unittest {
+    align(64) struct A {
+        align(64):
+        uint a;
+    }
+    static assert( !__traits(compiles, FiberLocal!(A, "wontWork", A( 12 ))) );
+}
