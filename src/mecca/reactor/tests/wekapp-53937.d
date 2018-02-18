@@ -8,8 +8,10 @@ import mecca.log;
 import mecca.reactor;
 import mecca.reactor.sync.barrier;
 import mecca.runtime.ut;
+import mecca.reactor.impl.fls;
 
 unittest {
+    META!"UT for testing GC's scanning of local fiber variables"();
     enum numRuns = 128;
 
     Barrier exitBarrier;
@@ -66,6 +68,62 @@ unittest {
         exitBarrier.waitAll();
 
         verify();
+    }
+
+    testWithReactor(&testBody);
+}
+
+unittest {
+    META!"UT for testing GC's scanning of fiber local variables"();
+    enum numRuns = 128;
+    enum ARR_LENGTH = 493;
+
+    Barrier entryBarrier, exitBarrier;
+
+    alias utGcArray = FiberLocal!(ubyte[], "utGcArray");
+
+    static void allocate() {
+        pragma(inline, false);
+        utGcArray.length = ARR_LENGTH;
+        utGcArray[] = cast(ubyte)theReactor.runningFiberId.value;
+    }
+
+    static void verify() {
+        ubyte expected = cast(ubyte)theReactor.runningFiberId.value;
+        uint verified;
+
+        foreach( i, a; utGcArray ) {
+            assert(a==expected, "Comparison failed %s %s[%s] %s!=%s".format(theReactor.runningFiberId, &(utGcArray()), i,
+                    a, expected));
+            verified++;
+        }
+
+        assert(verified==ARR_LENGTH);
+    }
+
+    void allocator() {
+        scope(exit) exitBarrier.markDone();
+
+        allocate();
+
+        DEBUG!"Pre GC verify"();
+        verify();
+
+        entryBarrier.markDoneAndWaitAll();
+
+        theReactor.requestGCCollection();
+        DEBUG!"Post GC verify"();
+        verify();
+    }
+
+    void testBody() {
+        foreach(i; 0..numRuns) {
+            theReactor.spawnFiber( &allocator );
+            entryBarrier.addWaiter();
+            exitBarrier.addWaiter();
+        }
+
+        exitBarrier.waitAll();
     }
 
     testWithReactor(&testBody);

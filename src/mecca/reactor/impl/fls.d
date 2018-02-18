@@ -27,6 +27,10 @@ struct FLSArea {
     }
 
     private static int alloc(T)(T initVal) {
+        // Make sure allocation is properly aligned
+        _flsOffset += T.alignof - 1;
+        _flsOffset -= _flsOffset % T.alignof;
+
         int offset = _flsOffset;
         _flsOffset += T.sizeof;
         assert (_flsOffset <= data.sizeof);

@@ -109,7 +109,7 @@ align(1):
         setToInit(params);
 
         if( !main ) {
-            params.stackDescriptor.bstack = params; // OnStackParams
+            params.stackDescriptor.bstack = stackArea.ptr + stackArea.length; // Include params, as FLS is stored there
             params.stackDescriptor.tstack = fibril.rsp;
             params.stackDescriptor.add();
         }
