@@ -193,17 +193,17 @@ public:
         return cycles == rhs.cycles;
     }
 
-    TscTimePoint opBinary(string op: "+")(long cycles) const @nogc @safe nothrow {
+    TscTimePoint opBinary(string op: "+")(long cycles) const @nogc @safe nothrow pure {
         return TscTimePoint(this.cycles + cycles);
     }
     TscTimePoint opBinary(string op: "+")(Duration dur) const @nogc @safe nothrow {
         return TscTimePoint(cycles + toCycles(dur));
     }
 
-    TscTimePoint opBinary(string op: "-")(long cycles) const @nogc @safe nothrow {
+    TscTimePoint opBinary(string op: "-")(long cycles) const @nogc @safe nothrow pure {
         return TscTimePoint(this.cycles - cycles);
     }
-    Duration opBinary(string op: "-")(TscTimePoint rhs) const @nogc @safe nothrow {
+    Duration opBinary(string op: "-")(TscTimePoint rhs) const @nogc @safe nothrow pure {
         return TscTimePoint.toDuration(cycles - rhs.cycles);
     }
     TscTimePoint opBinary(string op: "-")(Duration dur) const @nogc @safe nothrow {
@@ -263,6 +263,7 @@ struct Timeout {
     TscTimePoint expiry;
 
     /// Construct a timeout from TscTimePoint
+    @safe @nogc pure nothrow
     this(TscTimePoint expiry) {
         this.expiry = expiry;
     }
