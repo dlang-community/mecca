@@ -137,6 +137,14 @@ struct ConnectedDatagramSocket {
 
         return clientSock;
     }
+
+
+    /**
+     * send an entire object
+     */
+    @notrace void sendObj(T)(T* data, int flags=MSG_EOR, Timeout timeout = Timeout.infinite) @safe @nogc {
+        sock.sendObj(data, flags, timeout);
+    }
 }
 
 /**
@@ -284,10 +292,13 @@ struct Socket {
     /**
      * send data over a connected socket
      */
-    @notrace ssize_t send(const void[] data, int flags, Timeout timeout = Timeout.infinite) @trusted @nogc {
+    @notrace ssize_t send(const void[] data, int flags=0, Timeout timeout = Timeout.infinite) @trusted @nogc {
         return fd.blockingCall!(.send)(data.ptr, data.length, flags, timeout);
     }
 
+    /**
+     * send an entire object over a connected socket
+     */
     @notrace void sendObj(T)(T* data, int flags, Timeout timeout = Timeout.infinite) @safe @nogc {
         objectCall!send(data, flags, timeout);
     }
@@ -346,7 +357,7 @@ struct Socket {
      *
      * Will throw TimeoutExpired if the timeout expired
      */
-    @notrace void recvObj(T)(T* data, int flags, Timeout timeout = Timeout.infinite) @safe @nogc {
+    @notrace void recvObj(T)(T* data, int flags=0, Timeout timeout = Timeout.infinite) @safe @nogc {
         objectCall!recv(data, flags, timeout);
     }
 
