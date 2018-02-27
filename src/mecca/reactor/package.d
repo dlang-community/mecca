@@ -47,6 +47,8 @@ struct ReactorFiber {
         FLSArea                 flsBlock;
         ExcBuf                  currExcBuf;
         LogsFiberSavedContext   logsSavedContext;
+        string                  fiberName;              // String identifying what this fiber is doing
+        void*                   fiberPtr;               // The same with a numerical value
     }
     enum Flags: ubyte {
         // XXX Do we need CALLBACK_SET?
@@ -187,6 +189,8 @@ private:
                 ERROR!"wrapper finished on %s with exception: %s"(identity, ex.msg);
 
             params.fiberBody.clear();
+            params.fiberName = null;
+            params.fiberPtr = null;
             flag!"CALLBACK_SET" = false;
             assert (state == State.Running);
             state = State.Done;
@@ -536,8 +540,11 @@ public:
      */
     @notrace FiberHandle spawnFiber(T...)(T args) nothrow @safe @nogc {
         static assert(T.length>=1, "Must pass at least the function/delegate to spawnFiber");
+        static assert(isDelegate!(T[0]) || isFunctionPointer!(T[0]),
+                "spawnFiber first argument must be function or delegate");
         auto fib = _spawnFiber(false);
         fib.params.fiberBody.set(args);
+        setFiberName(fib, "Fiber", args[0]);
         return FiberHandle(fib);
     }
 
@@ -556,6 +563,7 @@ public:
         import std.algorithm: move;
         mixin( genMoveArgument( args.length, "fib.params.fiberBody.set!F", "args" ) );
 
+        setFiberName(fib, F.mangleof, &F);
         return FiberHandle(fib);
     }
 
@@ -927,6 +935,21 @@ public:
             if( waitForCollection )
                 yield();
         }
+    }
+
+    /**
+     * Set a fiber name
+     *
+     * Used by certain diagnostic functions to distinguish the different fiber types and create histograms.
+     * Arguments bear no specific meaning, but default to describing the function used to start the fiber.
+     */
+    @notrace void setFiberName(FiberHandle fh, string name, void *ptr) nothrow @safe @nogc {
+        setFiberName(fh.get, name, ptr);
+    }
+
+    /// ditto
+    @notrace void setFiberName(T)(FiberHandle fh, string name, scope T dlg) nothrow @safe @nogc if( isDelegate!T ) {
+        setFiberName(fh.get, name, dlg.ptr);
     }
 
 private:
@@ -1398,6 +1421,16 @@ private:
         META!"Stopping reactor"();
         _running = false;
         _stopping = false;
+    }
+
+    @notrace void setFiberName(ReactorFiber* fib, string name, void *ptr) nothrow @safe @nogc {
+        fib.params.fiberName = name;
+        fib.params.fiberPtr = ptr;
+    }
+
+    @notrace void setFiberName(T)(ReactorFiber* fib, string name, scope T dlg) nothrow @safe @nogc if( isDelegate!T ) {
+        fib.params.fiberName = name;
+        fib.params.fiberPtr = dlg.ptr;
     }
 }
 

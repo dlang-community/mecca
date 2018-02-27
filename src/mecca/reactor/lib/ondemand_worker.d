@@ -70,6 +70,7 @@ struct OnDemandWorkerFunc(alias F) {
                 assert(!done.isSet);
                 done.set();
             }
+            theReactor.setFiberName(fiberHandle, __traits(identifier, F), &F);
             do {
                 runAgain = false;
                 scope(exit) args = defaultArgs;

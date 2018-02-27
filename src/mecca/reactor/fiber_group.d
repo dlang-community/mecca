@@ -227,6 +227,7 @@ private:
         }
 
         fg.addThisFiber();
+        theReactor.setFiberName(theReactor.currentFiberHandle, "FiberGroupMember", fn);
         fn(args);
     }
 }
