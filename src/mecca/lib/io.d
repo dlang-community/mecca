@@ -6,12 +6,15 @@ public import core.sys.posix.fcntl :
     O_ACCMODE, O_RDONLY, O_WRONLY, O_RDWR, O_CREAT, O_EXCL, O_TRUNC, O_APPEND, O_DSYNC, O_RSYNC, O_SYNC, O_NOCTTY;
     /* O_NOATIME, O_NOFOLLOW not included because not defined */
 import core.sys.posix.fcntl;
-import std.traits;
+import std.algorithm : min, move;
 import std.conv;
+import std.traits;
 
 import mecca.lib.exception;
+import mecca.lib.memory;
 import mecca.lib.string;
 import mecca.log;
+import mecca.platform.x86;
 
 private extern(C) nothrow @trusted @nogc {
     int pipe2(ref int[2], int flags);
@@ -95,6 +98,16 @@ public:
         as!"nothrow @nogc"({ res = F(fd, args); });
 
         return res;
+    }
+
+    /// @safe read
+    auto read(void[] buffer) @trusted @nogc {
+        return checkedCall!(core.sys.posix.unistd.read, "read failed")(buffer.ptr, buffer.length);
+    }
+
+    /// @safe write
+    auto write(void[] buffer) @trusted @nogc {
+        return checkedCall!(core.sys.posix.unistd.write, "write failed")(buffer.ptr, buffer.length);
     }
 
     /**
@@ -222,4 +235,234 @@ unittest {
 
     assert( .close(fd1copy)<0 && errno==EBADF, "FD1 was not closed" );
     assert( .close(fd2copy)<0 && errno==EBADF, "FD2 was not closed" );
+}
+
+/// A wrapper to perform buffered IO over another IO type
+struct BufferedIO(T) {
+    enum MIN_BUFF_SIZE = 128;
+
+private:
+    T fd;
+    MmapArray!ubyte rawMemory;
+    size_t readBufferSize;
+    void[] readBuffer, writeBuffer;
+
+public:
+    // BufferedIO is not copyable even if T is copyable (which it typically won't be)
+    @disable this(this);
+
+    this(T fd) {
+        this.fd = move(fd);
+    }
+
+    /// Struct destructor
+    ~this() @safe @nogc {
+        close();
+    }
+
+    /**
+     * Prepare the buffers.
+     *
+     * The first form sets the same buffer size for both read and write operations. The second sets the read and write
+     * buffer sizes independently.
+     */
+    void open(size_t bufferSize) @safe @nogc {
+        open( bufferSize, bufferSize );
+    }
+
+    /// ditto
+    void open(size_t readBufferSize, size_t writeBufferSize) @safe @nogc {
+        ASSERT!"BufferedIO.open called twice"( rawMemory.closed );
+        assertGE( readBufferSize, MIN_BUFF_SIZE, "readBufferSize not big enough" );
+        assertGE( writeBufferSize, MIN_BUFF_SIZE, "writeBufferSize not big enough" );
+
+        // Round readBufferSize to a multiple of the cacheline size, so that the write buffer be cache aligned
+        readBufferSize += CACHE_LINE_SIZE-1;
+        readBufferSize -= readBufferSize % CACHE_LINE_SIZE;
+
+        size_t total = readBufferSize + writeBufferSize;
+
+        // Round size up to next page
+        total += SYS_PAGE_SIZE - 1;
+        total -= total % SYS_PAGE_SIZE;
+
+        rawMemory.allocate( total, false ); // We do NOT want the GC to scan this area
+        size_t added = total - readBufferSize - writeBufferSize;
+        added /= 2;
+        added -= added % CACHE_LINE_SIZE;
+        this.readBufferSize = readBufferSize + added;
+
+        readBuffer = null;
+        writeBuffer = null;
+    }
+
+    /// Dispose of the buffers
+    void close() @safe @nogc {
+        if( writeBuffer.length!=0 ) {
+            ERROR!"Closing BufferedIO while it still has unflushed data to write"();
+        }
+        rawMemory.free();
+        readBufferSize = 0;
+        readBuffer = null;
+        writeBuffer = null;
+    }
+
+
+    /// Perform @safe buffered read
+    ///
+    /// Notice that if there is data already in the buffers, that data is what will be returned, even if the read
+    /// requested more (partial result).
+    auto read(ARGS...)(void[] buffer, ARGS args) @trusted @nogc {
+        size_t cachedLength = min(buffer.length, readBuffer.length);
+        if( cachedLength>0 ) {
+            // Data already in buffer
+            buffer[0..cachedLength][] = readBuffer[0..cachedLength][];
+            readBuffer = readBuffer[cachedLength..$];
+
+            return cachedLength;
+        }
+
+        cachedLength = fd.read(rawReadBuffer, args);
+        readBuffer = rawReadBuffer[0..cachedLength];
+
+        if( cachedLength==0 )
+            return 0;
+
+        // Call ourselves again. Since the buffer is now not empty, the call should succeed without performing the
+        // actual underlying read again.
+        return read(buffer, args);
+    }
+
+    /// Perform @safe buffered write
+    ///
+    /// Function does not return until all data is either written to FD or buffered
+    void write(ARGS...)(void[] buffer, ARGS args) @trusted @nogc {
+        if( buffer.length>rawWriteBuffer.length ) {
+            // Buffer is big - write it directly to save on copies
+            flush(args);
+            DBG_ASSERT!"write buffer is not empty after flush"(writeBuffer.length == 0);
+            while( buffer.length>0 ) {
+                auto numWritten = fd.write(buffer, args);
+                buffer = buffer[numWritten..$];
+            }
+
+            return;
+        }
+
+        while( buffer.length>0 ) {
+            size_t start = writeBuffer.length;
+            size_t writeSize = rawWriteBuffer.length - start;
+            writeSize = min(writeSize, buffer.length);
+
+            writeBuffer = rawWriteBuffer[0 .. start+writeSize];
+            writeBuffer[start..$][] = buffer[0..writeSize][];
+
+            buffer = buffer[writeSize..$];
+
+            if( writeBuffer.length==rawWriteBuffer.length )
+                flush(args);
+        }
+    }
+
+    /// Flush the write buffers
+    void flush(ARGS...)(ARGS args) @trusted @nogc {
+        scope(failure) {
+            /* In case of mid-op failure, writeBuffer might end up not at the start of rawBuffer, which violates
+             * invariants assumed elsewhere in the code.
+             */
+            auto len = writeBuffer.length;
+            // Source and destination buffers may overlap, so we cannot use slice operation for the copy
+            foreach( i, d; cast(ubyte[])writeBuffer )
+                (cast(ubyte[])rawWriteBuffer)[i] = d;
+            writeBuffer = rawWriteBuffer[0..len];
+        }
+
+        while( writeBuffer.length>0 ) {
+            auto numWritten = fd.write(writeBuffer, args);
+            writeBuffer = writeBuffer[numWritten..$];
+        }
+    }
+
+    alias fd this;
+private:
+    size_t writeBufferSize() const pure nothrow @safe @nogc {
+        return rawMemory.length - readBufferSize;
+    }
+
+    @property void[] rawReadBuffer() pure nothrow @safe @nogc {
+        DBG_ASSERT!"Did not call open"(readBufferSize!=0);
+        DBG_ASSERT!"readBufferSize greater than total raw memory. %s<%s"(
+                readBufferSize<rawMemory.length, readBufferSize, rawMemory.length );
+        return rawMemory[0..readBufferSize];
+    }
+    @property void[] rawWriteBuffer() pure nothrow @safe @nogc {
+        DBG_ASSERT!"readBufferSize greater than total raw memory. %s<%s"(
+                readBufferSize<rawMemory.length, readBufferSize, rawMemory.length );
+        return rawMemory[readBufferSize..$];
+    }
+}
+
+unittest {
+    enum TestSize = 32000;
+    enum ReadBuffSize = 2000;
+    enum WriteBuffSize = 2000;
+
+    ubyte[] reference;
+    uint numReads, numWrites;
+
+    struct MockFD {
+        uint readOffset, writeOffset;
+
+        ssize_t read(void[] buffer) @nogc {
+            auto len = min(buffer.length, reference.length - readOffset);
+            buffer[0..len] = reference[readOffset..readOffset+len][];
+            readOffset += len;
+            if( len>0 )
+                numReads++;
+
+            return len;
+        }
+
+        size_t write(void[] buffer) @nogc {
+            foreach(datum; cast(ubyte[])buffer) {
+                assertEQ(datum, cast(ubyte)(reference[writeOffset]+1));
+                writeOffset++;
+            }
+
+            numWrites++;
+
+            return buffer.length;
+        }
+    }
+
+    BufferedIO!MockFD fd;
+
+    import std.random;
+    auto seed = unpredictableSeed;
+    scope(failure) ERROR!"Test failed with seed %s"(seed);
+    auto rand = Random(seed);
+
+    reference.length = TestSize;
+    foreach(ref d; reference) {
+        d = uniform!ubyte(rand);
+    }
+
+    fd.open(ReadBuffSize, WriteBuffSize);
+
+    ubyte[17] buffer;
+    ssize_t numRead;
+    size_t total;
+    while( (numRead = fd.read(buffer))>0 ) {
+        total+=numRead;
+        buffer[0..numRead][] += 1;
+        fd.write(buffer[0..numRead]);
+    }
+
+    fd.flush();
+
+    assertEQ(total, TestSize, "Incorrect total number of bytes processed");
+    assertEQ(fd.readOffset, TestSize, "Did not read correct number of bytes");
+    assertEQ(fd.writeOffset, TestSize, "Did not write correct number of bytes");
+    assertEQ(numReads, 16);
+    assertEQ(numWrites, 16);
 }

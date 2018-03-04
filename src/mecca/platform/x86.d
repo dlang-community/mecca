@@ -1,5 +1,7 @@
 module mecca.platform.x86;
 
+/// Size in bytes of a single cache line
+enum CACHE_LINE_SIZE = 64;
 
 version(LDC) {
     public import ldc.intrinsics: readTSC = llvm_readcyclecounter;

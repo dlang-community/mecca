@@ -29,6 +29,10 @@ public import mecca.platform.x86: prefetch;
 struct MmapArray(T) {
     T[] arr;
 
+    ~this() nothrow @safe @nogc {
+        free();
+    }
+
     void allocate(size_t numElements, bool registerWithGC = false) @trusted @nogc {
         assert (arr is null, "Already open");
         assert (numElements > 0);
