@@ -210,7 +210,7 @@ private:
         } else {
             FLSArea.switchToNone();
         }
-        logSwitchFiber(&params.logsSavedContext, cast( Parameters!logSwitchFiber[1] )identity.value);
+        logSwitchInto();
 
         if (flag!"HAS_EXCEPTION") {
             Throwable ex = params.currExcBuf.get();
@@ -222,6 +222,10 @@ private:
             flag!"HAS_EXCEPTION" = false;
             throw ex;
         }
+    }
+
+    void logSwitchInto() nothrow @safe @nogc{
+        logSwitchFiber(&params.logsSavedContext, cast( Parameters!logSwitchFiber[1] )identity.value);
     }
 }
 
@@ -1432,6 +1436,31 @@ private:
         fib.params.fiberName = name;
         fib.params.fiberPtr = dlg.ptr;
     }
+
+    import std.string : format;
+    enum string decl_log_as(string logLevel) = q{
+        @notrace public void %1$s_AS(
+            string fmt, string file = __FILE__, string mod = __MODULE__, int line = __LINE__, T...)
+            (FiberHandle fh, T args) nothrow @safe @nogc
+        {
+            auto fiber = fh.get;
+            if( fiber is null ) {
+                ERROR!("Can't issue %1$s log as %%s. Original log: "~fmt, file, mod, line)(fh, args);
+                return;
+            }
+
+            auto currentFiber = currentFiberPtr();
+            fiber.logSwitchInto();
+            scope(exit) currentFiber.logSwitchInto();
+
+            %1$s!(fmt, file, mod, line)(args);
+        }
+    }.format(logLevel);
+    mixin(decl_log_as!"DEBUG");
+    mixin(decl_log_as!"INFO");
+    mixin(decl_log_as!"WARN");
+    mixin(decl_log_as!"ERROR");
+    mixin(decl_log_as!"META");
 }
 
 // Expose the conversion to/from ReactorFiber only to the reactor package
@@ -1729,3 +1758,38 @@ unittest {
             });
 }
 +/
+
+unittest {
+    // No automatic failing, but at least exercise the *_AS loggers
+    import mecca.reactor.sync.event;
+    Event finish;
+
+    META!"#UT exercise log_AS functions"();
+
+    void fiberFunc() {
+        DEBUG!"Fiber started"();
+        finish.wait();
+        DEBUG!"Fiber finished"();
+    }
+
+    void testBody() {
+        auto fh = theReactor.spawnFiber(&fiberFunc);
+        theReactor.yield();
+
+        DEBUG!"Main fiber logging as %s"(fh);
+        theReactor.DEBUG_AS!"DEBUG trace with argument %s"(fh, 17);
+        theReactor.INFO_AS!"INFO trace"(fh);
+        theReactor.WARN_AS!"WARN trace"(fh);
+        theReactor.ERROR_AS!"ERROR trace"(fh);
+        theReactor.META_AS!"META trace"(fh);
+
+        DEBUG!"Killing fiber"();
+        finish.set();
+        theReactor.yield();
+
+        DEBUG!"Trying to log as dead fiber"();
+        theReactor.DEBUG_AS!"DEBUG trace on dead fiber with argument %s"(fh, 18);
+    }
+
+    testWithReactor(&testBody);
+}
