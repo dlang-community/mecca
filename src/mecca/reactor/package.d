@@ -762,6 +762,10 @@ public:
             // TODO make the handle resilient to ABA changes
             return callback !is null && callback._owner !is null;
         }
+
+        @notrace void reset() nothrow @safe @nogc {
+            callback = null;
+        }
     }
 
     /**
