@@ -1,10 +1,15 @@
+/// @safe @nogc arrays
 module mecca.containers.arrays;
 
 import std.traits;
 import mecca.lib.reflection: CapacityType;
 import mecca.lib.exception;
 
+/**
+ * A variable size array with a fixed maximal capacity
+ */
 struct FixedArray(T, size_t N, bool InitializeMembers = true) {
+    /// Alias for querying the array's element type
     alias ElementType = T;
 
 private:
@@ -17,14 +22,28 @@ private:
     L _length;
 
 public:
+    /// Return the maximal capacity of the array
+    ///
+    /// Returns:
+    /// The capacity of the array, using the smallest unsigned type that can hold it.
     @property L capacity() const nothrow pure @nogc {
         return N;
     }
 
-    @property L length() const nothrow pure @nogc {
+    /// Return the length of the array.
+    ///
+    /// This returns the same value as `length`, except it uses the narrowest type in which the length is guaranteed to
+    /// fit.
+    @property L len() const nothrow pure @safe @nogc {
         return _length;
     }
 
+    /// Property for getting and setting the length of the array.
+    @property size_t length() const nothrow pure @safe @nogc {
+        return len;
+    }
+
+    /// ditto
     @property void length(size_t newLen) {
         assert (newLen <= N);
         static if (InitializeMembers) {
@@ -37,7 +56,8 @@ public:
         _length = cast(L)newLen;
     }
 
-    @property T[] array() nothrow pure @nogc {
+    /// Returns a standard slice pointing at the array's data
+    @property inout(T)[] array() inout nothrow pure @safe @nogc {
         return data[0 .. _length];
     }
 
@@ -48,18 +68,39 @@ public:
         return this;
     }
 
+    /// FixedArray is implicitly convertible to its underlying array
     alias array this;
 
-    void safeSetPrefix(const(T)[] arr2) {
-        _length = cast(L)(arr2.length <= N ? arr2.length : N);
-        data[0 .. _length] = cast(T[])arr2;
-    }
-    void safeSetSuffix(const(T)[] arr2) {
-        _length = cast(L)(arr2.length <= N ? arr2.length : N);
-        data[0 .. _length] = cast(T[])arr2[$ - _length .. $];
+    static if( isAssignable!(T, const(T)) ) {
+        // If the type supports assignment from const(T) to T
+
+        /// Set the FixedArray to whatever fits from the beginning of arr2
+        void safeSetPrefix(const(T)[] arr2) {
+            length = arr2.length <= N ? arr2.length : N;
+            data[0 .. _length][] = arr2[0.._length][];
+        }
+        /// Set the FixedArray to whatever fits from the end of arr2
+        void safeSetSuffix(const(T)[] arr2) {
+            length = arr2.length <= N ? arr2.length : N;
+            data[0 .. _length] = arr2[$ - _length .. $];
+        }
+    } else {
+        // Only allow assignement from mutable types
+
+        /// Set the FixedArray to whatever fits from the beginning of arr2
+        void safeSetPrefix(T[] arr2) {
+            length = arr2.length <= N ? arr2.length : N;
+            data[0 .. _length][] = arr2[0.._length][];
+        }
+        /// Set the FixedArray to whatever fits from the end of arr2
+        void safeSetSuffix(T[] arr2) {
+            length = arr2.length <= N ? arr2.length : N;
+            data[0 .. _length] = arr2[$ - _length .. $];
+        }
     }
 }
 
+/// A nogc mutable char array (string)
 alias FixedString(size_t N) = FixedArray!(char, N, false);
 
 unittest {
@@ -88,7 +129,7 @@ unittest {
 
 unittest {
     // Make sure destructors are called
-    struct S {
+    static struct S {
         static uint count;
         uint value = 3;
 
@@ -116,4 +157,13 @@ unittest {
         assert (S.count==4);
         assert(fa[2].value == 3);
     }
+}
+
+unittest {
+    FixedString!5 str;
+
+    str.safeSetSuffix("123456789");
+    assert(str[]=="56789");
+    str.safeSetPrefix("123456789");
+    assert(str[]=="12345");
 }
