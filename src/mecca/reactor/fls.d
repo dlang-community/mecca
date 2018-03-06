@@ -1,6 +1,11 @@
+/// Fiber local storage
 module mecca.reactor.fls;
 
+import std.traits;
+
 import mecca.log;
+import mecca.lib.exception;
+import mecca.reactor;
 
 enum FLS_AREA_SIZE = 512;
 
@@ -45,7 +50,15 @@ struct FLSArea {
 static assert(FLSArea.alignof == (void*).alignof, "FLSArea must have same alignement as a pointer");
 static assert((FLSArea.data.offsetof % (void*).alignof) == 0, "FLSArea data must have same alignement as a pointer");
 
-template FiberLocal(T, string NAME, T initVal=T.init) {
+/**
+ Construct for defining new fiber local storage variables.
+
+Params:
+T = The type of the FLS variable
+Name = The name of the new FLS variable
+initVal = The variable initial value
+*/
+template FiberLocal(T, string Name, T initVal=T.init) {
     __gshared int offset = -1;
 
     shared static this() {
@@ -56,6 +69,21 @@ template FiberLocal(T, string NAME, T initVal=T.init) {
     @property ref T FiberLocal() {
         assert (FLSArea.thisFls !is null && offset >= 0);
         return *cast(T*)(FLSArea.thisFls.data.ptr + offset);
+    }
+}
+
+/// Set the FLS variable of another fiber
+template setFiberFls(alias FLS) {
+    alias T = ReturnType!FLS;
+
+    void setFiberFls(FiberHandle fib, T value) nothrow @nogc {
+        ReactorFiber* reactorFiber = fib.get();
+        if( reactorFiber is null )
+            return;
+
+        size_t offset = cast(void*)(&FLS()) - theReactor.thisFiber.params.flsBlock.data.ptr;
+        DBG_ASSERT!"setFiberFls offset %s out of bounds %s"(offset<FLS_AREA_SIZE, offset, FLS_AREA_SIZE);
+        *cast(T*)(reactorFiber.params.flsBlock.data.ptr + offset) = value;
     }
 }
 
@@ -104,4 +132,26 @@ unittest {
         uint a;
     }
     static assert( !__traits(compiles, FiberLocal!(A, "wontWork", A( 12 ))) );
+}
+
+unittest {
+    import mecca.reactor.sync.event : Event;
+
+    Event sync;
+
+    void fiberBody() {
+        assert(myFls == 200);
+        sync.wait();
+        assert(myFls == 23);
+    }
+
+    testWithReactor({
+        auto fiber = theReactor.spawnFiber(&fiberBody);
+        theReactor.yield();
+        setFiberFls!myFls(fiber, 23);
+        sync.set();
+        theReactor.yield();
+        theReactor.yield();
+        assert(myFls == 200);
+    });
 }

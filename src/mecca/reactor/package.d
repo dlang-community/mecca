@@ -257,7 +257,7 @@ public:
         }
         return this;
     }
-    package @property ReactorFiber* get() const nothrow @safe @nogc {
+    package ReactorFiber* get() const nothrow @safe @nogc {
         if (!identity.isValid || theReactor.allFibers[identity.value].incarnationCounter != incarnation) {
             return null;
         }
@@ -961,7 +961,7 @@ public:
     }
 
 private:
-    @property inout(ReactorFiber)* thisFiber() inout nothrow pure @safe @nogc {
+    package @property inout(ReactorFiber)* thisFiber() inout nothrow pure @safe @nogc {
         DBG_ASSERT!"No current fiber as reactor was not started"(isRunning);
         return _thisFiber;
     }
