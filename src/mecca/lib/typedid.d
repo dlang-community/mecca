@@ -201,14 +201,32 @@ enum isAlgebraicTypedIdentifier(T) = {
     }
 } ();
 
-auto iota(T)(const T start, const T end) nothrow @safe @nogc if (isAlgebraicTypedIdentifier!T) {
+auto iota(T, U)(const T start, const T end, const U step) nothrow @safe @nogc
+    if (isAlgebraicTypedIdentifier!T && is(U == T.UnderlyingType))
+{
     import std.range : iota;
     import std.algorithm : map;
-    return iota(start.value, end.value).map!(x => T(x));
+    return iota(start.value, end.value, step).map!(x => T(x));
+}
+
+auto iota(T, U)(const T start, const T end, const U step) nothrow @safe @nogc
+    if(isAlgebraicTypedIdentifier!T && !is(U == T.UnderlyingType) && isImplicitlyConvertible!(U, T.UnderlyingType))
+{
+    return iota(start, end, T.UnderlyingType(step));
+}
+
+auto iota(T)(const T start, const T end) nothrow @safe @nogc if (isAlgebraicTypedIdentifier!T) {
+    return iota(start, end, T.UnderlyingType(1));
 }
 
 auto iota(T)(const T end) nothrow @safe @nogc if (isAlgebraicTypedIdentifier!T) {
     return iota(T(0), end);
+}
+
+unittest {
+    alias T = AlgebraicTypedIdentifier!("SomeType", uint);
+    import std.algorithm : equal;
+    static assert(iota(T(12), T(15), ubyte(2)).equal([T(12), T(14)]));
 }
 
 unittest {
