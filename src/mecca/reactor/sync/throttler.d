@@ -182,7 +182,7 @@ unittest {
     void loader(uint NUM_PAGES, uint NUM_ITERATIONS)() {
         foreach(iteration; 0..NUM_ITERATIONS) {
             budget.withdraw(NUM_PAGES);
-            theReactor.yieldThisFiber();
+            theReactor.yield();
         }
 
         numDone++;

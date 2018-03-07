@@ -721,11 +721,11 @@ public:
         testWithReactor({
                 {
                     with( theReactor.criticalSection ) {
-                        assertThrows!AssertError( theReactor.yieldThisFiber() );
+                        assertThrows!AssertError( theReactor.yield() );
                     }
                 }
 
-                theReactor.yieldThisFiber();
+                theReactor.yield();
                 });
     }
 
@@ -734,7 +734,7 @@ public:
      *
      * Unlike suspend, the current fiber will automatically resume running after any currently scheduled fibers are finished.
      */
-    void yieldThisFiber() @safe @nogc {
+    void yield() @safe @nogc {
         resumeFiber(thisFiber);
         suspendThisFiber();
     }
@@ -925,7 +925,7 @@ public:
             theReactor.resumeSpecialFiber(theReactor.mainFiber);
 
             if( waitForCollection )
-                yieldThisFiber();
+                yield();
         }
     }
 
@@ -1393,7 +1393,7 @@ private:
         }
 
         thisFiber.flag!"SPECIAL" = false;
-        yieldThisFiber();
+        yield();
 
         META!"Stopping reactor"();
         _running = false;
@@ -1485,7 +1485,7 @@ unittest {
     static void fibFunc(string name) {
         foreach(i; 0 .. 10) {
             writeln(name);
-            theReactor.yieldThisFiber();
+            theReactor.yield();
         }
         theReactor.stop();
     }

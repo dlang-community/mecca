@@ -164,7 +164,7 @@ unittest {
 
     void worker() {
         while(!done) {
-            theReactor.yieldThisFiber();
+            theReactor.yield();
             evt.wait();
             counter++;
         }
@@ -195,7 +195,7 @@ unittest {
 
         INFO!"Reset event end"();
         evt.reset();
-        theReactor.yieldThisFiber();
+        theReactor.yield();
 
         assert(doneCount==0, "Worker fibers exit while not done");
         done = true;
@@ -207,7 +207,7 @@ unittest {
         INFO!"Set event end"();
         evt.set();
         INFO!"Infra yeild"();
-        theReactor.yieldThisFiber();
+        theReactor.yield();
         assert(doneCount==NumWaiters, "Not all worker fibers woke up from event");
 
         INFO!"Infra done"();

@@ -77,7 +77,7 @@ public:
             removeThisFiber();
 
         // Wait for all fibers to die an agonizing death
-        theReactor.yieldThisFiber();
+        theReactor.yield();
 
         while( !fibersList.empty ) {
             WARN!"Some fibers in group not yet dead. Sleeping for 1ms"();
@@ -178,7 +178,7 @@ public:
             WARN!"Fiber %s killed in contained context by FiberGroup"(theReactor.runningFiberId);
             removeThisFiber();
             fiberAdded = false;
-            theReactor.yieldThisFiber();
+            theReactor.yield();
         }
 
         return res;

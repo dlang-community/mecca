@@ -97,15 +97,15 @@ unittest {
             theReactor.spawnFiber({
                 count++;
                 barrier.markDoneAndWaitAll();
-                theReactor.yieldThisFiber();
+                theReactor.yield();
                 count--;
             });
         }
 
         barrier.waitAll();
         assertEQ (count, numFibs);
-        theReactor.yieldThisFiber();
-        theReactor.yieldThisFiber();
+        theReactor.yield();
+        theReactor.yield();
         assertEQ (count, 0);
     });
 }

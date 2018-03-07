@@ -163,7 +163,7 @@ unittest {
 
     void func(uint cnt) {
         sem.acquire(3);
-        theReactor.yieldThisFiber();
+        theReactor.yield();
         sem.release(3);
 
         foreach(i; 0..1000) {

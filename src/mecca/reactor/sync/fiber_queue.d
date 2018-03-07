@@ -169,7 +169,7 @@ unittest {
             assert(handle.isValid);
             DEBUG!"Woke up %s"(handle);
         }
-        theReactor.yieldThisFiber;
+        theReactor.yield;
 
         INFO!"Ran test with %s fibers timing out and %s waking up"(timedout, wokeup);
         assert( timedout + wokeup == NumWaiters, "Incorrect number of fibers finished");
@@ -213,22 +213,22 @@ unittest {
            All in all, two deaths and one clean exit
          */
         FiberHandle fib1 = theReactor.spawnFiber(&workerFiber);
-        theReactor.yieldThisFiber();
+        theReactor.yield();
         FiberHandle fib2 = theReactor.spawnFiber(&workerFiber);
-        theReactor.yieldThisFiber();
+        theReactor.yield();
         FiberHandle fib3 = theReactor.spawnFiber(&workerFiber);
-        theReactor.yieldThisFiber();
+        theReactor.yield();
         FiberHandle fib4 = theReactor.spawnFiber(&workerFiber);
-        theReactor.yieldThisFiber();
+        theReactor.yield();
 
         // Both fibers sleeping
         fq.resumeOne();
         theReactor.throwInFiber!TimeoutExpired(fib1);
         theReactor.throwInFiber!TimeoutExpired(fib3);
-        theReactor.yieldThisFiber();
-        theReactor.yieldThisFiber();
-        theReactor.yieldThisFiber();
-        theReactor.yieldThisFiber();
+        theReactor.yield();
+        theReactor.yield();
+        theReactor.yield();
+        theReactor.yield();
 
         theReactor.stop();
     }

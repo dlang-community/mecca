@@ -151,7 +151,7 @@ version(unittest) {
                 theReactor.spawnFiber(&pushFib);
             }
             while(numRunning < SIZE) {
-                theReactor.yieldThisFiber();
+                theReactor.yield();
             }
 
             popTotal(SIZE * 2);
@@ -173,7 +173,7 @@ version(unittest) {
                 theReactor.spawnFiber(&waitThenPushFib);
             }
             while(numRunning < SIZE) {
-                theReactor.yieldThisFiber();
+                theReactor.yield();
             }
 
             popTotal(SIZE * 2);

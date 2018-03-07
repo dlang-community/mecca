@@ -227,7 +227,7 @@ unittest {
 
         theReactor.spawnFiber( &watcher, iPath );
 
-        theReactor.yieldThisFiber();
+        theReactor.yield();
 
         execute( ["touch", iPath ~ "/file1"] );
         rename( iPath ~ "/file1", iPath ~ "/file2" );
