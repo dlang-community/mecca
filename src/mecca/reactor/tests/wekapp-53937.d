@@ -6,9 +6,9 @@ import std.string;
 
 import mecca.log;
 import mecca.reactor;
+import mecca.reactor.fls;
 import mecca.reactor.sync.barrier;
 import mecca.runtime.ut;
-import mecca.reactor.impl.fls;
 
 unittest {
     META!"UT for testing GC's scanning of local fiber variables"();

@@ -4,9 +4,9 @@ import std.traits;
 
 import mecca.lib.time: Timeout;
 import mecca.log;
-import mecca.reactor.sync.event: Event;
-import mecca.reactor.fiber_group;
 import mecca.reactor;
+import mecca.reactor.fiber_group;
+import mecca.reactor.sync.event: Event;
 
 struct OnDemandWorkerFunc(alias F) {
     private FiberHandle fiberHandle;

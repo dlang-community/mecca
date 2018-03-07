@@ -1,14 +1,14 @@
-module mecca.reactor.impl.time_queue;
+module mecca.lib.time_queue;
 
 import std.algorithm : min, max;
 import std.math : abs;
 
+import mecca.containers.lists;
+import mecca.lib.division: S64Divisor;
 import mecca.lib.exception;
 import mecca.lib.time;
 import mecca.lib.reflection;
 import mecca.log;
-import mecca.containers.lists;
-import mecca.lib.division: S64Divisor;
 
 // DMDBUG define a global for the sole purpose of forcing functions to not be misidentified as pure. See notPure()
 private __gshared uint notPureDMDBUG;

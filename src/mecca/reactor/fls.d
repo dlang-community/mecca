@@ -1,4 +1,4 @@
-module mecca.reactor.impl.fls;
+module mecca.reactor.fls;
 
 import mecca.log;
 
