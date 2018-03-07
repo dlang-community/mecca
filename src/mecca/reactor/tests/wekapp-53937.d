@@ -24,14 +24,14 @@ unittest {
         array.length=100;
         array[] = 100;
 
-        DEBUG!"%s array %s"(theReactor.runningFiberId, &array);
+        DEBUG!"%s array %s"(theReactor.currentFiberId, &array);
 
         theReactor.requestGCCollection();
 
         // Make sure that post GC everything is still here
         uint verified;
         foreach( i, a; array ) {
-            assert(a==100, "Comparison failed %s [%s]%s!=%s".format(theReactor.runningFiberId, i, a, 100));
+            assert(a==100, "Comparison failed %s [%s]%s!=%s".format(theReactor.currentFiberId, i, a, 100));
             verified++;
         }
 
@@ -85,15 +85,15 @@ unittest {
     static void allocate() {
         pragma(inline, false);
         utGcArray.length = ARR_LENGTH;
-        utGcArray[] = cast(ubyte)theReactor.runningFiberId.value;
+        utGcArray[] = cast(ubyte)theReactor.currentFiberId.value;
     }
 
     static void verify() {
-        ubyte expected = cast(ubyte)theReactor.runningFiberId.value;
+        ubyte expected = cast(ubyte)theReactor.currentFiberId.value;
         uint verified;
 
         foreach( i, a; utGcArray ) {
-            assert(a==expected, "Comparison failed %s %s[%s] %s!=%s".format(theReactor.runningFiberId, &(utGcArray()), i,
+            assert(a==expected, "Comparison failed %s %s[%s] %s!=%s".format(theReactor.currentFiberId, &(utGcArray()), i,
                     a, expected));
             verified++;
         }

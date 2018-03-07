@@ -39,7 +39,7 @@ public:
             Anything else if someone calls Reactor.throwInFiber
      */
     void suspend(Timeout timeout = Timeout.infinite) @safe @nogc {
-        auto ourHandle = theReactor.runningFiberHandle;
+        auto ourHandle = theReactor.currentFiberHandle;
         DBG_ASSERT!"Fiber already has sleep flag when FQ.suspend called"( ! ourHandle.get.flag!"SLEEPING" );
         bool inserted = waitingList.append(ourHandle.get);
         DBG_ASSERT!"Fiber %s added to same queue twice"(inserted, ourHandle);
@@ -149,12 +149,12 @@ unittest {
     void waiter() {
         try {
             Duration waitDuration = dur!"msecs"( uniform!"(]"(20, 200, random) );
-            DEBUG!"Fiber %s waiting for %s"(theReactor.runningFiberHandle, waitDuration.toString);
+            DEBUG!"Fiber %s waiting for %s"(theReactor.currentFiberHandle, waitDuration.toString);
             fq.suspend( Timeout(waitDuration) );
             wokeup++;
         } catch( TimeoutExpired ex ) {
             timedout++;
-            DEBUG!"%s timed out"(theReactor.runningFiberHandle);
+            DEBUG!"%s timed out"(theReactor.currentFiberHandle);
         }
     }
 

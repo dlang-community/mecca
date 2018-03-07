@@ -59,7 +59,7 @@ public:
 
         bool suicide;
 
-        auto ourFiberId = theReactor.runningFiberId;
+        auto ourFiberId = theReactor.currentFiberId;
         auto killerException = mkEx!FiberGroupExtinction;
         foreach(fiber; fibersList.range) {
             if( fiber.identity == ourFiberId ) {
@@ -95,7 +95,7 @@ public:
 
     /// Return true if the current fiber is a member of the group
     bool isCurrentFiberMember() const nothrow @safe @nogc {
-        return theReactor.runningFiberPtr in fibersList;
+        return theReactor.currentFiberPtr in fibersList;
     }
 
     /**
@@ -175,7 +175,7 @@ public:
         try {
             res = invoke!F(args);
         } catch( FiberGroupExtinction ex ) {
-            WARN!"Fiber %s killed in contained context by FiberGroup"(theReactor.runningFiberId);
+            WARN!"Fiber %s killed in contained context by FiberGroup"(theReactor.currentFiberId);
             removeThisFiber();
             fiberAdded = false;
             theReactor.yield();
@@ -195,7 +195,7 @@ public:
 private:
     void addThisFiber() nothrow @safe @nogc {
         ASSERT!"FiberGroup state not Active: %s"(state == State.Active, state);
-        auto fib = theReactor.runningFiberPtr;
+        auto fib = theReactor.currentFiberPtr;
         DBG_ASSERT!"Trying to add fiber already in group"( fib !in fibersList );
         DBG_ASSERT!"Trying to add fiber to group which is already member of another group"( fib.params.fgChain.owner is null );
         fibersList.append(fib);
@@ -203,7 +203,7 @@ private:
 
     void removeThisFiber() nothrow @safe @nogc {
         ASSERT!"FiberGroup asked to remove fiber which is not a member"(isCurrentFiberMember());
-        fibersList.remove(theReactor.runningFiberPtr);
+        fibersList.remove(theReactor.currentFiberPtr);
     }
 
     static auto invoke(alias F)(ParameterTypeTuple!F args) {

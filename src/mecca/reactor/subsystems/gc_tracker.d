@@ -34,12 +34,12 @@ void disableGCTracking() {
 void disableGCTrackingForFiber() nothrow @safe @nogc {
     ASSERT!"Cannot disable GC tracking for fiber when not on the main thread"(isReactorThread);
     ASSERT!"Cannot disable GC tracking for special fibers"(theReactor.isSpecialFiber);
-    theReactor.runningFiberPtr.flag!"GC_ENABLED" = true;
+    theReactor.currentFiberPtr.flag!"GC_ENABLED" = true;
 }
 void enableGCTrackingForFiber() nothrow @safe @nogc {
     ASSERT!"Cannot disable GC tracking for fiber when not on the main thread"(isReactorThread);
     ASSERT!"Cannot disable GC tracking for special fibers"(theReactor.isSpecialFiber);
-    theReactor.runningFiberPtr.flag!"GC_ENABLED" = false;
+    theReactor.currentFiberPtr.flag!"GC_ENABLED" = false;
 }
 
 extern (C) void logGCMallocCalls(void* p, size_t size) nothrow {
@@ -49,7 +49,7 @@ extern (C) void logGCMallocCalls(void* p, size_t size) nothrow {
     if (!isReactorThread) {
         dumpStackTrace("#GC allocating from a thread");
     }
-    else if ( theReactor.runningFiberPtr.flag!"GC_ENABLED") {
+    else if ( theReactor.currentFiberPtr.flag!"GC_ENABLED") {
         WARN!"#GC allocating from a fiber (size=%s addr=%s)"(size, p);
         dumpStackTrace();
     }

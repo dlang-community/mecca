@@ -784,7 +784,7 @@ unittest {
     }
 
     void testBody() {
-        handle = theReactor.runningFiberHandle();
+        handle = theReactor.currentFiberHandle();
 
         theReactor.registerRecurringTimer(dur!"seconds"(1), &looper);
 

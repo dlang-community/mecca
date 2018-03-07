@@ -101,8 +101,8 @@ public:
             currently stands, this will trigger the assert below
          */
         ASSERT!"Two fibers cannot wait on the same ReactorFD %s at once: %s asked to wait with %s already waiting"(
-                !ctx.fibHandle.isValid, fd, theReactor.runningFiberHandle, ctx.fibHandle );
-        ctx.fibHandle = theReactor.runningFiberHandle;
+                !ctx.fibHandle.isValid, fd, theReactor.currentFiberHandle, ctx.fibHandle );
+        ctx.fibHandle = theReactor.currentFiberHandle;
         scope(exit) destroy(ctx.fibHandle);
 
         theReactor.suspendThisFiber(timeout);

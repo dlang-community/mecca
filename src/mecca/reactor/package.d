@@ -171,7 +171,7 @@ private:
                 // Do nothing. The reactor is quitting
             }
             catch (FiberGroup.FiberGroupExtinction ex2) {
-                INFO!"Fiber %s killed by fiber group"(theReactor.runningFiberId);
+                INFO!"Fiber %s killed by fiber group"(theReactor.currentFiberId);
             }
             catch (Throwable ex2) {
                 ex = ex2;
@@ -575,12 +575,12 @@ public:
     }
 
     /// Returns a FiberHandle to the currently running fiber
-    @property FiberHandle runningFiberHandle() nothrow @safe @nogc {
+    @property FiberHandle currentFiberHandle() nothrow @safe @nogc {
         // XXX This assert may be incorrect, but it is easier to remove an assert than to add one
         assert(!isSpecialFiber, "Should not blindly get fiber handle of special fibers");
         return FiberHandle(thisFiber);
     }
-    @property package ReactorFiber* runningFiberPtr() nothrow @safe @nogc {
+    @property package ReactorFiber* currentFiberPtr() nothrow @safe @nogc {
         // XXX This assert may be incorrect, but it is easier to remove an assert than to add one
         assert(!isSpecialFiber, "Should not blindly get fiber handle of special fibers");
         return thisFiber;
@@ -589,9 +589,9 @@ public:
       Returns the FiberId of the currently running fiber.
 
       You should almost never store the FiberId for later comparison or pass it to another fiber. Doing so risks having the current fiber
-      die and another one spawned with the same FiberId. If that's what you want to do, use runningFiberHandle instead.
+      die and another one spawned with the same FiberId. If that's what you want to do, use currentFiberHandle instead.
      */
-    @property FiberId runningFiberId() const nothrow @safe @nogc {
+    @property FiberId currentFiberId() const nothrow @safe @nogc {
         return thisFiber.identity;
     }
 
@@ -837,7 +837,7 @@ public:
     /// ditto
     void sleep(Timeout until) @safe @nogc {
         assert(until != Timeout.init, "sleep argument uninitialized");
-        auto timerHandle = registerTimer!resumeFiber(until, runningFiberHandle, false);
+        auto timerHandle = registerTimer!resumeFiber(until, currentFiberHandle, false);
         scope(failure) cancelTimer(timerHandle);
 
         suspendThisFiber();
@@ -921,7 +921,7 @@ public:
             return;
 
         _gcCollectionNeeded = true;
-        if( theReactor.runningFiberId != MainFiberId ) {
+        if( theReactor.currentFiberId != MainFiberId ) {
             theReactor.resumeSpecialFiber(theReactor.mainFiber);
 
             if( waitForCollection )
@@ -1052,7 +1052,7 @@ private:
             theReactor.resumeFiber(fib);
         }
 
-        timeoutHandle = registerTimer!resumer(timeout, runningFiberHandle, &timeoutHandle, &timeoutExpired);
+        timeoutHandle = registerTimer!resumer(timeout, currentFiberHandle, &timeoutHandle, &timeoutExpired);
         switchToNext();
 
         if( timeoutExpired )
@@ -1257,13 +1257,13 @@ private:
         auto now = TscTimePoint.hardNow();
         auto delay = now - theReactor.fiberRunStartTime;
 
-        if( delay<theReactor.optionsInEffect.hangDetectorTimeout || theReactor.runningFiberId == IdleFiberId )
+        if( delay<theReactor.optionsInEffect.hangDetectorTimeout || theReactor.currentFiberId == IdleFiberId )
             return;
 
         long seconds, usecs;
         delay.split!("seconds", "usecs")(seconds, usecs);
 
-        ERROR!"Hang detector triggered for %s after %s.%06s seconds"(theReactor.runningFiberId, seconds, usecs);
+        ERROR!"Hang detector triggered for %s after %s.%06s seconds"(theReactor.currentFiberId, seconds, usecs);
         dumpStackTrace();
 
         ABORT("Hang detector killed process");
@@ -1312,9 +1312,9 @@ private:
         auto pc = contextPtr ? contextPtr.uc_mcontext.gregs[posix_ucontext.REG_RIP] : 0;
 
         if( isReactorThread ) {
-            auto onStackParams = theReactor.runningFiberPtr.params;
-            ERROR!"%s on %s address 0x%x, PC 0x%x stack params at 0x%x"(faultName, theReactor.runningFiberId, info.si_addr, pc,
-                    onStackParams);
+            auto onStackParams = theReactor.currentFiberPtr.params;
+            ERROR!"%s on %s address 0x%x, PC 0x%x stack params at 0x%x"(
+                    faultName, theReactor.currentFiberId, info.si_addr, pc, onStackParams);
             ERROR!"Stack is at [%s .. %s]"( onStackParams.stackDescriptor.bstack, onStackParams.stackDescriptor.tstack );
             auto guardAddrStart = onStackParams.stackDescriptor.bstack - GUARD_ZONE_SIZE;
             if( info.si_addr < onStackParams.stackDescriptor.bstack && info.si_addr >= guardAddrStart ) {
@@ -1506,18 +1506,18 @@ unittest {
     TscTimePoint start;
 
     void fiberFunc(Duration duration) {
-        INFO!"Fiber %s sleeping for %s"(theReactor.runningFiberHandle, duration.toString);
+        INFO!"Fiber %s sleeping for %s"(theReactor.currentFiberHandle, duration.toString);
         theReactor.sleep(duration);
         auto now = TscTimePoint.hardNow;
         counter++;
-        INFO!"Fiber %s woke up after %s, overshooting by %s counter is %s"(theReactor.runningFiberHandle, (now - start).toString,
+        INFO!"Fiber %s woke up after %s, overshooting by %s counter is %s"(theReactor.currentFiberHandle, (now - start).toString,
                 ((now-start) - duration).toString, counter);
     }
 
     void ender() {
-        INFO!"Fiber %s ender is sleeping for 250ms"(theReactor.runningFiberHandle);
+        INFO!"Fiber %s ender is sleeping for 250ms"(theReactor.currentFiberHandle);
         theReactor.sleep(dur!"msecs"(250));
-        INFO!"Fiber %s ender woke up"(theReactor.runningFiberHandle);
+        INFO!"Fiber %s ender woke up"(theReactor.currentFiberHandle);
 
         theReactor.stop();
     }
