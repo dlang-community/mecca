@@ -1,4 +1,4 @@
-module mecca.reactor.ondemand_worker;
+module mecca.reactor.lib.ondemand_worker;
 
 import std.traits;
 
