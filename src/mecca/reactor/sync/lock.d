@@ -5,6 +5,8 @@
  */
 module mecca.reactor.sync.lock;
 
+import mecca.lib.reflection;
+
 import mecca.log;
 import mecca.lib.exception;
 import mecca.lib.time;
@@ -203,10 +205,9 @@ public:
     }
 }
 
-version(unittest):
-private:
+version(unittest) {
 
-mixin template Test(SharedLockType) {
+private mixin template Test(SharedLockType) {
     uint generation;
     SharedLockType lock;
     Barrier allDone;
@@ -301,3 +302,93 @@ unittest {
 
     testWithReactor(&testBody);
 }
+}
+
+/// A RAII wrapper for a lock
+///
+/// params:
+/// LockType = the type of lock to define over
+/// acquireName = the name of the function to call to acquire the lock
+/// releaseName = the name of the function to call to release the lock
+struct Locker(LockType, string acquireName="acquire", string releaseName="release") {
+private:
+    import std.format : format;
+
+    LockType* lock;
+
+public:
+    @disable this(this);
+    this(ref LockType lock, Timeout timeout = Timeout.infinite) @nogc {
+        acquire(lock, timeout);
+    }
+
+    ~this() nothrow @nogc {
+        if( lock !is null )
+            release();
+    }
+
+    //pragma(msg, acquireCode);
+    mixin(acquireCode);
+
+    //pragma(msg, releaseCode);
+    mixin(releaseCode);
+private:
+    alias AcquireGenerator = CopySignature!( __traits(getMember, LockType, acquireName) );
+    enum string acquireCode = q{
+        @notrace void acquire(ref LockType lock, %1$s) @nogc {
+            ASSERT!"Tried to acquire an already locked Locker"(this.lock is null);
+            this.lock = &lock;
+            lock.%3$s(%2$s);
+        }
+    }.format( AcquireGenerator.genDefinitionList, AcquireGenerator.genCallList, acquireName );
+
+    alias ReleaseGenerator = CopySignature!( __traits(getMember, LockType, releaseName) );
+    enum string releaseCode = q{
+        @notrace void release(%1$s) @nogc {
+            ASSERT!"Tried to release a non locked Locker"(this.lock !is null);
+            scope(exit) this.lock = null;
+            lock.%3$s(%2$s);
+        }
+    }.format( ReleaseGenerator.genDefinitionList, ReleaseGenerator.genCallList, releaseName );
+}
+
+unittest {
+    enum NUM_FIBERS = 5;
+    enum NUM_RUNS = 10;
+
+    uint numRuns;
+    bool locked;
+    Lock lock;
+    import mecca.reactor.sync.barrier: Barrier;
+    Barrier allDone;
+
+    void lockerFiber() {
+        scope(exit) allDone.markDone();
+
+        foreach(i; 0..NUM_RUNS) {
+            auto locker = Locker!Lock(lock);
+            assert(!locked, "Mutual exclusion failed");
+            locked = true;
+            numRuns++;
+            scope(exit) locked = false;
+
+            theReactor.yield();
+        }
+    }
+
+    testWithReactor({
+        foreach(i; 0..NUM_FIBERS) {
+            allDone.addWaiter();
+            theReactor.spawnFiber(&lockerFiber);
+        }
+
+        allDone.waitAll();
+        assert(!lock.isLocked, "lock acquired at end of test");
+        assert(numRuns==NUM_FIBERS*NUM_RUNS);
+    });
+}
+
+/// Locker wrapper for a SharedLock with a shared lock
+alias SharedLocker = Locker!(SharedLock, "acquireShared", "releaseShared");
+/// Locker wrapper for a SharedLock with an exclusive lock
+alias ExclusiveLocker = Locker!(SharedLock, "acquireShared", "releaseShared");
