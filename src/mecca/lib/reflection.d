@@ -728,3 +728,83 @@ template getOverload(alias F, Args...) {
     pragma(msg, typeof(getOverload));
 }
 +/
+
+/// CTFE template for genering a string for mixin copying a function's signature along with its default values
+///
+/// Bugs:
+/// Due to $(LINK2 https://issues.dlang.org/show_bug.cgi?id=18572, issue 18572) this will not copy extended
+/// attributes of the arguments (ref, out etc). All arguments are passed by value.
+///
+/// The generated code refers to `srcFunc` by its fully qualified name. Unfortunately, this means we cannot apply to
+/// functions nested inside other functions.
+template CopySignature(alias srcFunc, int argumentsBegin = 0, int argumentsEnd = Parameters!srcFunc.length) {
+    private alias Args = Parameters!srcFunc;
+    private alias Defaults = ParameterDefaults!srcFunc;
+    // TODO fullyQualifiedName returns an unusable identifier in case of a nested function
+    private enum funcName = fullyQualifiedName!srcFunc;
+
+    import std.format : format;
+
+    /// Generates a definition list.
+    ///
+    /// Note:
+    /// The arguments are going to be named "arg0" through "argN". The first argument will be `arg0` even if
+    /// `argumentsBegin` is not 0.
+    string genDefinitionList() pure @safe {
+        string ret;
+
+        foreach(i, type; Defaults[argumentsBegin..argumentsEnd]) {
+            if( i>0 )
+                ret ~= ", ";
+
+            // DMDBUG: we need to give range if we want to maintain ref/out attributes (Params[0..1] arg0).
+            // Due to issue 18572, however, we would then not be able to provide default arguments.
+            ret ~= "Parameters!(%s)[%s] arg%s".format(funcName, i+argumentsBegin, i);
+
+            static if( !is(type == void) ) {
+                ret ~= " = ParameterDefaults!(%s)[%s]".format(funcName, i+argumentsBegin);
+            }
+        }
+
+        return ret;
+    }
+
+    /// Generate a calling list. Simply the list of arg0 through argN separated by commas
+    string genCallList() pure @safe {
+        string ret;
+
+        foreach(i; 0..argumentsEnd-argumentsBegin) {
+            if( i>0 )
+                ret ~= ", ";
+
+            ret ~= "arg%s".format(i);
+        }
+
+        return ret;
+    }
+}
+
+version(unittest) {
+    private int UTfunc1( int a, int b = 3 ) {
+        return a += b;
+    }
+}
+
+unittest {
+    import std.format : format;
+
+    alias CopySig = CopySignature!UTfunc1;
+
+    enum MixIn = q{
+        int func2( %s ) {
+            return UTfunc1( %s );
+        }
+    }.format( CopySig.genDefinitionList, CopySig.genCallList );
+    // pragma(msg, MixIn);
+    mixin(MixIn);
+
+    int a=2;
+    assert( func2(a)==5 );
+    assert( func2(a, 17)==19 );
+    static assert( !__traits(compiles, func2()) );
+}
