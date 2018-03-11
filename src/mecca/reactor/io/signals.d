@@ -100,7 +100,7 @@ public:
      *
      * Register a handler for a specific signal. The signal must not already be handled, either through ReactorSignal or otherwise.
      *
-     * params:
+     * Params:
      * signum = the signal to be handled
      * handler = a delegate to be called when the signal arrives
      */

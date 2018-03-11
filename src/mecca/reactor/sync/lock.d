@@ -306,7 +306,7 @@ unittest {
 
 /// A RAII wrapper for a lock
 ///
-/// params:
+/// Params:
 /// LockType = the type of lock to define over
 /// acquireName = the name of the function to call to acquire the lock
 /// releaseName = the name of the function to call to release the lock
@@ -318,23 +318,43 @@ private:
 
 public:
     @disable this(this);
-    this(ref LockType lock, Timeout timeout = Timeout.infinite) @nogc {
-        acquire(lock, timeout);
-    }
+    // Constructor code is inside the acquire mixin
 
+    /// Auto unlocking destructor
     ~this() nothrow @nogc {
         if( lock !is null )
             release();
     }
 
     //pragma(msg, acquireCode);
+
+    /// Acquire the lock
     mixin(acquireCode);
 
     //pragma(msg, releaseCode);
+
+    // Release the lock
     mixin(releaseCode);
+
+    /// Report whether the container is currently locked
+    @notrace bool isLocked() const pure nothrow @safe @nogc {
+        return lock !is null;
+    }
 private:
     alias AcquireGenerator = CopySignature!( __traits(getMember, LockType, acquireName) );
     enum string acquireCode = q{
+        // XXX I'm not sure why I bother documenting functions inside mixins that the doc will never build
+        /// Construct a locked instance
+        this(ref LockType lock, %1$s) @nogc {
+            acquire(lock, %2$s);
+        }
+
+        /// Acquire the lock
+        ///
+        /// Params:
+        /// lock = an instance of `LockType` to lock
+        ///
+        /// The other arguments are the same as for `LockType.acquire`
         @notrace void acquire(ref LockType lock, %1$s) @nogc {
             ASSERT!"Tried to acquire an already locked Locker"(this.lock is null);
             this.lock = &lock;
@@ -344,6 +364,7 @@ private:
 
     alias ReleaseGenerator = CopySignature!( __traits(getMember, LockType, releaseName) );
     enum string releaseCode = q{
+        /// Release the lock
         @notrace void release(%1$s) @nogc {
             ASSERT!"Tried to release a non locked Locker"(this.lock !is null);
             scope(exit) this.lock = null;
