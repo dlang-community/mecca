@@ -291,34 +291,41 @@ struct Reactor {
         /**
           How often does the GC's collection run.
 
-          The reactor uses unconditional periodic collection, rather than lazy evaluation one employed by the default GC settings. This
-          setting sets how often the collection cycle should run.
+          The reactor uses unconditional periodic collection, rather than lazy evaluation one employed by the default GC
+          settings. This setting sets how often the collection cycle should run.
          */
         Duration gcInterval = 30.seconds;
         /**
           Base granularity of the reactor's timer.
 
-          Any scheduled task is scheduled at no better accuracy than timerGranularity. $(B In addition to) the fact that a timer task may
-          be delayed. As such, with a 1ms granularity, a task scheduled for 1.5ms from now is the same as a task scheduled for 2ms from now,
-          which may run 3ms from now.
+          Any scheduled task is scheduled at no better accuracy than timerGranularity. $(B In addition to) the fact that
+          a timer task may be delayed. As such, with a 1ms granularity, a task scheduled for 1.5ms from now is the same
+          as a task scheduled for 2ms from now, which may run 3ms from now.
          */
         Duration timerGranularity = 1.msecs;
         /**
           Hogger detection threshold.
 
-          A hogger is a fiber that does not release the CPU to run other tasks for a long period of time. Often, this is a result of a bug
-          (i.e. - calling the OS's `sleep` instead of the reactor's).
+          A hogger is a fiber that does not release the CPU to run other tasks for a long period of time. Often, this is
+          a result of a bug (i.e. - calling the OS's `sleep` instead of the reactor's).
 
-          Hogger detection works by measuring how long each fiber took until it allows switching away. If the fiber took more than
-          hoggerWarningThreshold, a warning is logged.
+          Hogger detection works by measuring how long each fiber took until it allows switching away. If the fiber took
+          more than hoggerWarningThreshold, a warning is logged.
          */
         Duration hoggerWarningThreshold = 200.msecs;
         /**
+         Maximum desired fiber run time
+
+         A fiber should aim not to run more than this much time without a voluntary context switch. This value affects
+         the `shouldYield` and `considerYield` calls.
+         */
+        Duration maxDesiredRunTime = 150.msecs;
+        /**
           Hard hang detection.
 
-          This is a similar safeguard to that used by the hogger detection. If activated (disabled by default), it premptively prompts the
-          reactor every set time to see whether fibers are still being switched in/out. If it finds that the same fiber is running, without
-          switching out, for too long, it terminates the entire program.
+          This is a similar safeguard to that used by the hogger detection. If activated (disabled by default), it
+          premptively prompts the reactor every set time to see whether fibers are still being switched in/out. If it
+          finds that the same fiber is running, without switching out, for too long, it terminates the entire program.
          */
         Duration hangDetectorTimeout = Duration.zero;
         /**
@@ -746,9 +753,41 @@ public:
      *
      * Unlike suspend, the current fiber will automatically resume running after any currently scheduled fibers are finished.
      */
-    void yield() @safe @nogc {
+    @notrace void yield() @safe @nogc {
         resumeFiber(thisFiber);
         suspendThisFiber();
+    }
+
+    /**
+     * Returns whether the fiber is already running for a long time.
+     *
+     * Fibers that run for too long prevent other fibers from operating properly. On the other hand, fibers that initiate
+     * a context switch needlessly load the system with overhead.
+     *
+     * This function reports whether the fiber is already running more than the desired time.
+     *
+     * The base time used is taken from `OpenOptions.maxDesiredRunTime`.
+     *
+     * Params:
+     * tolerance = A multiplier for the amount of acceptable run time. Specifying 4 here will give you 4 times as much
+     * time to run before a context switch is deemed necessary.
+     */
+    @notrace bool shouldYield(uint tolerance = 1) const nothrow @safe @nogc {
+        if( _stopping )
+            return true;
+
+        auto now = TscTimePoint.hardNow();
+        return (now - fiberRunStartTime) > tolerance*optionsInEffect.maxDesiredRunTime;
+    }
+
+    /**
+     Perform yield if fiber is running long enough.
+
+     Arguments and meaning are the same as for `shouldYield`.
+     */
+    @notrace void considerYield(uint tolerance = 1) @safe @nogc {
+        if( shouldYield(tolerance) )
+            yield();
     }
 
     /// Handle used to manage registered timers
