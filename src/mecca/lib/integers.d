@@ -178,7 +178,7 @@ struct Integer(T, char E) {
     static if (signed) {
         auto opUnary(string op)() const if (op == "+" || op == "-") {
             pragma(inline, true);
-            return Integer(mixin(op ~ "inHostOrder"));
+            return Integer(cast(T) mixin(op ~ "inHostOrder"));
         }
 
         private alias binOps = AliasSeq!("+", "-", "*", "/", "%", "^");
@@ -186,7 +186,7 @@ struct Integer(T, char E) {
     else {
         auto opUnary(string op)() const if (op == "~") {
             pragma(inline, true);
-            return Integer(mixin(op ~ "inHostOrder"));
+            return Integer(cast(T) mixin(op ~ "inHostOrder"));
         }
 
         private alias binOps = AliasSeq!("+", "-", "*", "/", "%", "^", "&", "|", "^", "<<", ">>", ">>>");
@@ -231,6 +231,7 @@ unittest {
     static assert (is(typeof(x > z) == bool));
     static assert (is(typeof(~x)));
     static assert (is(typeof(x ^ z)));
+    static assert (is(typeof(-y)));
     static assert (!is(typeof(x ^ y)));
     static assert (!is(typeof(~y)));
 
@@ -238,6 +239,7 @@ unittest {
     assert (x * 2 == 34);
     assert (y * 2 == 34);
     assert (z * 2 == 34);
+    assert (-y == -17);
 
     x++;
     y++;
