@@ -98,7 +98,8 @@ public:
     /**
      * register a signal handler
      *
-     * Register a handler for a specific signal. The signal must not already be handled, either through ReactorSignal or otherwise.
+     * Register a handler for a specific signal. The signal must not already be handled, either through ReactorSignal or
+     * otherwise.
      *
      * Params:
      * signum = the signal to be handled

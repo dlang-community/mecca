@@ -14,7 +14,11 @@ class TimeoutExpired : Exception {
     }
 }
 
-class ReactorExit : Throwable {
+class TaskInterrupt : Throwable {
     mixin ExceptionBody;
+}
+
+class ReactorExit : TaskInterrupt {
+    mixin ExceptionBody!("Reactor is quitting");
 }
 

@@ -242,7 +242,7 @@ public:
      *
      * Any other exception injected to this fiber using Reactor.throwInFiber
      */
-    void suspend(Timeout timeout = Timeout.infinite) @safe @nogc {
+    void wait(Timeout timeout = Timeout.infinite) @safe @nogc {
         waiters.suspend(timeout);
     }
 

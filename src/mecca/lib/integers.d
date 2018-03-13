@@ -7,6 +7,7 @@ import std.string;
 import std.algorithm: among;
 
 import mecca.log;
+import mecca.lib.consts;
 
 version(LDC) {
     ubyte bswap(ubyte x) pure @nogc {
@@ -283,12 +284,12 @@ unittest {
 
 
 struct SerialInteger(T) {
-    static assert (isUnsigned!T, "T must be an unsigned type");
+    static assert (isUnsigned!T, "Type must be an unsigned integer");
 
     alias Type = T;
     enum min = T.min;
     enum max = T.max;
-    enum T midpoint = (2 ^^ (8 * T.sizeof - 1));
+    enum T midpoint = (2 ^^ (BITS_IN_BYTE * T.sizeof - 1));
     T value;
 
     this(T value) nothrow @nogc {

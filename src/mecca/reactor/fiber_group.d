@@ -12,7 +12,7 @@ import mecca.reactor;
 /// group of related fiber that may need to be killed together
 struct FiberGroup {
 private:
-    package class FiberGroupExtinction: Error {mixin ExceptionBody!"FiberGroup killer exception";}
+    package class FiberGroupExtinction: TaskInterrupt {mixin ExceptionBody!"FiberGroup killer exception";}
     alias RegisteredFibersList = _LinkedList!(ReactorFiber*, "params.fgChain.next", "params.fgChain.prev", "params.fgChain.owner", false);
 
     package struct Chain {
