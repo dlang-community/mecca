@@ -29,6 +29,16 @@ private:
     State state;
 
 public:
+    /// 3state execution results type
+    struct ExecutionResult(T) {
+        /// Whether execution finished successfully
+        bool completed = false;
+        static if (!is(T == void)) {
+            /// Actual execution result (if type is not void)
+            T result;
+        }
+    }
+
     /// Initialize a new fiber group
     void open() nothrow @safe @nogc {
         ASSERT!"FiberGroup.open called on already open group"(closed);
@@ -137,26 +147,20 @@ public:
         return spawnFiber(dg);
     }
 
-    struct ExecutionResult(T) {
-        bool completed = false;
-        static if (!is(T == void)) {
-            T result;
-        }
-    }
-
     /**
      * Perform a task inside the current fiber as part of the group.
      *
-     * This function temporarily adds the current fiber to the group for the sake of performing a specific function. Once that function
-     * is done, the fiber leaves the group again.
+     * This function temporarily adds the current fiber to the group for the sake of performing a specific function.
+     * Once that function is done, the fiber leaves the group again.
      *
-     * If the group is killed while inside this function, the function returns early and the return type has the member `completed` set to
-     * false. If the function ran to completion, `completed` is set to true, and `result` is set to the function's return value (if one
-     * exists).
+     * If the group is killed while inside this function, the function returns early and the return type has the member
+     * `completed` set to false. If the function ran to completion, `completed` is set to true, and `result` is set to
+     * the function's return value (if one exists).
      *
-     * If the fiber is already a member of the group when this function is called, the function is simply executed normally.
+     * If the fiber is already a member of the group when this function is called, the function is simply executed
+     * normally.
      */
-    auto runTracked(alias F)(ParameterTypeTuple!F args) {
+    @notrace auto runTracked(alias F)(ParameterTypeTuple!F args) {
         alias R = ReturnType!F;
         ExecutionResult!R res;
 
@@ -193,7 +197,7 @@ public:
     }
 
 private:
-    void addThisFiber() nothrow @safe @nogc {
+    @notrace void addThisFiber() nothrow @safe @nogc {
         ASSERT!"FiberGroup state not Active: %s"(state == State.Active, state);
         auto fib = theReactor.currentFiberPtr;
         DBG_ASSERT!"Trying to add fiber already in group"( fib !in fibersList );
@@ -201,12 +205,12 @@ private:
         fibersList.append(fib);
     }
 
-    void removeThisFiber() nothrow @safe @nogc {
+    @notrace void removeThisFiber() nothrow @safe @nogc {
         ASSERT!"FiberGroup asked to remove fiber which is not a member"(isCurrentFiberMember());
         fibersList.remove(theReactor.currentFiberPtr);
     }
 
-    static auto invoke(alias F)(ParameterTypeTuple!F args) {
+    @notrace static auto invoke(alias F)(ParameterTypeTuple!F args) {
         alias R = ReturnType!F;
         ExecutionResult!R res;
 
@@ -220,7 +224,7 @@ private:
         return res;
     }
 
-    static void fiberWrapper(T)(T* fn, FiberGroup* fg, ParameterTypeTuple!T args) {
+    @notrace static void fiberWrapper(T)(T* fn, FiberGroup* fg, ParameterTypeTuple!T args) {
         if( fg.state!=State.Active ) {
             ASSERT!"FiberGroup fiber starts for a non-active fiber group"(fg.state==State.Closing);
             return;
