@@ -797,7 +797,7 @@ public:
 
     public:
         /// Returns whether the handle describes a currently registered task
-        @property bool isValid() const @safe @nogc {
+        @property bool isValid() const nothrow @safe @nogc {
             // TODO make the handle resilient to ABA changes
             return callback !is null && callback._owner !is null;
         }
@@ -829,6 +829,11 @@ public:
         return TimerHandle(callback);
     }
 
+    /// ditto
+    TimerHandle registerTimer(alias F)(Duration timeout, Parameters!F params) nothrow @safe @nogc {
+        return registerTimer!F(Timeout(timeout), params);
+    }
+
     /**
      * Register a timer callback
      *
@@ -845,6 +850,11 @@ public:
         return TimerHandle(callback);
     }
 
+    /// ditto
+    TimerHandle registerTimer(T)(Duration timeout, T dg) nothrow @safe @nogc {
+        return registerTimer!T(Timeout(timeout), dg);
+    }
+
     private TimedCallback* _registerRecurringTimer(Duration interval) nothrow @safe @nogc {
         TimedCallback* callback = timedCallbacksPool.alloc();
         callback.intervalCycles = TscTimePoint.toCycles(interval);
@@ -858,6 +868,8 @@ public:
      * Params:
      *  interval = the frequency with which the callback will be called.
      *  dg = the callback to invoke
+     *  F = an alias to the function to be called
+     *  params = the arguments to pass to F on each invocation
      */
     TimerHandle registerRecurringTimer(Duration interval, void delegate() dg) nothrow @safe @nogc {
         TimedCallback* callback = _registerRecurringTimer(interval);
@@ -865,11 +877,7 @@ public:
         return TimerHandle(callback);
     }
 
-    /**
-     * registers a timer that will repeatedly trigger at set intervals.
-     *
-     * different form of the same function.
-     */
+    /// ditto
     TimerHandle registerRecurringTimer(alias F)(Duration interval, Parameters!F params) nothrow @safe @nogc {
         TimedCallback* callback = _registerRecurringTimer(interval);
         callback.closure.set(&F, params);
@@ -877,11 +885,25 @@ public:
     }
 
     /// Cancel a currently registered timer
-    void cancelTimer(TimerHandle handle) @safe @nogc {
+    void cancelTimer(TimerHandle handle) nothrow @safe @nogc {
         if( !handle.isValid )
             return;
         timeQueue.cancel(handle.callback);
         timedCallbacksPool.release(handle.callback);
+    }
+
+    /**
+     * Schedule a callback for out of bounds immediate execution.
+     *
+     * For all intents and purposes, `call` is identical to `registerTimer` with an expired timeout.
+     */
+    TimerHandle call(alias F)(Parameters!F params) nothrow @safe @nogc {
+        return registerTimer!F(Timeout.elapsed, params);
+    }
+
+    /// ditto
+    TimerHandle call(T)(T dg) nothrow @safe @nogc {
+        return registerTimer(Timeout.elapsed, dg);
     }
 
     /// Suspend the current fiber for a specified amount of time
