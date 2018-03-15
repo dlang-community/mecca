@@ -179,9 +179,7 @@ private:
                 ex = ex2;
             }
 
-            if (params.fgChain.owner !is null) {
-                params.fgChain.owner.remove(theReactor.thisFiber);
-            }
+            ASSERT!"Fiber still member of fiber group at termination" (params.fgChain.owner is null);
 
             if( ex is null )
                 INFO!"wrapper finished on %s"(identity);

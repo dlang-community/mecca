@@ -41,8 +41,9 @@ public:
 
     /// Initialize a new fiber group
     void open() nothrow @safe @nogc {
-        ASSERT!"FiberGroup.open called on already open group"(closed);
-        DBG_ASSERT!"New FiberGroup has fibers registered"(fibersList.empty);
+        ASSERT!"New FiberGroup has fibers registered"(fibersList.empty);
+        ASSERT!"Cannot open fiber group that is not closed: Current state %s"(
+                state==State.None || state==State.Closing, state);
         state = State.Active;
     }
 
@@ -54,12 +55,16 @@ public:
     /**
      * close the group (killing all fibers).
      *
-     * The function returns after all fibers have died.
+     * It is legal for the calling thread to be part of the group. If `waitForExit` is true, it will be killed only once
+     * the function is done waiting for the other fibers to exit.
      *
-     * It is legal for the calling thread to be part of the group. In that case, it will be
-     * killed only once the function is done waiting for the other fibers to exit.
+     * Params:
+     * waitForExit = Whether the function waits for all fibers to exit before returning.
+     *
+     * Notes:
+     * If waitForExit is false, the group cannot be reused before all fibers have actually exited.
      */
-    void close() @safe @nogc {
+    void close(bool waitForExit = true) @safe @nogc {
         if( state!=State.Active )
             return;
 
@@ -81,6 +86,15 @@ public:
             WARN!"Killing fiber %s"(fiber.identity);
             theReactor.throwInFiber(FiberHandle(fiber), killerException);
         }
+
+        if( !waitForExit ) {
+            if( suicide ) {
+                WARN!"Fiber commiting suicid as part of group"();
+                throw killerException;
+            }
+            return;
+        }
+
         cs.leave();
 
         if( suicide )
@@ -93,11 +107,13 @@ public:
             WARN!"Some fibers in group not yet dead. Sleeping for 1ms"();
             theReactor.sleep(dur!"msecs"(1));
         }
-        DEBUG!"All group fibers are now dead. May them rest in pieces"();
+        DEBUG!"All group fibers are now dead. May they rest in pieces"();
 
         state = State.None;
 
         if (suicide) {
+            // For consistency, add ourselves back.
+            addThisFiber(true);
             WARN!"Fiber commiting suicid as part of group"();
             throw killerException;
         }
@@ -182,7 +198,6 @@ public:
             WARN!"Fiber %s killed in contained context by FiberGroup"(theReactor.currentFiberId);
             removeThisFiber();
             fiberAdded = false;
-            theReactor.yield();
         }
 
         return res;
@@ -197,8 +212,8 @@ public:
     }
 
 private:
-    @notrace void addThisFiber() nothrow @safe @nogc {
-        ASSERT!"FiberGroup state not Active: %s"(state == State.Active, state);
+    @notrace void addThisFiber(bool duringSuicide = false) nothrow @safe @nogc {
+        ASSERT!"FiberGroup state not Active: %s"(state == State.Active || state==State.None && duringSuicide, state);
         auto fib = theReactor.currentFiberPtr;
         DBG_ASSERT!"Trying to add fiber already in group"( fib !in fibersList );
         DBG_ASSERT!"Trying to add fiber to group which is already member of another group"( fib.params.fgChain.owner is null );
@@ -226,18 +241,20 @@ private:
 
     @notrace static void fiberWrapper(T)(T* fn, FiberGroup* fg, ParameterTypeTuple!T args) {
         if( fg.state!=State.Active ) {
-            ASSERT!"FiberGroup fiber starts for a non-active fiber group"(fg.state==State.Closing);
+            WARN!"Fiber group closed before fiber managed to start"();
             return;
         }
 
         fg.addThisFiber();
+        scope(exit) fg.removeThisFiber();
         theReactor.setFiberName(theReactor.currentFiberHandle, "FiberGroupMember", fn);
         fn(args);
     }
 }
 
 unittest {
-    static int counter = 0;
+    static int counter;
+    counter = 0;
 
     static void fib(int num) {
         scope(success) assert(false);
@@ -250,66 +267,77 @@ unittest {
 
     testWithReactor({
         FiberGroup tracker;
-        tracker.open();
 
-        tracker.addThisFiber();
-        tracker.spawnFiber!fib(1);
-        tracker.spawnFiber!fib(100);
-        theReactor.sleep(msecs(50));
-        // this fiber won't get to run
-        tracker.spawnFiber!fib(10000);
+        {
+            DEBUG!"#UT Test fibers running and being killed"();
+            tracker.open();
 
-        bool caught = false;
-        try {
-            tracker.close();
-        }
-        catch (tracker.FiberGroupExtinction ex) {
-            caught = true;
-        }
+            tracker.addThisFiber();
+            scope(exit) tracker.removeThisFiber();
+            tracker.spawnFiber!fib(1);
+            tracker.spawnFiber!fib(100);
+            theReactor.sleep(msecs(50));
+            // this fiber won't get to run
+            tracker.spawnFiber!fib(10000);
 
-        assert(caught, "this fiber did not commit suicide");
-        assert(counter > 0, "no fibers have run");
-        assert(counter < 10000, "third fiber should not have run");
-
-        int counter2 = 0;
-
-        tracker.open();
-
-        static class SomeException: Exception {mixin ExceptionBody!"Some exception";}
-
-        static bool caught2 = false;
-        try {
-            tracker.runTracked({
-                throw mkEx!SomeException;
-            });
-        } catch (SomeException ex) {
-            caught2 = true;
-        }
-        assert(caught2, "exception wasn't passed up");
-
-        tracker.runTracked({
-            theReactor.registerTimer(Timeout(msecs(20)), (){
-                theReactor.spawnFiber({
-                    tracker.close();
-                });
-            });
-
-            scope(success) assert(false);
-
-            while (true) {
-                counter2++;
-                theReactor.sleep(msecs(1));
+            bool caught = false;
+            try {
+                tracker.close();
             }
-        });
+            catch (tracker.FiberGroupExtinction ex) {
+                caught = true;
+            }
 
-        assert(counter2 > 0, "no fibers have run");
-        assert(counter2 < 10000, "third fiber should not have run");
+            theReactor.sleep(2.msecs);
 
-        // test fiber suicide
-        tracker.open();
-        tracker.spawnFiber({tracker.close();});
-        theReactor.sleep(msecs(1));
-        assert(tracker.closed());
+            assert(caught, "this fiber did not commit suicide");
+            assert(counter > 0, "no fibers have run");
+            assert(counter < 10000, "third fiber should not have run");
+        }
+
+        {
+            int counter2 = 0;
+
+            tracker.open();
+
+            static class SomeException: Exception {mixin ExceptionBody!"Some exception";}
+
+            static bool caught = false;
+            try {
+                tracker.runTracked({
+                    throw mkEx!SomeException;
+                });
+            } catch (SomeException ex) {
+                caught = true;
+            }
+            assert(caught, "exception wasn't passed up");
+
+            tracker.runTracked({
+                theReactor.registerTimer(Timeout(msecs(20)), (){
+                    theReactor.spawnFiber({
+                        tracker.close();
+                    });
+                });
+
+                scope(success) assert(false);
+
+                while (true) {
+                    counter2++;
+                    theReactor.sleep(msecs(1));
+                }
+            });
+
+            assert(counter2 > 0, "no fibers have run");
+            assert(counter2 < 10000, "third fiber should not have run");
+        }
+
+        {
+            // test fiber suicide
+            tracker.open();
+            tracker.spawnFiber({tracker.close();});
+            theReactor.sleep(msecs(1));
+            assert(tracker.closed());
+        }
     });
 }
 /*
@@ -373,5 +401,49 @@ unittest {
         foo.close();
 
         assert( !foo.spawnFiberIfOpen(&dlg).isValid);
+    });
+}
+
+unittest {
+    uint counter = 0;
+    FiberGroup tracker;
+
+    void fib1() {
+        scope(exit) {
+            counter++;
+        }
+        theReactor.sleep(10.msecs);
+    }
+
+    testWithReactor(
+    {
+        static void closer(FiberGroup* fg, bool wait) {
+            fg.close(wait);
+        }
+
+        {
+            tracker.open();
+
+            tracker.spawnFiber(&fib1);
+            tracker.spawnFiber(&fib1);
+
+            theReactor.yield();
+
+            tracker.runTracked!closer(&tracker, true);
+            assertEQ(counter, 2);
+
+            counter=0;
+            tracker.open();
+
+            tracker.spawnFiber(&fib1);
+            tracker.spawnFiber(&fib1);
+
+            theReactor.yield();
+
+            tracker.runTracked!closer(&tracker, false);
+            assertEQ(counter, 0);
+            theReactor.yield();
+            assertEQ(counter, 2);
+        }
     });
 }
