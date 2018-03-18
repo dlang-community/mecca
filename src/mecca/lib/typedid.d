@@ -230,6 +230,18 @@ unittest {
 }
 
 unittest {
+    alias Foo = AlgebraicTypedIdentifier!("FOO", ubyte);
+    bool verify() {
+        import std.algorithm.comparison : equal;
+        assert(iota(Foo(2)).equal([Foo(0), Foo(1)]));
+        assert(iota(Foo(2), Foo(4)).equal([Foo(2), Foo(3)]));
+        assert(iota(Foo(2), Foo(6), ubyte(2)).equal([Foo(2), Foo(4)]));
+        return true;
+    }
+    static assert(verify());
+}
+
+unittest {
     import std.range : iota;
 
     alias UTiD = AlgebraicTypedIdentifier!("UTiD", uint);
