@@ -242,27 +242,15 @@ private:
     FiberIncarnation incarnation;
 
 public:
-    this(ReactorFiber* fib) nothrow @safe @nogc {
-        opAssign(fib);
-    }
-    auto ref opAssign(ReactorFiber* fib) nothrow @safe @nogc {
-        if (fib) {
-            identity = fib.identity;
-            incarnation = fib.incarnationCounter;
-        }
-        else {
-            identity = FiberId.invalid;
-        }
-        return this;
-    }
-    package ReactorFiber* get() const nothrow @safe @nogc {
-        if (!identity.isValid || theReactor.allFibers[identity.value].incarnationCounter != incarnation) {
-            return null;
-        }
-        return &theReactor.allFibers[identity.value];
+    /// Returns whether the handle was set
+    ///
+    /// Unlike `isValid`, this does not check whether the handle is still valid. It only returns whether the handle
+    /// is in initialized state.
+    @property bool isSet() pure const nothrow @safe @nogc {
+        return identity.isValid;
     }
 
-    /// returns whether the handle currently describes a running fiber.
+    /// Returns whether the handle currently describes a running fiber.
     @property bool isValid() const nothrow @safe @nogc {
         return get() !is null;
     }
@@ -273,6 +261,34 @@ public:
             return identity;
 
         return FiberId.invalid;
+    }
+
+    /// Reset the handle to uninitialized state
+    @notrace void reset() nothrow @safe @nogc {
+        this = FiberHandle.init;
+    }
+
+package:
+    this(ReactorFiber* fib) nothrow @safe @nogc {
+        opAssign(fib);
+    }
+
+    auto ref opAssign(ReactorFiber* fib) nothrow @safe @nogc {
+        if (fib) {
+            identity = fib.identity;
+            incarnation = fib.incarnationCounter;
+        }
+        else {
+            identity = FiberId.invalid;
+        }
+        return this;
+    }
+
+    ReactorFiber* get() const nothrow @safe @nogc {
+        if (!identity.isValid || theReactor.allFibers[identity.value].incarnationCounter != incarnation) {
+            return null;
+        }
+        return &theReactor.allFibers[identity.value];
     }
 }
 
