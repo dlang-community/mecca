@@ -23,6 +23,7 @@ import mecca.reactor.sync.fiber_queue;
 struct Lock {
 private:
     FiberQueue waiters;
+    FiberHandle _owner;
     uint numRequesting; // Including the fiber already holding the lock
 
 public:
@@ -39,6 +40,14 @@ public:
      */
     void acquire(Timeout timeout = Timeout.infinite) @safe @nogc {
         DBG_ASSERT!"Cannot acquire a lock while in a critical section"(!theReactor.isInCriticalSection);
+        DBG_ASSERT!"DEADLOCK: trying to acquire a lock by the same fiber already holding it"(
+                owner!=theReactor.currentFiberHandle);
+
+        scope(success) {
+            DBG_ASSERT!"Owner set when granting the lock"(!owner.isSet);
+            _owner = theReactor.currentFiberHandle;
+        }
+
         if( numRequesting==0 ) {
             // Fast path
             numRequesting = 1;
@@ -52,10 +61,15 @@ public:
     }
 
     /** Release a previously acquired lock.
+     *
+     * This funciton must be called from the same fiber that called the matching `acquire`.
      */
     void release() nothrow @safe @nogc {
         ASSERT!"Lock.release called on a non-acquired lock"(numRequesting>=1);
+        ASSERT!"Lock acquired by %s but released by %s"(
+                owner==theReactor.currentFiberHandle, owner, theReactor.currentFiberHandle);
         numRequesting--;
+        _owner.reset();
 
         if( numRequesting>0 )
             waiters.resumeOne();
@@ -64,6 +78,14 @@ public:
     /// Returns whether the lock is currently held.
     @property bool isLocked() const nothrow @safe @nogc {
         return numRequesting>0;
+    }
+
+    /// Returns the `FiberHandle` of the current owner of the lock.
+    ///
+    /// Function returns `FiberHandle.init` if not currently locked. This is $(I not) the same as calling `isLocked`.
+    /// There are some cases where `isLocked` will return `true` but `owner` will return the invalid handle.
+    @property FiberHandle owner() pure const nothrow @safe @nogc {
+        return _owner;
     }
 }
 
@@ -161,8 +183,10 @@ public:
   relinquished the lock.
  */
 struct UnfairSharedLock {
+    import mecca.reactor.sync.semaphore : Semaphore;
+
 private:
-    Lock        lock;
+    Semaphore   lock = Semaphore(1);
     uint        numSharedLockers;
 
 public:
@@ -172,7 +196,7 @@ public:
     @notrace void acquireExclusive(Timeout timeout = Timeout.infinite) @safe @nogc {
         DBG_ASSERT!"Cannot acquire a lock while in a critical section"(!theReactor.isInCriticalSection);
 
-        lock.acquire(timeout);
+        lock.acquire(1, timeout);
         DBG_ASSERT!"Exclusivly locked but have shared lockers"(numSharedLockers==0);
     }
 
@@ -183,10 +207,10 @@ public:
         DBG_ASSERT!"Cannot acquire a lock while in a critical section"(!theReactor.isInCriticalSection);
 
         if( numSharedLockers==0 ) {
-            lock.acquire(timeout);
+            lock.acquire(1, timeout);
         }
 
-        DBG_ASSERT!"Shared lockers but lock is not acquired"(lock.isLocked);
+        DBG_ASSERT!"Shared lockers but lock is not acquired"(lock.level==0);
         numSharedLockers++;
     }
 
