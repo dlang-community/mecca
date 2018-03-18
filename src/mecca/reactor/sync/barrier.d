@@ -54,7 +54,7 @@ public:
     /**
      * Report whether anyone is waiting for the barrier to complete.
      */
-    auto hasWaiters() nothrow @safe @nogc {
+    auto hasWaiters() pure const nothrow @safe @nogc {
         return numWaiters > 0;
     }
 
