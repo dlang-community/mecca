@@ -10,6 +10,7 @@ import core.runtime: Runtime, defaultTraceHandler;
 
 import mecca.log;
 import mecca.lib.reflection: as;
+import mecca.lib.string : nogcFormat, nogcRtFormat;
 
 // Disable tracing instrumentation for the whole file
 @("notrace") void traceDisableCompileTimeInstrumentation();
@@ -181,22 +182,57 @@ struct ExcBuf {
         tobj.info = cast(Throwable.TraceInfo)tinfo;
     }
 
-    T construct(T:Throwable, A...)(string file, size_t line, bool setTraceback, auto ref A args) nothrow @trusted @nogc {
-        static assert (__traits(classInstanceSize, T) <= ExcBuf.MAX_EXCEPTION_INSTANCE_SIZE);
-
-        // create the exception
-        ex[0 .. __traits(classInstanceSize, T)] = cast(ubyte[])typeid(T).initializer[];
-        auto t = cast(T)ex.ptr;
-        as!"nothrow @nogc"({t.__ctor(args);});
-        t.file = file;
-        t.line = line;
-        t.info = null;
-
-        if (setTraceback) {
-            this.setTraceback(t);
-        }
+    /**
+     * Construct a throwable in place
+     *
+     * Params:
+     * file = the reported source file of the exception
+     * line = the reported source file line of the exception
+     * setTraceback = whether to set the stack trace
+     * args = arguments to pass to the exception's constructor
+     */
+    T construct(T:Throwable, A...)(string file, size_t line, bool setTraceback, auto ref A args) nothrow @trusted @nogc
+    {
+        T t = constructHelper!T(file, line, setTraceback, args);
         setMsg(t.msg, t);
         return t;
+    }
+
+    /**
+     * Construct a Throwable, formatting the message
+     *
+     * Construct a `Throwable` that has a constructor that accepts a single string argument (such as `Exception`). Allows
+     * formatting arguments into the string in a non GC way.
+     *
+     * Second form of the function receives the string as a template argument, and verifies that the arguments match the
+     * format string.
+     */
+    T constructFmt(T: Throwable = Exception, A...)(string file, size_t line, string fmt, auto ref A args) @trusted {
+        auto tmpMsg = nogcRtFormat(msgBuf[], fmt, args);
+        return constructHelper!T(file, line, true, tmpMsg);
+    }
+
+    unittest {
+        ExcBuf ex;
+        ex.constructFmt!Exception("file.d", 31337, "%s was a %s %s", "pappa", "rolling", "stoner");
+
+        assert( ex.get().msg=="pappa was a rolling stoner" );
+    }
+
+    /// ditto
+    T constructFmt(string fmt, T: Throwable = Exception, A...)(string file, size_t line, auto ref A args) @trusted {
+        auto tmpMsg = nogcFormat!fmt(msgBuf[], args);
+        return constructHelper!T(file, line, true, tmpMsg);
+    }
+
+    unittest {
+        ExcBuf ex;
+        ex.constructFmt!("I'm %s in %s", Exception)("file.d", 31337, "an Englishman", "New York");
+
+        assert( ex.get().msg=="I'm an Englishman in New York" );
+
+        static assert( !__traits(compiles,
+                ex.constructFmt!("No arguments, please", Exception)("file.d", 31337, "An argument")) );
     }
 
     void setMsg(const(char)[] msg2, Throwable tobj = null) nothrow @nogc {
@@ -229,6 +265,27 @@ struct ExcBuf {
         }
         auto buf = new ExcBuf;
         return buf.set(ex);
+    }
+
+private:
+    T constructHelper(T:Throwable, A...)(
+            string file, size_t line, bool setTraceback, auto ref A args) nothrow @trusted @nogc
+    {
+        static assert (__traits(classInstanceSize, T) <= ExcBuf.MAX_EXCEPTION_INSTANCE_SIZE);
+
+        // create the exception
+        ex[0 .. __traits(classInstanceSize, T)] = cast(ubyte[])typeid(T).initializer[];
+        auto t = cast(T)ex.ptr;
+        as!"nothrow @nogc"({t.__ctor(args);});
+        t.file = file;
+        t.line = line;
+        t.info = null;
+
+        if (setTraceback) {
+            this.setTraceback(t);
+        }
+
+        return t;
     }
 }
 
