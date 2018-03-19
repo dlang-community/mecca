@@ -4,6 +4,7 @@ import std.traits;
 import std.conv;
 
 import mecca.lib.exception;
+import mecca.lib.reflection : PromotedType;
 import mecca.log : FMT, notrace;
 
 template RawTypedIdentifier(string _name, T, T _invalid, T _init, FMT fmt, bool algebraic)
@@ -206,7 +207,8 @@ auto iota(T, U)(const T start, const T end, const U step) nothrow @safe @nogc
 {
     import std.range : iota;
     import std.algorithm : map;
-    return iota(start.value, end.value, step).map!(x => T(x));
+    alias AlgType = PromotedType!U;
+    return iota(AlgType(start.value), AlgType(end.value), AlgType(step)).map!(x => T(cast(U)x));
 }
 
 auto iota(T, U)(const T start, const T end, const U step) nothrow @safe @nogc
