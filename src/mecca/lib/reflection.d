@@ -10,6 +10,7 @@ import std.stdint: intptr_t;
 // Disable tracing instrumentation for the whole file
 @("notrace") void traceDisableCompileTimeInstrumentation();
 
+/// Return the smallest type large enough to hold the numbers 0..n
 template CapacityType(size_t n) {
     static if (n <= ubyte.max) {
         alias CapacityType = ubyte;
@@ -30,6 +31,24 @@ unittest {
     static assert (is(CapacityType!17_000 == ushort));
     static assert (is(CapacityType!17_000_000 == uint));
     static assert (is(CapacityType!17_000_000_000 == ulong));
+}
+
+/// Type, unless it is smaller than int, in which case it is promoted
+///
+/// This is useful for predicting the return type due to algebraic type promotion
+template PromotedType(Type) {
+    alias PromotedType = typeof(Type(0)+Type(0));
+}
+
+unittest {
+    static assert( is( PromotedType!ubyte == int ) );
+    static assert( is( PromotedType!byte == int ) );
+    static assert( is( PromotedType!ushort == int ) );
+    static assert( is( PromotedType!short == int ) );
+    static assert( is( PromotedType!int == int ) );
+    static assert( is( PromotedType!uint == uint ) );
+    static assert( is( PromotedType!long == long ) );
+    static assert( is( PromotedType!ulong == ulong ) );
 }
 
 private enum badStorageClass(uint cls) = (cls != ParameterStorageClass.none);
