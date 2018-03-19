@@ -140,7 +140,7 @@ private:
     Barrier     sharedLockers;
 
 public:
-    /// The state of the lock, as returned by `lockState`.
+    /// The state of the lock, as returned by `state`.
     enum LockState {
         Unlocked,                       /// Lock is unlocked
         Shared,                         /// Lock is in shared mode
@@ -187,7 +187,7 @@ public:
     ///
     /// Returns:
     /// see `LockState`
-    @property LockState lockState() pure const nothrow @safe @nogc {
+    @property LockState state() pure const nothrow @safe @nogc {
         if( acquireLock.isLocked ) {
             if( sharedLockers.hasWaiters )
                 return LockState.SharedWithExclusivePending;
@@ -263,7 +263,7 @@ public:
     /// This function will never return the `SharedWithExclusivePending` state.
     /// Returns:
     /// see `LockState`
-    @property LockState lockState() pure const nothrow @safe @nogc {
+    @property LockState state() pure const nothrow @safe @nogc {
         if( numSharedLockers>0 )
             return LockState.Shared;
 
@@ -286,7 +286,7 @@ private mixin template Test(SharedLockType) {
 
         DEBUG!"Obtaining exclusive lock gen %s"(gen);
         lock.acquireExclusive();
-        assertEQ(lock.lockState, lock.LockState.Exclusive);
+        assertEQ(lock.state, lock.LockState.Exclusive);
         scope(exit) {
             DEBUG!"Releasing exclusive lock gen %s"(gen);
             lock.releaseExclusive();
@@ -335,13 +335,13 @@ unittest {
     mixin Test!SharedLock;
 
     void testBody() {
-        assertEQ(lock.lockState, lock.LockState.Unlocked);
+        assertEQ(lock.state, lock.LockState.Unlocked);
         startShared(0);
-        assertEQ(lock.lockState, lock.LockState.Shared);
+        assertEQ(lock.state, lock.LockState.Shared);
         startShared(0);
-        assertEQ(lock.lockState, lock.LockState.Shared);
+        assertEQ(lock.state, lock.LockState.Shared);
         startExclusive(0);
-        assertEQ(lock.lockState, lock.LockState.SharedWithExclusivePending);
+        assertEQ(lock.state, lock.LockState.SharedWithExclusivePending);
         startShared(1);
         startShared(1);
         startShared(1);
@@ -350,9 +350,9 @@ unittest {
         startShared(2);
 
         allDone.waitAll();
-        assertEQ(lock.lockState, lock.LockState.Unlocked);
+        assertEQ(lock.state, lock.LockState.Unlocked);
         lock.acquireExclusive(Timeout(Duration.zero));
-        assertEQ(lock.lockState, lock.LockState.Exclusive);
+        assertEQ(lock.state, lock.LockState.Exclusive);
     }
 
     testWithReactor(&testBody);
@@ -362,12 +362,12 @@ unittest {
     mixin Test!UnfairSharedLock;
 
     void testBody() {
-        assertEQ(lock.lockState, lock.LockState.Unlocked);
+        assertEQ(lock.state, lock.LockState.Unlocked);
         startShared(0);
-        assertEQ(lock.lockState, lock.LockState.Shared);
+        assertEQ(lock.state, lock.LockState.Shared);
         startShared(0);
         startExclusive(0);
-        assertEQ(lock.lockState, lock.LockState.Shared);
+        assertEQ(lock.state, lock.LockState.Shared);
         startShared(0);
         startShared(0);
         startShared(0);
@@ -376,9 +376,9 @@ unittest {
         startShared(0);
 
         allDone.waitAll();
-        assertEQ(lock.lockState, lock.LockState.Unlocked);
+        assertEQ(lock.state, lock.LockState.Unlocked);
         lock.acquireExclusive(Timeout(Duration.zero));
-        assertEQ(lock.lockState, lock.LockState.Exclusive);
+        assertEQ(lock.state, lock.LockState.Exclusive);
     }
 
     testWithReactor(&testBody);
