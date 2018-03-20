@@ -505,6 +505,10 @@ unittest {
 @notrace void assertOp(string op, L, R, string file = __FILE__, string mod = __MODULE__, size_t line = __LINE__)
     (L lhs, R rhs, string msg="") nothrow @nogc
 {
+    static assert(
+             !is(Unqual!LHS == enum) || is(Unqual!LHS == Unqual!RHS),
+            "comparing different enums is unsafe: " ~ LHS.stringof ~ " != " ~ RHS.stringof);
+
     import std.meta: staticIndexOf;
     enum idx = staticIndexOf!(op, "==", "!=", ">", "<", ">=", "<=");
     static assert (idx >= 0);
