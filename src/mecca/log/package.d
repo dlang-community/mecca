@@ -11,6 +11,9 @@ import mecca.lib.console;
 import mecca.lib.exception: extractStack, DefaultTraceInfoABI;
 import mecca.log.impl;
 
+/// Report whether the loggin infra has been initialized
+enum loggingInitialized = true;
+
 /**
  * UDA for disabling auto tracing of a specific function
  *

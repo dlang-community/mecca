@@ -34,7 +34,7 @@ shared static this() {
     assert(defaultTraceTypeInfo.initializer.length <= ExcBuf.MAX_TRACEBACK_SIZE);
     assert(DefaultTraceInfoABI.sizeof <= defaultTraceTypeInfo.initializer.length);
     version (unittest) {} else {
-        assertHandler = &assertHandler2;
+        assertHandler = &assertHandlerImpl;
     }
 }
 
@@ -301,51 +301,60 @@ void switchCurrExcBuf(ExcBuf* newCurrentExcBuf) nothrow @safe @nogc {
 }
 
 T mkEx(T: Throwable, string file = __FILE__, size_t line = __LINE__, A...)(auto ref A args) @safe @nogc {
-    pragma(inline, true); // Must inline because of __FILE__ as template parameter. https://github.com/ldc-developers/ldc/issues/1703
+    version(LDC)
+            // Must inline because of __FILE__ as template parameter. https://github.com/ldc-developers/ldc/issues/1703
+            pragma(inline, true);
+
+    return mkExLine!T(file, line, args);
+}
+
+T mkExLine(T: Throwable, A...)(string file, size_t line, auto ref A args) @safe @nogc {
     return _currExcBuf.construct!T(file, line, true, args);
 }
 
-private __gshared char[4096] tmpBuf;
+T mkExFmt(T: Throwable, string file = __FILE__, size_t line = __LINE__, A...)(string fmt, auto ref A args) @safe @nogc
+{
+    version(LDC)
+            // Must inline because of __FILE__ as template parameter. https://github.com/ldc-developers/ldc/issues/1703
+            pragma(inline, true);
 
-T mkExFmt(T: Throwable, string file = __FILE__, size_t line = __LINE__, A...)(string fmt, auto ref A args) @safe @nogc {
-    pragma(inline, true); // Must inline because of __FILE__ as template parameter. https://github.com/ldc-developers/ldc/issues/1703
-
-    // Reduce code bloat by taking the file and line out of the template parameters
-    return _mkExFmt!T(file, line, fmt, args);
+    return _currExcBuf.constructFmt!T(file, line, fmt, args);
 }
 
-T _mkExFmt(T, A...)(string file, size_t line, string fmt, auto ref A args) @trusted @nogc {
-    import std.string: sformat;
+T mkExFmt(string fmt, T: Throwable = Exception, string file = __FILE__, size_t line = __LINE__, A...)(auto ref A args)
+    @safe @nogc
+{
+    version(LDC)
+            // Must inline because of __FILE__ as template parameter. https://github.com/ldc-developers/ldc/issues/1703
+            pragma(inline, true);
 
-    string msg = as!"@nogc"({return cast(string)sformat(tmpBuf, fmt, args);});
-
-    static if (is(typeof(T.__ctor("", "", 0)))) {
-        return _currExcBuf.construct!T(file, line, true, msg);
-    }
-    else {
-        auto ex = _currExcBuf.construct!T(file, line, true, null);
-        _currExcBuf.setMsg(msg);
-        return ex;
-    }
+    return _currExcBuf.constructFmt!(fmt, T)(file, line, args);
 }
+
 Throwable setEx(Throwable ex, bool setTraceback = false) {
     return _currExcBuf.set(ex, setTraceback);
 }
 
-RangeError rangeError(K, string file=__FILE__, size_t line=__LINE__)(K key) {
-    pragma(inline, true); // Must inline because of __FILE__ as template parameter. https://github.com/ldc-developers/ldc/issues/1703
-    static if (is(typeof(sformat(null, "%s", key)))) {
-        return mkExFmt!(RangeError, file, line)("%s", key);
+RangeError rangeError(K, string file=__FILE__, size_t line=__LINE__)(K key, string msg = "Index/key not found") {
+    version(LDC)
+            // Must inline because of __FILE__ as template parameter. https://github.com/ldc-developers/ldc/issues/1703
+            pragma(inline, true);
+
+    static if ( __traits(compiles, sformat(null, "%s", key))) {
+        return mkExFmt!("%s: %s", RangeError, file, line)(msg, key);
     }
     else {
-        return mkExFmt!(RangeError, file, line)(K.stringof);
+        return mkExFmt!("%s: %s", RangeError, file, line)(msg, K.stringof);
     }
 }
 
 void enforceFmt(T: Throwable = Exception, string file = __FILE__, size_t line = __LINE__, A...)(
         bool cond, string fmt, auto ref A args) @safe @nogc
 {
-    pragma(inline, true); // Must inline because of __FILE__ as template parameter. https://github.com/ldc-developers/ldc/issues/1703
+    version(LDC)
+            // Must inline because of __FILE__ as template parameter. https://github.com/ldc-developers/ldc/issues/1703
+            pragma(inline, true);
+
     if (!cond) {
         throw mkExFmt!(T, file, line)(fmt, args);
     }
@@ -404,14 +413,14 @@ unittest {
     assert (thrown2);
 }
 
-private void assertHandler2(string file, size_t line, string msg) nothrow @nogc {
+private @notrace void assertHandlerImpl(string file, size_t line, string msg) nothrow @nogc {
     pragma(inline, true);
     DIE(msg, file, line);
 }
 
 void function(string msg, string file, size_t line) blowUpHandler;
 
-void DIE(string msg, string file = __FILE__, size_t line = __LINE__, bool doAbort=false) nothrow @nogc {
+@notrace void DIE(string msg, string file = __FILE__, size_t line = __LINE__, bool doAbort=false) nothrow @nogc {
     import core.sys.posix.unistd: write, _exit;
     import core.stdc.stdlib: abort;
     import core.atomic: cas;
@@ -422,7 +431,10 @@ void DIE(string msg, string file = __FILE__, size_t line = __LINE__, bool doAbor
 
     __gshared static ExcBuf excBuf;
     as!"nothrow @nogc"({
-        //META!"Assertion failure(%s:%s) %s"(file, line, msg);
+        if( loggingInitialized ) {
+            META!"Assertion failure(%s:%s) %s"(file, line, msg);
+            flushLog();
+        }
         auto ex = excBuf.construct!AssertError(file, line, true, msg);
         ex.toString((text){write(2, text.ptr, text.length);});
         if (doAbort) {
@@ -444,13 +456,16 @@ void ASSERT
     (bool cond, scope lazy T args)
     pure nothrow @trusted @nogc
 {
-    pragma(inline, true);
+    version(LDC)
+            // Must inline because of __FILE__ as template parameter. https://github.com/ldc-developers/ldc/issues/1703
+            pragma(inline, true);
+
     if (cond) {
         return;
     }
 
     scope f = () {
-        META!("Assertion failure: " ~ fmt, file, mod, line)(args);
+        META!("ABORTED at %s:%s")(file, line);
         static if( !LogToConsole ) {
             // Also log to stderr, as the logger doesn't do that for us.
             import std.stdio: stderr;
@@ -472,6 +487,10 @@ void ASSERT
 void enforceNGC(Ex : Throwable = Exception, string file = __FILE__, size_t line = __LINE__)
     (bool value, scope lazy string msg = null) @trusted @nogc
 {
+    version(LDC)
+            // Must inline because of __FILE__ as template parameter. https://github.com/ldc-developers/ldc/issues/1703
+            pragma(inline, true);
+
     if( !value ) {
         string evaluatedMsg;
         as!"@nogc"({evaluatedMsg = msg;});
@@ -482,6 +501,10 @@ void enforceNGC(Ex : Throwable = Exception, string file = __FILE__, size_t line 
 void errnoEnforceNGC(string file = __FILE__, size_t line = __LINE__)
     (bool value, scope lazy string msg = null) @trusted @nogc
 {
+    version(LDC)
+            // Must inline because of __FILE__ as template parameter. https://github.com/ldc-developers/ldc/issues/1703
+            pragma(inline, true);
+
     as!"@nogc"({ enforceNGC!(ErrnoException, file, line)(value, msg); });
 }
 
@@ -505,6 +528,10 @@ unittest {
 @notrace void assertOp(string op, L, R, string file = __FILE__, string mod = __MODULE__, size_t line = __LINE__)
     (L lhs, R rhs, string msg="") nothrow @nogc
 {
+    version(LDC)
+            // Must inline because of __FILE__ as template parameter. https://github.com/ldc-developers/ldc/issues/1703
+            pragma(inline, true);
+
     static assert(
              !is(Unqual!LHS == enum) || is(Unqual!LHS == Unqual!RHS),
             "comparing different enums is unsafe: " ~ LHS.stringof ~ " != " ~ RHS.stringof);
@@ -557,13 +584,18 @@ unittest {
     assertThrows(assertEQ(7, 17));
 }
 
-int errnoCall(alias F)(Parameters!F args, string file=__FILE__, size_t line=__LINE__) @nogc if (is(ReturnType!F == int)) {
+int errnoCall(alias F, string file=__FILE__, size_t line=__LINE__)(Parameters!F args) @nogc if (is(ReturnType!F == int))
+{
+    version(LDC)
+            // Must inline because of __FILE__ as template parameter. https://github.com/ldc-developers/ldc/issues/1703
+            pragma(inline, true);
+
     int res = F(args);
     if (res < 0) {
         import std.range: repeat;
         import std.string;
         enum fmt = __traits(identifier, F) ~ "(" ~ "%s".repeat(args.length).join(", ") ~ ")";
-        throw _mkExFmt!ErrnoException(file, line, fmt, args);
+        throw mkExFmt!(fmt, ErrnoException, file, line)(args);
     }
     return res;
 }
