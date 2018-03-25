@@ -192,8 +192,12 @@ public:
 
     void set(alias F)(Parameters!F args) nothrow @nogc @trusted {
         static assert (is(ReturnType!F == void), "Delegate must return void");
-        static assert (Filter!(badStorageClass, ParameterStorageClassTuple!F).length == 0,
-            "Bad storage class " ~ ParameterStorageClassTuple!F.stringof);
+        foreach(i, storage; ParameterStorageClassTuple!F) {
+            static assert(
+                    !badStorageClass!storage,
+                    "Argument " ~ text(i) ~ " has non-plain storage class " ~
+                        bitEnumToString!ParameterStorageClass(storage) );
+        }
 
         alias PSCT = ParameterStorageClassTuple!F;
         foreach( i, sc; PSCT ) {
@@ -826,4 +830,48 @@ unittest {
     assert( func2(a)==5 );
     assert( func2(a, 17)==19 );
     static assert( !__traits(compiles, func2()) );
+}
+
+/// Convert a value to bitwise or of enum members
+string bitEnumToString(T)(ulong val) pure @safe {
+    import std.format : format;
+
+    static assert( is(T==enum), "enumToString must accept an enum type (duh!). Got " ~ T.stringof ~ " instead." );
+
+    string ret;
+
+    foreach(enumMember; EnumMembers!T) {
+        if( (val & enumMember)!=0 ) {
+            if( ret.length!=0 )
+                ret ~= "|";
+
+            ret ~= text(enumMember);
+            val &= ~(enumMember);
+        }
+    }
+
+    if( val!=0 ) {
+        if( ret.length!=0 )
+            ret ~= "|";
+
+        ret ~= format("0x%x", val);
+    }
+
+    return ret;
+}
+
+unittest {
+    import mecca.lib.exception : assertEQ;
+
+    enum Test : uint {
+        A = 1,
+        B = 4,
+        C = 8,
+        D = 4,
+    }
+
+    assertEQ( bitEnumToString!Test(2), "0x2" );
+    assertEQ( bitEnumToString!Test(8), "C" );
+    assertEQ( bitEnumToString!Test(11), "A|C|0x2" );
+    assertEQ( bitEnumToString!Test(12), "B|C" );
 }
