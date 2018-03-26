@@ -82,7 +82,8 @@ class DeferredTaskFailed: Exception {
 alias DeferredTaskCookie = TypedIdentifier!("DeferredTaskCookie", ulong, ulong.max, ulong.max);
 
 struct DeferredTask {
-    Closure closure;
+    Closure taskClosure;
+    Closure finiClosure;
     TscTimePoint timeAdded;
     TscTimePoint timeFinished;
     bool hasException;
@@ -102,17 +103,29 @@ struct DeferredTask {
         return DeferredTaskCookie(timeAdded.cycles);
     }
 
-    @notrace void set(alias F)(Parameters!F args) {
+    @notrace void set(alias F, alias Fini = null)(Parameters!F args) {
+        static if( !is( typeof(Fini) == typeof(null) ) ) {
+            static assert(
+                    is( Parameters!F == Parameters!Fini ), "Fini parameters must match callback parameters");
+            static assert(
+                    is( ReturnType!Fini == void ),
+                    "Fini callback must be of type void, not " ~ ReturnType!Fini.stringof );
+        }
+
         alias R = ReturnType!F;
         static if (is(R == void)) {
-            closure.set!F(args);
+            taskClosure.set!F(args);
         }
         else {
             static assert (R.sizeof <= result.sizeof);
             static void wrapper(void* res, Parameters!F args) {
                 *cast(R*)res = F(args);
             }
-            closure.set!wrapper(result.ptr, args);
+            taskClosure.set!wrapper(result.ptr, args);
+        }
+
+        static if( !is( typeof(Fini) == typeof(null) ) ) {
+            finiClosure.set!Fini(args);
         }
     }
 
@@ -127,7 +140,7 @@ struct DeferredTask {
         hasException = false;
         try {
             DEBUG!"#THD running %s in thread"(cookie);
-            closure();
+            taskClosure();
         }
         catch (Throwable ex) {
             hasException = true;
@@ -139,7 +152,11 @@ struct DeferredTask {
     }
 
     @notrace void runFinalizer() nothrow {
-        // XXX: implement finalizer
+        try {
+            finiClosure();
+        } catch(Exception ex) {
+            ASSERT!"Thread finalizer should never throw. Threw \"%s\""(false, ex.msg);
+        }
     }
 }
 
@@ -212,6 +229,7 @@ public:
         foreach(thd; threads) {
             thd.join();
         }
+        destroy(queue);
         tasksPool.close();
     }
 
@@ -275,11 +293,15 @@ public:
         }
     }
 
-    auto deferToThread(alias F)(Timeout timeout, Parameters!F args) @nogc {
+    auto deferToThread(alias F, alias Fini = null)(Timeout timeout, Parameters!F args) @nogc {
+        static assert(
+                is( typeof(Fini) == typeof(null) ) || hasFunctionAttributes!(Fini, "nothrow"),
+                "Fini callback must be nothrow" );
+
         auto task = tasksPool.alloc();
         task.fibHandle = theReactor.currentFiberHandle;
         task.timeAdded = TscTimePoint.now();
-        task.set!F(args);
+        task.set!(F, Fini)(args);
         auto added = queue.submitRequest(tasksPool.indexOf(task));
         ASSERT!"submitRequest"(added);
 
@@ -366,4 +388,64 @@ unittest {
 
         assert (sum == 270);
     }, options);
+}
+
+unittest {
+    import mecca.reactor;
+    import mecca.reactor.sync.event;
+    import mecca.reactor.types : ReactorExit;
+    import std.traits;
+
+    static struct Context {
+        uint counter;
+        shared bool inThread;
+        Event started, done;
+
+        void threadBody() {
+            assert(!inThread, "Variable marked in thread at thread beginning");
+            inThread = true;
+            scope(exit) inThread = false;
+            Thread.sleep(20.msecs);
+        }
+
+        static void proxyBody(Context* _this) {
+            _this.threadBody();
+        }
+
+        void testFini() nothrow {
+            counter++;
+            done.set();
+        }
+
+        static void proxyFini(Context* _this) nothrow {
+            return _this.testFini();
+        }
+
+        void testFiber() {
+            started.set();
+            DEBUG!"Deferring to thread"();
+            theReactor.deferToThread!(proxyBody, proxyFini)(&this);
+            assert(false, "Thread finished successfully when it shouldn't");
+        }
+    }
+
+    void testBody() {
+        Context context;
+
+        auto handle = theReactor.spawnFiber(&context.testFiber);
+
+        context.started.wait();
+        // Wait for the thread queue to pick up the new task
+        theReactor.sleep(14.msecs);
+        theReactor.throwInFiber!ReactorExit(handle);
+        assert(context.counter==0);
+        assert(context.inThread);
+        context.done.wait(Timeout(50.msecs));
+        assert(!context.inThread);
+        assert(context.counter==1);
+    }
+
+    Reactor.OpenOptions options;
+    options.threadDeferralEnabled = true;
+    testWithReactor(&testBody, options);
 }

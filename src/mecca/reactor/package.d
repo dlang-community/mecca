@@ -939,6 +939,12 @@ public:
      *
      * Runs a function inside a thread. Use this function to run CPU bound processing without freezing the other fibers.
      *
+     * `Fini`, if provided, will be called with the same parameters in the reactor thread once the thread has finished.
+     * `Fini` will be called unconditionally, even if the fiber that launched the thread terminates before the thread
+     * has finished.
+     *
+     * The `Fini` function runs within a `criticalSection`, and must not sleep.
+     *
      * Returns:
      * The return argument from the delegate is returned by this function.
      *
@@ -947,9 +953,10 @@ public:
      *
      * Will rethrow whatever the thread throws in the waiting fiber.
      */
-    auto deferToThread(alias F)(Parameters!F args) @nogc {
-        DBG_ASSERT!"deferToThread called but thread deferral isn't enabled in the reactor"(optionsInEffect.threadDeferralEnabled);
-        return threadPool.deferToThread!F(Timeout.infinite, args);
+    auto deferToThread(alias F, alias Fini = null)(Parameters!F args) @nogc {
+        DBG_ASSERT!"deferToThread called but thread deferral isn't enabled in the reactor"(
+                optionsInEffect.threadDeferralEnabled);
+        return threadPool.deferToThread!(F, Fini)(Timeout.infinite, args);
     }
 
     /// ditto
