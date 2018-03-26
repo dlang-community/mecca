@@ -465,7 +465,7 @@ void ASSERT
     }
 
     scope f = () {
-        META!("ABORTED at %s:%s")(file, line);
+        META!("ASSERT at %s:%s")(file, line);
         static if( !LogToConsole ) {
             // Also log to stderr, as the logger doesn't do that for us.
             import std.stdio: stderr;
@@ -474,7 +474,10 @@ void ASSERT
     };
     as!"@nogc pure nothrow"(f);
     version(unittest ){
-        as!"@nogc pure nothrow"({throw new AssertError("Assertion failure", file, line);});
+        as!"@nogc pure nothrow"({
+            import std.string: format;
+            throw new AssertError( format("Assertion failure: " ~ fmt, args), file, line);
+        });
     }
     else {
         as!"@nogc pure nothrow"({
