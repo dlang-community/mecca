@@ -81,7 +81,7 @@ template setFiberFls(alias FLS) {
         if( reactorFiber is null )
             return;
 
-        size_t offset = cast(void*)(&FLS()) - theReactor.thisFiber.params.flsBlock.data.ptr;
+        size_t offset = cast(void*)(&FLS()) - cast(void*)theReactor.thisFiber.params.flsBlock.data.ptr;
         DBG_ASSERT!"setFiberFls offset %s out of bounds %s"(offset<FLS_AREA_SIZE, offset, FLS_AREA_SIZE);
         *cast(T*)(reactorFiber.params.flsBlock.data.ptr + offset) = value;
     }
