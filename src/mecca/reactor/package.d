@@ -426,6 +426,13 @@ public:
         return _open;
     }
 
+    /// Report whether the reactor is currently active
+    ///
+    /// Unlike `isRunning`, this will return `false` during the reactor shutdown.
+    @property bool isActive() const pure nothrow @safe @nogc {
+        return _running && !_stopping;
+    }
+
     /// Report whether the reactor is currently running
     @property bool isRunning() const pure nothrow @safe @nogc {
         return _running;
