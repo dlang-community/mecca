@@ -59,7 +59,7 @@ struct ReactorFiber {
         HAS_EXCEPTION  = 0x10,  /// Fiber has pending exception to be thrown in it
         EXCEPTION_BT   = 0x20,  /// Fiber exception needs to have fiber's backtrace
         GC_ENABLED     = 0x40,  /// Fiber is allowed to perform GC without warning
-        //REQUEST_BT     = 0x40,
+        PRIORITY       = 0x80,  /// Fiber is a high priority one
     }
 
     enum State : ubyte {
@@ -804,6 +804,19 @@ public:
             yield();
     }
 
+    /**
+      Give the current fiber priority in execution.
+
+      Setting fiber priority means that the next time this fiber is scheduled, it will be scheduled ahead of other
+      fibers already scheduled to be run.
+
+      This attribute is a one-off. As soon as the fiber gets scheduled again, it will revert to being a normal fiber.
+     */
+    void prioritizeCurrentFiber(bool priority = true) nothrow @safe @nogc {
+        ASSERT!"Cannot ask to prioritize a non-user fiber"(!isSpecialFiber);
+        thisFiber.flag!"PRIORITY" = priority;
+    }
+
     /// Handle used to manage registered timers
     struct TimerHandle {
     private:
@@ -1194,6 +1207,11 @@ private:
     void resumeFiber(ReactorFiber* fib, bool immediate = false) nothrow @safe @nogc {
         assert (!fib.flag!"SPECIAL");
         ASSERT!"resumeFiber called on %s, which does not have a callback set"(fib.flag!"CALLBACK_SET", fib.identity);
+
+        if (fib.flag!"PRIORITY") {
+            immediate = true;
+            fib.flag!"PRIORITY" = false;
+        }
 
         if (!fib.flag!"SCHEDULED") {
             if (fib._owner !is null) {
