@@ -106,7 +106,7 @@ public:
     }
 
     /// @safe write
-    auto write(void[] buffer) @trusted @nogc {
+    auto write(const void[] buffer) @trusted @nogc {
         return checkedCall!(core.sys.posix.unistd.write, "write failed")(buffer.ptr, buffer.length);
     }
 
@@ -242,22 +242,37 @@ struct BufferedIO(T) {
     enum MIN_BUFF_SIZE = 128;
 
 private:
-    T fd;
     MmapArray!ubyte rawMemory;
-    size_t readBufferSize;
     void[] readBuffer, writeBuffer;
+    size_t readBufferSize;
+    public T fd; // Declared public so it is visible through alias this
 
 public:
     // BufferedIO is not copyable even if T is copyable (which it typically won't be)
     @disable this(this);
 
-    this(T fd) {
+    /** Construct an initialized buffered IO object
+     *
+     * `fd` is the FD object to wrap. Other arguments are the same as for the `open` call.
+     */
+    this(T fd, size_t bufferSize) {
+        this.open(bufferSize);
+        this.fd = move(fd);
+    }
+
+    this(T fd, size_t readBufferSize, size_t writeBufferSize) {
+        this.open(readBufferSize, writeBufferSize);
         this.fd = move(fd);
     }
 
     /// Struct destructor
+    ///
+    /// Warning:
+    /// $(B The destructor does not flush outstanding writes). This is because it might be called from an exception
+    /// context where such flushes are not possible. Adding `scope(success) io.flush();` is recommended.
     ~this() @safe @nogc {
-        close();
+        closeNoFlush();
+        // No point in closing the underlying FD. Its own destructor should do that.
     }
 
     /**
@@ -296,17 +311,15 @@ public:
         writeBuffer = null;
     }
 
-    /// Dispose of the buffers
+    /** Close the buffered IO
+     *
+     * This flushes all outstanding writes, closes the underlying FD and releases the buffers.
+     */
     void close() @safe @nogc {
-        if( writeBuffer.length!=0 ) {
-            ERROR!"Closing BufferedIO while it still has unflushed data to write"();
-        }
-        rawMemory.free();
-        readBufferSize = 0;
-        readBuffer = null;
-        writeBuffer = null;
+        flush();
+        closeNoFlush();
+        fd.close();
     }
-
 
     /// Perform @safe buffered read
     ///
@@ -336,7 +349,7 @@ public:
     /// Perform @safe buffered write
     ///
     /// Function does not return until all data is either written to FD or buffered
-    void write(ARGS...)(void[] buffer, ARGS args) @trusted @nogc {
+    void write(ARGS...)(const(void)[] buffer, ARGS args) @trusted @nogc {
         if( buffer.length>rawWriteBuffer.length ) {
             // Buffer is big - write it directly to save on copies
             flush(args);
@@ -383,6 +396,18 @@ public:
         }
     }
 
+    /** Attach an underlying FD to the buffered IO instance
+     *
+     * Instance must be open and not already attached
+     */
+    ref BufferedIO opAssign(T fd) {
+        ASSERT!"Attaching fd to an open buffered IO"(!fd.isValid);
+        ASSERT!"Trying to attach an fd to a closed BufferedIO"( !rawMemory.closed );
+        move(fd, this.fd);
+
+        return this;
+    }
+
     alias fd this;
 private:
     size_t writeBufferSize() const pure nothrow @safe @nogc {
@@ -400,6 +425,16 @@ private:
                 readBufferSize<rawMemory.length, readBufferSize, rawMemory.length );
         return rawMemory[readBufferSize..$];
     }
+
+    @notrace void closeNoFlush() @safe @nogc {
+        if( writeBuffer.length!=0 ) {
+            ERROR!"Closing BufferedIO while it still has unflushed data to write"();
+        }
+        rawMemory.free();
+        readBufferSize = 0;
+        readBuffer = null;
+        writeBuffer = null;
+    }
 }
 
 unittest {
@@ -412,6 +447,7 @@ unittest {
 
     struct MockFD {
         uint readOffset, writeOffset;
+        bool opened = true;
 
         ssize_t read(void[] buffer) @nogc {
             auto len = min(buffer.length, reference.length - readOffset);
@@ -423,7 +459,7 @@ unittest {
             return len;
         }
 
-        size_t write(void[] buffer) @nogc {
+        size_t write(const void[] buffer) @nogc {
             foreach(datum; cast(ubyte[])buffer) {
                 assertEQ(datum, cast(ubyte)(reference[writeOffset]+1));
                 writeOffset++;
@@ -432,6 +468,14 @@ unittest {
             numWrites++;
 
             return buffer.length;
+        }
+
+        @property bool isValid() const @nogc {
+            return opened;
+        }
+
+        void close() @nogc {
+            opened = false;
         }
     }
 

@@ -296,11 +296,21 @@ struct Socket {
         return fd.blockingCall!(.send)(data.ptr, data.length, flags, timeout);
     }
 
+    /// ditto
+    @notrace ssize_t send(const void[] data, Timeout timeout) @trusted @nogc {
+        return send(data, 0, timeout);
+    }
+
     /**
      * send an entire object over a connected socket
      */
-    @notrace void sendObj(T)(T* data, int flags, Timeout timeout = Timeout.infinite) @safe @nogc {
+    @notrace void sendObj(T)(const(T)* data, int flags=0, Timeout timeout = Timeout.infinite) @safe @nogc {
         objectCall!send(data, flags, timeout);
+    }
+
+    /// ditto
+    @notrace void sendObj(T)(const(T)* data, Timeout timeout) @safe @nogc {
+        sendObj(data, 0, timeout);
     }
 
     /**
@@ -361,6 +371,10 @@ struct Socket {
         objectCall!recv(data, flags, timeout);
     }
 
+    /// ditto
+    @notrace void recvObj(T)(T* data, Timeout timeout) @safe @nogc {
+        recvObj(data, 0, timeout);
+    }
 
     /**
      * recv data from an unconnected socket
@@ -581,7 +595,7 @@ public:
     }
 
     /// Perform reactor aware @safe write
-    ssize_t write(void[] buffer, Timeout timeout = Timeout.infinite) @trusted @nogc {
+    ssize_t write(const void[] buffer, Timeout timeout = Timeout.infinite) @trusted @nogc {
         return blockingCall!(unistd.write)( buffer.ptr, buffer.length, timeout );
     }
 
