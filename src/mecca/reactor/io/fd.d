@@ -391,12 +391,23 @@ struct Socket {
     }
 
     /**
-     * Get the name of the current socket.
+     * Get the local address of the socket.
      */
-    SockAddr getSockName() @trusted @nogc {
+    SockAddr getLocalAddress() @trusted @nogc {
         SockAddr sa;
         socklen_t saLen = sa.sizeof;
         fd.osCallErrno!(.getsockname)(&sa.base, &saLen);
+
+        return sa;
+    }
+
+    /**
+     * Get the remote address of a connected socket.
+     */
+    SockAddr getPeerAddress() @trusted @nogc {
+        SockAddr sa;
+        socklen_t saLen = sa.sizeof;
+        fd.osCallErrno!(.getpeername)(&sa.base, &saLen);
 
         return sa;
     }
@@ -449,7 +460,7 @@ unittest {
 
     void server() {
         ConnectedSocket sock = ConnectedSocket.listen( SockAddr(SockAddrIPv4.any()) );
-        sa = sock.getSockName();
+        sa = sock.getLocalAddress();
         INFO!"Listening socket on %s"(sa.toString()); // TODO remove reliance on GC
         evt.set();
 

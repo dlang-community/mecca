@@ -315,7 +315,7 @@ public:
      *
      * This flushes all outstanding writes, closes the underlying FD and releases the buffers.
      */
-    void close() @safe @nogc {
+    void close() {
         flush();
         closeNoFlush();
         fd.close();
