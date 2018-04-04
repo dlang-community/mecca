@@ -331,7 +331,7 @@ T mkExFmt(string fmt, T: Throwable = Exception, string file = __FILE__, size_t l
     return _currExcBuf.constructFmt!(fmt, T)(file, line, args);
 }
 
-Throwable setEx(Throwable ex, bool setTraceback = false) {
+Throwable setEx(Throwable ex, bool setTraceback = false) nothrow @safe @nogc {
     return _currExcBuf.set(ex, setTraceback);
 }
 
