@@ -6,16 +6,23 @@ import std.algorithm;
 import mecca.lib.exception;
 import mecca.lib.time;
 import mecca.log;
+import mecca.reactor;
 import mecca.reactor.sync.fiber_queue;
 
 /// Reactor aware semaphore
 struct Semaphore {
 private:
+    /+ Semaphore fairness is assured using a two stage process.
+       During acquire, if there are other waiting acquirers, we place ourselves in the "waiters" queue.
+
+       Once we're at the top of the queue, we register our fiber handle as primaryWaiter.
+     +/
     size_t _capacity;
     size_t available;
     size_t requestsPending;
     FiberQueue waiters;
-    bool resumePending; // Makes sure only one fiber gets woken up at any one time
+    FiberHandle primaryWaiter;
+    bool resumePending;         // Makes sure only one fiber gets woken up at any one time
 
 public:
     @disable this(this);
@@ -93,7 +100,7 @@ public:
         bool slept;
         if( requestsPending>amount ) {
             // There are others waiting before us
-            suspend(timeout);
+            suspendSecondary(timeout);
             slept = true;
         }
 
@@ -103,7 +110,7 @@ public:
             }
 
             slept = true;
-            suspend(timeout);
+            suspendPrimary(timeout);
         }
 
         DBG_ASSERT!"Semaphore has %s requests pending including us, but we're requesting %s"(requestsPending >= amount, requestsPending,
@@ -136,13 +143,28 @@ public:
 private:
     void resumeOne(bool immediate) nothrow @safe @nogc {
         if( !resumePending ) {
-            waiters.resumeOne(immediate);
+            if( primaryWaiter.isValid ) {
+                theReactor.resumeFiber(primaryWaiter, immediate);
+            } else {
+                waiters.resumeOne(immediate);
+            }
+
             resumePending = true;
         }
     }
 
-    void suspend(Timeout timeout) @safe @nogc {
+    void suspendSecondary(Timeout timeout) @safe @nogc {
         waiters.suspend(timeout);
+        ASSERT!"Semaphore woke up without anyone owning up to waking us up."(resumePending);
+
+        resumePending = false;
+    }
+
+    void suspendPrimary(Timeout timeout) @safe @nogc {
+        DBG_ASSERT!"Cannot have two primary waiters"(!primaryWaiter.isValid);
+        primaryWaiter = theReactor.currentFiberHandle();
+        scope(exit) primaryWaiter.reset();
+        theReactor.suspendThisFiber(timeout);
         ASSERT!"Semaphore woke up without anyone owning up to waking us up."(resumePending);
 
         resumePending = false;
@@ -186,4 +208,40 @@ unittest {
     foreach(i, cnt; counters) {
         ASSERT!"Counter %s not correct: %s"(cnt>=999, i, counters);
     }
+}
+
+unittest {
+    import mecca.reactor.sync.barrier;
+
+    uint counter;
+    auto sem = Semaphore(4);
+    Barrier barrier;
+
+    void fib(uint expected) {
+        assert(counter==0);
+        sem.acquire(4);
+        assertEQ(counter, expected, "Out of order acquire");
+        counter++;
+        sem.release(4);
+
+        barrier.markDone();
+    }
+
+    testWithReactor({
+            sem.acquire(4);
+
+            foreach(uint i; 0..10) {
+                theReactor.spawnFiber(&fib, i);
+                barrier.addWaiter();
+                theReactor.yield;
+            }
+
+            sem.release(1);
+            theReactor.yield();
+            sem.release(3);
+
+            barrier.waitAll();
+
+            assert(counter==10);
+        });
 }
