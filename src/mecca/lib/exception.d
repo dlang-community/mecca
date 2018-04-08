@@ -540,9 +540,9 @@ unittest {
             "comparing different enums is unsafe: " ~ LHS.stringof ~ " != " ~ RHS.stringof);
 
     import std.meta: staticIndexOf;
-    enum idx = staticIndexOf!(op, "==", "!=", ">", "<", ">=", "<=", "in", "!in");
+    enum idx = staticIndexOf!(op, "==", "!=", ">", "<", ">=", "<=", "in", "!in", "is", "!is");
     static assert (idx >= 0, "assertOp called with operation \"" ~ op ~ "\" which is not supported");
-    enum inverseOp = ["!=", "==", "<=", ">=", "<", ">", "!in", "in"][idx];
+    enum inverseOp = ["!=", "==", "<=", ">=", "<", ">", "!in", "in", "!is", "is"][idx];
 
     auto lhsVal = lhs;
     auto rhsVal = rhs;
