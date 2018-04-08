@@ -19,10 +19,12 @@ import mecca.containers.pools;
 import mecca.lib.concurrency;
 import mecca.lib.consts;
 import mecca.lib.exception;
+import mecca.lib.integers : bitsInValue, createBitMask;
 import mecca.lib.memory;
 import mecca.lib.reflection;
 import mecca.lib.time;
 import mecca.lib.time_queue;
+import mecca.lib.typedid;
 import mecca.log;
 import mecca.log.impl;
 import mecca.platform.linux;
@@ -38,6 +40,9 @@ import std.stdio;
 /// Handle for manipulating registered timers.
 alias TimerHandle = Reactor.TimerHandle;
 alias FiberIncarnation = ushort;
+
+// The slot number in the stacks for the fiber
+private alias FiberIdx = TypedIdentifier!("FiberIdx", ushort, ushort.max, ushort.max);
 
 struct ReactorFiber {
     struct OnStackParams {
@@ -70,8 +75,8 @@ align(1):
     Fibril                                      fibril;
     OnStackParams*                              params;
     LinkedListWithOwner!(ReactorFiber*)*        _owner;
-    FiberId                                     _nextId;
-    FiberId                                     _prevId;
+    FiberIdx                                    _nextId;
+    FiberIdx                                    _prevId;
     FiberIncarnation                            incarnationCounter;
     ubyte                                       _flags;
     State                                       state;
@@ -84,24 +89,24 @@ align(1):
         return to!(ReactorFiber*)(_nextId);
     }
 
-    @property void _next(FiberId newNext) nothrow @safe @nogc {
+    @property void _next(FiberIdx newNext) nothrow @safe @nogc {
         _nextId = newNext;
     }
 
     @property void _next(ReactorFiber* newNext) nothrow @safe @nogc {
-        _nextId = to!FiberId(newNext);
+        _nextId = to!FiberIdx(newNext);
     }
 
     @property ReactorFiber* _prev() const nothrow @safe @nogc {
         return to!(ReactorFiber*)(_prevId);
     }
 
-    @property void _prev(FiberId newPrev) nothrow @safe @nogc {
+    @property void _prev(FiberIdx newPrev) nothrow @safe @nogc {
         _prevId = newPrev;
     }
 
     @property void _prev(ReactorFiber* newPrev) nothrow @safe @nogc {
-        _prevId = to!FiberId(newPrev);
+        _prevId = to!FiberIdx(newPrev);
     }
 
     @notrace void setup(void[] stackArea, bool main) nothrow @nogc {
@@ -135,7 +140,11 @@ align(1):
     }
 
     @property FiberId identity() const nothrow @safe @nogc {
-        return to!FiberId(&this);
+        FiberId.UnderlyingType res;
+        res = to!FiberIdx(&this).value;
+        res |= incarnationCounter << theReactor.maxNumFibersBits;
+
+        return FiberId(res);
     }
 
     @property bool flag(string NAME)() const pure nothrow @safe @nogc {
@@ -160,7 +169,7 @@ private:
                 ASSERT!"Fiber %s had exception at the very beginning of its run"(false, identity);
             }
             params.logsSavedContext = LogsFiberSavedContext.init;
-            INFO!"wrapper on %s flags=0x%0x"(identity, _flags);
+            INFO!"wrapper on %s generation %s flags=0x%0x"(identity, incarnationCounter, _flags);
 
             assert (theReactor.thisFiber is &this, "this is wrong");
             ASSERT!"Fiber %s is in state %s instead of \"Running\"" (state == State.Running, theReactor.thisFiber.identity, state);
@@ -285,10 +294,10 @@ package:
     }
 
     ReactorFiber* get() const nothrow @safe @nogc {
-        if (!identity.isValid || theReactor.allFibers[identity.value].incarnationCounter != incarnation) {
+        if (!identity.isValid || theReactor.allFibers[to!FiberIdx(identity).value].incarnationCounter != incarnation) {
             return null;
         }
-        return &theReactor.allFibers[identity.value];
+        return &theReactor.allFibers[to!FiberIdx(identity).value];
     }
 }
 
@@ -386,6 +395,8 @@ private:
     bool _running;
     bool _stopping;
     bool _gcCollectionNeeded;
+    ubyte maxNumFibersBits;     // Number of bits sufficient to represent the maximal number of fibers
+    FiberIdx.UnderlyingType maxNumFibersMask;
     int criticalSectionNesting;
     ulong idleCycles;
     OpenOptions optionsInEffect;
@@ -450,6 +461,9 @@ public:
         _isReactorThread = true;
         assert (options.numFibers > NUM_SPECIAL_FIBERS);
         optionsInEffect = options;
+
+        maxNumFibersBits = bitsInValue(optionsInEffect.numFibers - 1);
+        maxNumFibersMask = createBitMask!(FiberIdx.UnderlyingType)(maxNumFibersBits);
 
         const stackPerFib = (((options.fiberStackSize + SYS_PAGE_SIZE - 1) / SYS_PAGE_SIZE) + 1) * SYS_PAGE_SIZE;
         fiberStacks.allocate(stackPerFib * options.numFibers);
@@ -1241,8 +1255,8 @@ private:
         assert (!fib.flag!"CALLBACK_SET");
         fib.flag!"CALLBACK_SET" = true;
         fib.state = ReactorFiber.State.Sleeping;
-        fib._prevId = FiberId.invalid;
-        fib._nextId = FiberId.invalid;
+        fib._prevId = FiberIdx.invalid;
+        fib._nextId = FiberIdx.invalid;
         fib._owner = null;
         fib.params.flsBlock.reset();
         resumeFiber(fib, immediate);
@@ -1575,23 +1589,27 @@ private:
 }
 
 // Expose the conversion to/from ReactorFiber only to the reactor package
-package ReactorFiber* to(T : ReactorFiber*)(FiberId fid) nothrow @safe @nogc {
-    if (!fid.isValid)
+package ReactorFiber* to(T : ReactorFiber*)(FiberIdx fidx) nothrow @safe @nogc {
+    if (!fidx.isValid)
         return null;
 
     ASSERT!"Reactor is not open"( theReactor.isOpen );
-    return &theReactor.allFibers[fid.value];
+    return &theReactor.allFibers[fidx.value];
 }
 
-package FiberId to(T : FiberId)(const ReactorFiber* rfp) nothrow @safe @nogc {
+package FiberIdx to(T : FiberIdx)(const ReactorFiber* rfp) nothrow @safe @nogc {
     if (rfp is null)
-        return FiberId.invalid;
+        return FiberIdx.invalid;
 
     ASSERT!"Reactor is not open"( theReactor.isOpen );
     auto idx = rfp - &theReactor.allFibers.arr[0];
-    DBG_ASSERT!"Reactor fiber pointer not pointing to fibers pool: base %s ptr %s idx %s"(idx>=0 && idx<theReactor.allFibers.arr.length,
-            &theReactor.allFibers.arr[0], rfp, idx);
-    return FiberId( cast(ushort)idx );
+    DBG_ASSERT!"Reactor fiber pointer not pointing to fibers pool: base %s ptr %s idx %s"(
+            idx>=0 && idx<theReactor.allFibers.arr.length, &theReactor.allFibers.arr[0], rfp, idx);
+    return FiberIdx( cast(ushort)idx );
+}
+
+package FiberIdx to(T : FiberIdx)(FiberId fiberId) nothrow @safe @nogc {
+    return FiberIdx( fiberId.value & theReactor.maxNumFibersMask );
 }
 
 private __gshared Reactor _theReactor;
@@ -1903,4 +1921,38 @@ unittest {
     }
 
     testWithReactor(&testBody);
+}
+
+unittest {
+    // Make sure we do not immediately repeat the same FiberId on relaunch
+    FiberId fib;
+
+    void test1() {
+        fib = theReactor.currentFiberId();
+    }
+
+    void test2() {
+        assert(theReactor.currentFiberId() != fib);
+    }
+
+    testWithReactor({
+            theReactor.spawnFiber(&test1);
+            theReactor.yield();
+            theReactor.spawnFiber(&test2);
+            theReactor.yield();
+        });
+}
+
+unittest {
+    // Make sure that FiberHandle can return a ReactorFiber*
+    static void fiberBody() {
+        assert( theReactor.currentFiberPtr == theReactor.currentFiberHandle.get() );
+    }
+
+    testWithReactor({
+            theReactor.spawnFiber!fiberBody(); // Run twice to make sure the genration isn't 0
+            theReactor.yield();
+            theReactor.spawnFiber!fiberBody();
+            theReactor.yield();
+        });
 }

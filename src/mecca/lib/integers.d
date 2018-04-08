@@ -6,6 +6,10 @@ import std.conv;
 import std.string;
 import std.algorithm: among;
 
+import mecca.lib.exception : DBG_ASSERT;
+
+version(unittest) import mecca.lib.exception : assertEQ, assertThrows;
+
 import mecca.log;
 import mecca.lib.consts;
 
@@ -414,4 +418,49 @@ unittest {
 
     static assert( bitComplement(0x0F) == 0xFFFF_FFF0 );
     static assert( bitComplement(ushort(0x0F)) == 0xFFF0 );
+}
+
+/// Return the number of bits sufficient to cover a value
+ubyte bitsInValue(ulong value) pure nothrow @safe @nogc {
+    ubyte ret;
+
+    while( value!=0 ) {
+        ret++;
+        value>>=1;
+    }
+
+    return ret;
+}
+
+unittest {
+    assertEQ(bitsInValue(1), 1);
+    assertEQ(bitsInValue(2), 2);
+    assertEQ(bitsInValue(0), 0);
+    assertEQ(bitsInValue(3), 2);
+    assertEQ(bitsInValue(5), 3);
+}
+
+/// Create a mask with `bits` set bits
+T createBitMask(T = ulong)(uint numBits) if(isIntegral!T && isUnsigned!T)
+{
+    DBG_ASSERT!"numBits=%s"(numBits <= (T.sizeof * 8), numBits);
+
+    // Avoid the corner cases that would require an "if" to support
+    static if( T.sizeof == ulong.sizeof ) {
+        DBG_ASSERT!"An 'all ones' mask is not supported by this function"(numBits < (T.sizeof * 8));
+    }
+
+    return cast(T)((cast(T)1 << numBits) - 1);
+}
+
+unittest {
+    import std.exception;
+    import core.exception;
+
+    assertEQ(createBitMask(7), 0x7f);
+    assertEQ(createBitMask(8), 0xff);
+    assertEQ(createBitMask!ubyte(8), 0xff);
+    assertEQ(createBitMask(32), 0xffffffff);
+    assertThrown!AssertError(createBitMask!ulong(64));
+    assertThrown!AssertError(createBitMask!ubyte(9));
 }
