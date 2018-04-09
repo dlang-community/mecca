@@ -611,6 +611,7 @@ public:
         static assert(T.length>=1, "Must pass at least the function/delegate to spawnFiber");
         static assert(isDelegate!(T[0]) || isFunctionPointer!(T[0]),
                 "spawnFiber first argument must be function or delegate");
+        static assert( is( ReturnType!(T[0]) == void ), "spawnFiber callback must be of type void" );
         auto fib = _spawnFiber(false);
         fib.params.fiberBody.set(args);
         setFiberName(fib, "Fiber", args[0]);
@@ -628,8 +629,10 @@ public:
      *  A FiberHandle to the newly created fiber.
      */
     @notrace FiberHandle spawnFiber(alias F)(Parameters!F args) {
+        static assert( is( ReturnType!F == void ), "spawnFiber callback must be of type void" );
         auto fib = _spawnFiber(false);
         import std.algorithm: move;
+        // pragma(msg, genMoveArgument( args.length, "fib.params.fiberBody.set!F", "args" ) );
         mixin( genMoveArgument( args.length, "fib.params.fiberBody.set!F", "args" ) );
 
         setFiberName(fib, F.mangleof, &F);
