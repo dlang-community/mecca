@@ -110,7 +110,12 @@ struct ServiceManager {
         // graceful termination
         //theReactor.stop();  -- this asserts on a context switch while in a critical section
         import mecca.lib.time: Timeout;
-        theReactor.registerTimer(Timeout.elapsed, &theReactor.stop);
+
+        static void stopWrapper() {
+            theReactor.stop();
+        }
+
+        theReactor.registerTimer(Timeout.elapsed, &stopWrapper);
     }
 }
 

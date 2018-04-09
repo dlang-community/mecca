@@ -415,6 +415,7 @@ private:
     bool _gcCollectionNeeded;
     ubyte maxNumFibersBits;     // Number of bits sufficient to represent the maximal number of fibers
     FiberIdx.UnderlyingType maxNumFibersMask;
+    int reactorReturn;
     int criticalSectionNesting;
     ulong idleCycles;
     OpenOptions optionsInEffect;
@@ -478,6 +479,7 @@ public:
         assert (thread_isMainThread);
         _isReactorThread = true;
         assert (options.numFibers > NUM_SPECIAL_FIBERS);
+        reactorReturn = 0;
         optionsInEffect = options;
 
         maxNumFibersBits = bitsInValue(optionsInEffect.numFibers - 1);
@@ -689,12 +691,17 @@ public:
       The reactor should already have at least one user fiber at that point, or it will start, but sit there and do nothing.
 
       This function "returns" only after the reactor is stopped and no more fibers are running.
+
+      Returns:
+      The return value from `start` is the value passed to the `stop` function.
      */
-    void start() {
+    int start() {
         META!"Reactor started"();
         assert( idleFiber !is null, "Reactor started without calling \"setup\" first" );
         mainloop();
         META!"Reactor stopped"();
+
+        return reactorReturn;
     }
 
     /**
@@ -704,19 +711,24 @@ public:
 
       Typically, this function call never returns (throws ReactorExit). However, if stop is called while already in the
       process of stopping, it will just return. It is, therefor, not wise to rely on that fact.
+
+      Params:
+      reactorReturn = The return value to be returned from `start`
      */
-    void stop() @safe @nogc {
+    void stop(int reactorReturn = 0) @safe @nogc {
         if( _stopping ) {
             ERROR!"Reactor.stop called, but reactor is not running"();
             return;
         }
+
+        this.reactorReturn = reactorReturn;
 
         _stopping = true;
         if( !isMain() ) {
             resumeSpecialFiber(mainFiber);
         }
 
-        throw mkEx!ReactorExit("Reactor is quitting");
+        throw mkEx!ReactorExit();
     }
 
     /**
@@ -1672,7 +1684,7 @@ private bool /* thread local */ _isReactorThread;
 }
 
 version (unittest) {
-    void testWithReactor(void delegate() dg, Reactor.OpenOptions options = Reactor.OpenOptions.init) {
+    int testWithReactor(int delegate() dg, Reactor.OpenOptions options = Reactor.OpenOptions.init) {
         sigset_t emptyMask;
         errnoEnforceNGC( sigprocmask( SIG_SETMASK, &emptyMask, null )==0, "sigprocmask failed" );
 
@@ -1682,16 +1694,27 @@ version (unittest) {
         bool succ = false;
 
         void wrapper() {
-            scope(success) {
-                succ = true;
-                theReactor.stop();
-            }
-            dg();
+            int ret = dg();
+
+            succ = true;
+            theReactor.stop( ret );
         }
 
         theReactor.spawnFiber(&wrapper);
-        theReactor.start();
+        int ret = theReactor.start();
         assert (succ);
+
+        return ret;
+    }
+
+    void testWithReactor(void delegate() dg, Reactor.OpenOptions options = Reactor.OpenOptions.init) {
+        int wrapper() {
+            dg();
+
+            return 0;
+        }
+
+        testWithReactor(&wrapper, options);
     }
 
     public import mecca.runtime.ut: mecca_ut;
@@ -1997,4 +2020,10 @@ unittest {
             theReactor.spawnFiber!fiberBody();
             theReactor.yield();
         });
+}
+
+unittest {
+    int ret = testWithReactor( { return 17; } );
+
+    assert( ret==17 );
 }
