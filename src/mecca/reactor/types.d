@@ -14,11 +14,21 @@ class TimeoutExpired : Exception {
     }
 }
 
-class TaskInterrupt : Throwable {
+/**
+  Base class for interrupting a fiber operation.
+
+  This is the base class for exceptions that need to interrupt the operation of a fiber. This is the only type of
+  exception allowed to escape the fiber code (any other type will be rethrown out of the reactor itself).
+
+  It is discouraged to catch `FiberInterrupt` directly. If you do, please be sure to rethrow it.
+
+  Catching custom classes that derive from `FiberInterrupt` is permitted.
+ */
+class FiberInterrupt : Throwable {
     mixin ExceptionBody;
 }
 
-class ReactorExit : TaskInterrupt {
+class ReactorExit : FiberInterrupt {
     mixin ExceptionBody!("Reactor is quitting");
 }
 

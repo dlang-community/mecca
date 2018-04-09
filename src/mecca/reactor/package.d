@@ -44,6 +44,15 @@ alias FiberIncarnation = ushort;
 // The slot number in the stacks for the fiber
 private alias FiberIdx = TypedIdentifier!("FiberIdx", ushort, ushort.max, ushort.max);
 
+/// Track the fiber's state
+enum FiberState : ubyte {
+    None,       /// Fiber isn't running
+    Scheduled,  /// Fiber is waiting to run
+    Running,    /// Fiber is running
+    Sleeping,   /// Fiber is currently suspended
+    Done,       /// Fiber has finished running
+}
+
 struct ReactorFiber {
     struct OnStackParams {
         Closure                 fiberBody;
@@ -67,10 +76,6 @@ struct ReactorFiber {
         PRIORITY       = 0x80,  /// Fiber is a high priority one
     }
 
-    enum State : ubyte {
-        None, Running, Sleeping, Done
-    }
-
 align(1):
     Fibril                                      fibril;
     OnStackParams*                              params;
@@ -79,7 +84,7 @@ align(1):
     FiberIdx                                    _prevId;
     FiberIncarnation                            incarnationCounter;
     ubyte                                       _flags;
-    State                                       state;
+    FiberState                                  state;
 
     // We define this struct align(1) for the sole purpose of making the following static assert verify what it's supposed to
     static assert (this.sizeof == 32);  // keep it small and cache-line friendly
@@ -162,30 +167,40 @@ align(1):
 
 private:
     @notrace void wrapper() nothrow {
+        bool skipBody;
+        Throwable ex = null;
+
+        try {
+            // Nobody else will run it the first time the fiber is started. This results in some unfortunate
+            // code duplication
+            switchInto();
+        } catch (FiberInterrupt ex2) {
+            INFO!"Fiber %s killed by FiberInterrupt exception %s"(identity, ex2.msg);
+            skipBody = true;
+        } catch(Throwable ex2) {
+            ex = ex2;
+            skipBody = true;
+        }
+
         while (true) {
-            try {
-                switchInto();
-            } catch(Throwable ex) {
-                ASSERT!"Fiber %s had exception at the very beginning of its run"(false, identity);
-            }
-            params.logsSavedContext = LogsFiberSavedContext.init;
-            INFO!"wrapper on %s generation %s flags=0x%0x"(identity, incarnationCounter, _flags);
+            DBG_ASSERT!"skipBody=false with pending exception"(ex is null || skipBody);
+            scope(exit) ex = null;
 
-            assert (theReactor.thisFiber is &this, "this is wrong");
-            ASSERT!"Fiber %s is in state %s instead of \"Running\"" (state == State.Running, theReactor.thisFiber.identity, state);
-            Throwable ex = null;
+            if( !skipBody ) {
+                params.logsSavedContext = LogsFiberSavedContext.init;
+                INFO!"wrapper on %s generation %s flags=0x%0x"(identity, incarnationCounter, _flags);
 
-            try {
-                params.fiberBody();
-            }
-            catch (ReactorExit ex2) {
-                // Do nothing. The reactor is quitting
-            }
-            catch (FiberGroup.FiberGroupExtinction ex2) {
-                INFO!"Fiber %s killed by fiber group"(theReactor.currentFiberId);
-            }
-            catch (Throwable ex2) {
-                ex = ex2;
+                ASSERT!"Reactor's current fiber isn't the running fiber" (theReactor.thisFiber is &this);
+                ASSERT!"Fiber %s is in state %s instead of Running" (state == FiberState.Running, identity, state);
+
+                try {
+                    // Perform the actual fiber callback
+                    params.fiberBody();
+                } catch (FiberInterrupt ex2) {
+                    INFO!"Fiber %s killed by FiberInterrupt exception: %s"(identity, ex2.msg);
+                } catch (Throwable ex2) {
+                    ex = ex2;
+                }
             }
 
             ASSERT!"Fiber still member of fiber group at termination" (params.fgChain.owner is null);
@@ -199,13 +214,15 @@ private:
             params.fiberName = null;
             params.fiberPtr = null;
             flag!"CALLBACK_SET" = false;
-            assert (state == State.Running);
-            state = State.Done;
+            ASSERT!"Fiber %s state is %s instead of Running at end of execution"(
+                    state == FiberState.Running, identity, state);
+            state = FiberState.Done;
             incarnationCounter++;
             if (ex !is null) {
                 theReactor.forwardExceptionToMain(ex);
+                assert(false);
             } else {
-                theReactor.fiberTerminated();
+                skipBody = theReactor.fiberTerminated();
             }
         }
     }
@@ -486,7 +503,7 @@ public:
         mainFiber = &allFibers[MainFiberId.value];
         mainFiber.flag!"SPECIAL" = true;
         mainFiber.flag!"CALLBACK_SET" = true;
-        mainFiber.state = ReactorFiber.State.Running;
+        mainFiber.state = FiberState.Running;
 
         idleFiber = &allFibers[IdleFiberId.value];
         idleFiber.flag!"SPECIAL" = true;
@@ -578,8 +595,8 @@ public:
      * Spawn a new fiber for execution.
      *
      * Parameters:
-     *  The first argument must be the function/delegate to call inside the new fiber. If said callable accepts further arguments, then
-     *  they must be provided as further arguments to spawnFiber.
+     *  The first argument must be the function/delegate to call inside the new fiber. If said callable accepts further
+     *  arguments, then they must be provided as further arguments to spawnFiber.
      *
      * Returns:
      *  A FiberHandle to the newly created fiber.
@@ -647,6 +664,19 @@ public:
      */
     @property FiberId currentFiberId() const nothrow @safe @nogc {
         return thisFiber.identity;
+    }
+
+    /// Returns the `FiberState` of the specified fiber.
+    FiberState getFiberState(FiberHandle fh) const nothrow @safe @nogc {
+        auto fiber = fh.get();
+
+        if( fiber is null )
+            return FiberState.None;
+
+        if( fiber.state==FiberState.Sleeping && fiber.flag!"SCHEDULED" )
+            return FiberState.Scheduled;
+
+        return fiber.state;
     }
 
     /**
@@ -1113,18 +1143,18 @@ private:
             assert (!scheduledFibers.empty, "scheduledList is empty");
 
             auto currentFiber = thisFiber;
-            if( currentFiber.state==ReactorFiber.State.Running )
-                currentFiber.state = ReactorFiber.State.Sleeping;
+            if( currentFiber.state==FiberState.Running )
+                currentFiber.state = FiberState.Sleeping;
             else {
-                assert( currentFiber.state==ReactorFiber.State.Done );
-                currentFiber.state = ReactorFiber.State.None;
+                assertEQ( currentFiber.state, FiberState.Done, "Fiber is in incorrect state" );
+                currentFiber.state = FiberState.None;
             }
 
             _thisFiber = scheduledFibers.popHead();
 
             assert (thisFiber.flag!"SCHEDULED");
             thisFiber.flag!"SCHEDULED" = false;
-            thisFiber.state = ReactorFiber.State.Running;
+            thisFiber.state = FiberState.Running;
 
             if (currentFiber !is thisFiber) {
                 // make the switch
@@ -1147,23 +1177,26 @@ private:
         }
     }
 
-    void fiberTerminated() nothrow {
+    bool fiberTerminated() nothrow {
         ASSERT!"special fibers must never terminate" (!thisFiber.flag!"SPECIAL");
 
         freeFibers.prepend(thisFiber);
 
+        bool skipBody = false;
         try {
-            /+if (ex) {
-                mainFiber.setException(ex);
-                resumeSpecialFiber(mainFiber);
-            }+/
+            // Wait for next incarnation of fiber
             switchToNext();
-        }
-        catch (Throwable ex2) {
-            ERROR!"switchToNext on dead fiber failed with exception %s"(ex2.msg);
-            LOG_EXCEPTION(ex2);
+        } catch (FiberInterrupt ex) {
+            INFO!"Fiber %s killed by FiberInterrupt exception %s"(currentFiberId, ex.msg);
+            skipBody = true;
+        } catch (Throwable ex) {
+            ERROR!"switchToNext on %s fiber %s failed with exception %s"(
+                    thisFiber.state==FiberState.Running ? "just starting" : "dead", currentFiberId, ex.msg);
+            theReactor.forwardExceptionToMain(ex);
             assert(false);
         }
+
+        return skipBody;
     }
 
     @notrace package void suspendThisFiber(Timeout timeout) @trusted @nogc {
@@ -1254,7 +1287,7 @@ private:
         auto fib = freeFibers.popHead();
         assert (!fib.flag!"CALLBACK_SET");
         fib.flag!"CALLBACK_SET" = true;
-        fib.state = ReactorFiber.State.Sleeping;
+        fib.state = FiberState.Sleeping;
         fib._prevId = FiberIdx.invalid;
         fib._nextId = FiberIdx.invalid;
         fib._owner = null;
@@ -1538,7 +1571,7 @@ private:
 
         Throwable reactorExit = mkEx!ReactorExit("Reactor is quitting");
         foreach(ref fiber; allFibers[1..$]) { // All fibers but main
-            if( fiber.state == ReactorFiber.State.Sleeping ) {
+            if( fiber.state == FiberState.Sleeping ) {
                 fiber.flag!"SPECIAL" = false;
                 throwInFiber(FiberHandle(&fiber), reactorExit);
             }
@@ -1847,7 +1880,9 @@ unittest {
     }
 
     void fib1() {
+        assertEQ( theReactor.getFiberState(theReactor.currentFiberHandle), FiberState.Running );
         auto fib = theReactor.spawnFiber(&fib2);
+        assertEQ( theReactor.getFiberState(fib), FiberState.Scheduled );
 
         evt1.wait();
 

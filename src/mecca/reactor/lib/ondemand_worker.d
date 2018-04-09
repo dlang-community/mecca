@@ -22,7 +22,7 @@ launched to carry out the job. If the job is already running, it will trigger ag
 */
 struct OnDemandWorkerFunc(alias F) {
 private:
-    static class JobCancelled : TaskInterrupt {
+    static class JobCancelled : FiberInterrupt {
         mixin ExceptionBody!"OnDemandWorker task cancelled";
     }
 
