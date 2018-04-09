@@ -47,6 +47,7 @@ private alias FiberIdx = TypedIdentifier!("FiberIdx", ushort, ushort.max, ushort
 /// Track the fiber's state
 enum FiberState : ubyte {
     None,       /// Fiber isn't running
+    Starting,   /// Fiber was spawned, but have not yet started running
     Scheduled,  /// Fiber is waiting to run
     Running,    /// Fiber is running
     Sleeping,   /// Fiber is currently suspended
@@ -504,11 +505,14 @@ public:
         mainFiber.flag!"SPECIAL" = true;
         mainFiber.flag!"CALLBACK_SET" = true;
         mainFiber.state = FiberState.Running;
+        setFiberName(mainFiber, "mainFiber", &mainloop);
 
         idleFiber = &allFibers[IdleFiberId.value];
         idleFiber.flag!"SPECIAL" = true;
         idleFiber.flag!"CALLBACK_SET" = true;
         idleFiber.params.fiberBody.set(&idleLoop);
+        idleFiber.state = FiberState.Sleeping;
+        setFiberName(idleFiber, "idleFiber", &idleLoop);
 
         timedCallbacksPool.open(options.numTimers, true);
         timeQueue.open(options.timerGranularity);
@@ -1154,6 +1158,9 @@ private:
 
             assert (thisFiber.flag!"SCHEDULED");
             thisFiber.flag!"SCHEDULED" = false;
+            DBG_ASSERT!"%s is in state %s, should be Sleeping or Starting"(
+                    _thisFiber.state==FiberState.Sleeping || _thisFiber.state==FiberState.Starting,
+                    _thisFiber.identity, _thisFiber.state);
             thisFiber.state = FiberState.Running;
 
             if (currentFiber !is thisFiber) {
@@ -1287,7 +1294,7 @@ private:
         auto fib = freeFibers.popHead();
         assert (!fib.flag!"CALLBACK_SET");
         fib.flag!"CALLBACK_SET" = true;
-        fib.state = FiberState.Sleeping;
+        fib.state = FiberState.Starting;
         fib._prevId = FiberIdx.invalid;
         fib._nextId = FiberIdx.invalid;
         fib._owner = null;
@@ -1882,7 +1889,7 @@ unittest {
     void fib1() {
         assertEQ( theReactor.getFiberState(theReactor.currentFiberHandle), FiberState.Running );
         auto fib = theReactor.spawnFiber(&fib2);
-        assertEQ( theReactor.getFiberState(fib), FiberState.Scheduled );
+        assertEQ( theReactor.getFiberState(fib), FiberState.Starting );
 
         evt1.wait();
 
