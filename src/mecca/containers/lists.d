@@ -103,7 +103,7 @@ struct _LinkedList(T, string nextAttr, string prevAttr, string ownerAttr, bool w
             setPrevOf(node, node);
         }
         else {
-            static if (withLength) assert (length > 1);
+            static if (withLength) assert (length > 0, "List with head has length 0");
             static if (after) {
                 auto next = getNextOf(anchor);
                 setNextOf(anchor, node);
@@ -317,6 +317,73 @@ unittest {
     }
 
     LinkedList!(Node*) list;
+    assert (list.head is null);
+
+    list.append(&nodes[0]);
+    assert (list.head.value == 0);
+
+    list.append(&nodes[1]);
+    list.append(&nodes[2]);
+    list.append(&nodes[3]);
+    list.append(&nodes[4]);
+    list.append(&nodes[5]);
+    list.append(&nodes[6]);
+    list.append(&nodes[7]);
+    list.append(&nodes[8]);
+    list.append(&nodes[9]);
+    assert (list.head.value == 0);
+
+    void matchElements(R)(R range, int[] expected) {
+        int[] arr;
+        foreach(n; range) {
+            arr ~= n.value;
+        }
+        //writeln(arr);
+        assert (arr == expected, "%s != %s".format(arr, expected));
+    }
+
+    matchElements(list.range, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    matchElements(list.range, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+
+    list.remove(&nodes[3]);
+    matchElements(list.range, [0, 1, 2, 4, 5, 6, 7, 8, 9]);
+
+    list.remove(&nodes[0]);
+    matchElements(list.range, [1, 2, 4, 5, 6, 7, 8, 9]);
+
+    list.remove(&nodes[9]);
+    matchElements(list.range, [1, 2, 4, 5, 6, 7, 8]);
+
+    list.insertAfter(&nodes[2], &nodes[3]);
+    matchElements(list.range, [1, 2, 3, 4, 5, 6, 7, 8]);
+
+    list.insertBefore(&nodes[7], &nodes[9]);
+    matchElements(list.range, [1, 2, 3, 4, 5, 6, 9, 7, 8]);
+
+    matchElements(list.reverseRange, [8, 7, 9, 6, 5, 4, 3, 2, 1]);
+
+    list.removeAll();
+    assert (list.empty);
+}
+
+unittest {
+    import std.stdio;
+    import std.string;
+
+    struct Node {
+        int value;
+        Node* _next;
+        Node* _prev;
+
+        @disable this(this);
+    }
+
+    Node[10] nodes;
+    foreach(int i, ref n; nodes) {
+        n.value = i;
+    }
+
+    LinkedListWithLength!(Node*) list;
     assert (list.head is null);
 
     list.append(&nodes[0]);
