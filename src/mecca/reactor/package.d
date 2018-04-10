@@ -423,7 +423,7 @@ private:
     MmapBuffer fiberStacks;
     MmapArray!ReactorFiber allFibers;
     LinkedQueueWithLength!(ReactorFiber*) freeFibers;
-    LinkedQueueWithLength!(ReactorFiber*) scheduledFibers;
+    LinkedListWithLength!(ReactorFiber*) scheduledFibers;
 
     ReactorFiber* _thisFiber;
     ReactorFiber* mainFiber;
@@ -875,14 +875,36 @@ public:
     }
 
     /**
-      Give the current fiber priority in execution.
+      Give a fiber temporary priority in execution.
 
       Setting fiber priority means that the next time this fiber is scheduled, it will be scheduled ahead of other
       fibers already scheduled to be run.
 
       This attribute is a one-off. As soon as the fiber gets scheduled again, it will revert to being a normal fiber.
+
+      Params:
+      fib = FiberHandle of fiber to boost. If missing, boost the current fiber
+      priority = Whether to prioritize (default) of de-prioritize the fiber
      */
-    void prioritizeCurrentFiber(bool priority = true) nothrow @safe @nogc {
+    void boostFiberPriority(FiberHandle fib, bool priority = true) nothrow @safe @nogc {
+        ReactorFiber* fiber = fib.get();
+        if( fiber is null ) {
+            WARN!"Can't prioritize invalid fiber handle"();
+            return;
+        }
+
+        ASSERT!"Cannot ask to prioritize non-user fiber %s"(!fiber.flag!"SPECIAL", fiber.identity);
+        if( fiber.flag!"SCHEDULED" ) {
+            if( priority ) {
+                resumeFiber( fiber, true );
+            }
+        } else {
+            fiber.flag!"PRIORITY" = priority;
+        }
+    }
+
+    /// ditto
+    void boostFiberPriority(bool priority = true) nothrow @safe @nogc {
         ASSERT!"Cannot ask to prioritize a non-user fiber"(!isSpecialFiber);
         thisFiber.flag!"PRIORITY" = priority;
     }
@@ -1284,8 +1306,9 @@ private:
         assert (!fib.flag!"SPECIAL");
         ASSERT!"resumeFiber called on %s, which does not have a callback set"(fib.flag!"CALLBACK_SET", fib.identity);
 
+        bool effectiveImmediate = immediate;
         if (fib.flag!"PRIORITY") {
-            immediate = true;
+            effectiveImmediate = true;
             fib.flag!"PRIORITY" = false;
         }
 
@@ -1295,12 +1318,17 @@ private:
                 fib._owner.remove(fib);
             }
             fib.flag!"SCHEDULED" = true;
-            if (immediate) {
+            if (effectiveImmediate) {
                 scheduledFibers.prepend(fib);
             }
             else {
                 scheduledFibers.append(fib);
             }
+        } else if( immediate ) {
+            // If specifically asked for immediate resume, move the fiber to the beginning of the line even if already
+            // scheduled
+            scheduledFibers.remove(fib);
+            scheduledFibers.prepend(fib);
         }
     }
 
@@ -2029,4 +2057,25 @@ unittest {
     int ret = testWithReactor( { return 17; } );
 
     assert( ret==17 );
+}
+
+unittest {
+    // test priority of scheduled fibers
+
+    uint gen;
+
+    void verify(uint expected) {
+        assert(gen==expected);
+        gen++;
+    }
+
+    testWithReactor({
+            theReactor.spawnFiber(&verify, 1);
+            theReactor.spawnFiber(&verify, 2);
+            auto fh = theReactor.spawnFiber(&verify, 0);
+            theReactor.spawnFiber(&verify, 3);
+            theReactor.boostFiberPriority(fh);
+            theReactor.yield();
+            assert(gen==4);
+        });
 }
