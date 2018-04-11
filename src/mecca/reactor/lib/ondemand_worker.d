@@ -41,15 +41,10 @@ public:
     @disable this(this);
 
     /// Construct a worker
-    this(ParameterTypeTuple!F args, SpawnFiberDlg spawnFiberDlg) {
-        ASSERT!"The spawn fiber delegate must not be null"(spawnFiberDlg !is null);
+    this(ParameterTypeTuple!F args, SpawnFiberDlg spawnFiberDlg = null) {
         this.args = args;
         this.defaultArgs = args;
         this.spawnFiber = spawnFiberDlg;
-    }
-
-    this(ParameterTypeTuple!F args) {
-        this(args, &theReactor.spawnFiber!(void delegate()));
     }
 
     /// ditto
@@ -80,6 +75,12 @@ public:
         } else {
             assert(requestGeneration==completedGeneration);
             requestGeneration++;
+
+            if( spawnFiber is null ) {
+                // We can't do that in the constructor because we want to allow static initialization
+                spawnFiber = &theReactor.spawnFiber!(void delegate());
+            }
+
             fiberHandle = spawnFiber(&fib);
             DEBUG!"spawned fiber %s"(fiberHandle.fiberId);
         }
@@ -198,14 +199,9 @@ struct OnDemandWorkerDelegate {
     OnDemandWorkerFunc!wrapper onDemandWorkerFunc;
 
     /// Construct a worker
-    this(void delegate() dg, SpawnFiberDlg spawnFiberDlg) {
+    this(void delegate() dg, SpawnFiberDlg spawnFiberDlg = null) {
         import mecca.lib.exception: DBG_ASSERT;
-        DBG_ASSERT!"delegate can't be null"(dg !is null);
         onDemandWorkerFunc = OnDemandWorkerFunc!wrapper(dg, spawnFiberDlg);
-    }
-
-    this(void delegate() dg) {
-        this(dg, &theReactor.spawnFiber!(void delegate()));
     }
 
     this(void delegate() dg, FiberGroup* group) {
