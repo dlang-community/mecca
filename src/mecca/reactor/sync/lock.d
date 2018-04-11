@@ -391,7 +391,7 @@ unittest {
 /// LockType = the type of lock to define over
 /// acquireName = the name of the function to call to acquire the lock
 /// releaseName = the name of the function to call to release the lock
-struct Locker(LockType, string acquireName="acquire", string releaseName="release") {
+struct RAIILocker(LockType, string acquireName="acquire", string releaseName="release") {
 private:
     import std.format : format;
 
@@ -490,7 +490,9 @@ unittest {
     });
 }
 
+/// Locker wrapper for the standard lock
+alias Locker = RAIILocker!(Lock);
 /// Locker wrapper for a SharedLock with a shared lock
-alias SharedLocker = Locker!(SharedLock, "acquireShared", "releaseShared");
+alias SharedLocker = RAIILocker!(SharedLock, "acquireShared", "releaseShared");
 /// Locker wrapper for a SharedLock with an exclusive lock
-alias ExclusiveLocker = Locker!(SharedLock, "acquireShared", "releaseShared");
+alias ExclusiveLocker = RAIILocker!(SharedLock, "acquireShared", "releaseShared");
