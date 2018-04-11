@@ -33,6 +33,7 @@ import mecca.reactor.fls;
 import mecca.reactor.impl.fibril: Fibril;
 import mecca.reactor.subsystems.gc_tracker;
 import mecca.reactor.subsystems.threading;
+import mecca.reactor.sync.event: Signal;
 public import mecca.reactor.types;
 
 import std.stdio;
@@ -64,6 +65,7 @@ struct ReactorFiber {
         LogsFiberSavedContext   logsSavedContext;
         string                  fiberName;              // String identifying what this fiber is doing
         void*                   fiberPtr;               // The same with a numerical value
+        Signal                  joinWaiters;
     }
     enum Flags: ubyte {
         // XXX Do we need CALLBACK_SET?
@@ -206,6 +208,7 @@ private:
 
             ASSERT!"Fiber still member of fiber group at termination" (params.fgChain.owner is null);
 
+            params.joinWaiters.signal();
             if( ex is null )
                 INFO!"wrapper finished on %s"(identity);
             else
@@ -1147,6 +1150,19 @@ public:
         setFiberName(fh.get, name, dlg.ptr);
     }
 
+    /**
+     * Wait until given fiber finishes
+     */
+    @notrace void joinFiber(FiberHandle fh, Timeout timeout = Timeout.infinite) @safe @nogc {
+        ReactorFiber* fiber = fh.get();
+
+        if( fiber is null )
+            return;
+
+        fiber.params.joinWaiters.wait(timeout);
+        DBG_ASSERT!"Fiber handle %s is valid after signalling done"(!fh.isValid, fh);
+    }
+
 private:
     package @property inout(ReactorFiber)* thisFiber() inout nothrow pure @safe @nogc {
         DBG_ASSERT!"No current fiber as reactor was not started"(isRunning);
@@ -2077,5 +2093,25 @@ unittest {
             theReactor.boostFiberPriority(fh);
             theReactor.yield();
             assert(gen==4);
+        });
+}
+
+unittest {
+    // Test join
+
+    static void fiberBody() {
+        theReactor.yield();
+        theReactor.yield();
+        theReactor.yield();
+    }
+
+    testWithReactor({
+            FiberHandle fh = theReactor.spawnFiber!fiberBody();
+            assertEQ( theReactor.getFiberState(fh), FiberState.Starting );
+            theReactor.yield();
+            assertEQ( theReactor.getFiberState(fh), FiberState.Scheduled );
+            theReactor.joinFiber(fh);
+            assertEQ( theReactor.getFiberState(fh), FiberState.None );
+            theReactor.joinFiber(fh, Timeout(Duration.zero));
         });
 }
