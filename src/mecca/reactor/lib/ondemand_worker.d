@@ -11,6 +11,9 @@ import mecca.reactor;
 import mecca.reactor.fiber_group;
 import mecca.reactor.sync.event: Signal;
 
+/// A fiber spawning delegate must be of this type
+alias SpawnFiberDlg = FiberHandle delegate(void delegate() dlg) nothrow @safe @nogc;
+
 /**
 Run a job in a fiber, making sure never to run two simultaneously.
 
@@ -26,7 +29,7 @@ private:
         mixin ExceptionBody!"OnDemandWorker task cancelled";
     }
 
-    FiberGroup* group;
+    SpawnFiberDlg spawnFiber;
     Signal done;
     FiberHandle fiberHandle;
     Serial32 requestGeneration, completedGeneration;
@@ -37,16 +40,22 @@ private:
 public:
     @disable this(this);
 
-    static if (ParameterTypeTuple!F.length > 0) {
-        /// Construct a worker
-        this(ParameterTypeTuple!F args, FiberGroup* group = null) {
-            this.args = args;
-            this.defaultArgs = args;
-            this.group = group;
-        }
-    } else {
-        /// ditto
-        this(FiberGroup* group) { this.group = group; }
+    /// Construct a worker
+    this(ParameterTypeTuple!F args, SpawnFiberDlg spawnFiberDlg) {
+        ASSERT!"The spawn fiber delegate must not be null"(spawnFiberDlg !is null);
+        this.args = args;
+        this.defaultArgs = args;
+        this.spawnFiber = spawnFiberDlg;
+    }
+
+    this(ParameterTypeTuple!F args) {
+        this(args, &theReactor.spawnFiber!(void delegate()));
+    }
+
+    /// ditto
+    this(ParameterTypeTuple!F args, FiberGroup* group) {
+        ASSERT!"The fiber group must not be null"(group !is null);
+        this(args, &group.spawnFiber);
     }
 
     /// Helper for more verbose DEBUG logging
@@ -71,10 +80,7 @@ public:
         } else {
             assert(requestGeneration==completedGeneration);
             requestGeneration++;
-            if( this.group is null )
-                fiberHandle = theReactor.spawnFiber(&fib);
-            else
-                fiberHandle = group.spawnFiber(&fib);
+            fiberHandle = spawnFiber(&fib);
             DEBUG!"spawned fiber %s"(fiberHandle.fiberId);
         }
     }
@@ -191,10 +197,20 @@ private:
 struct OnDemandWorkerDelegate {
     OnDemandWorkerFunc!wrapper onDemandWorkerFunc;
 
-    this(void delegate() dg, FiberGroup* group = null) {
+    /// Construct a worker
+    this(void delegate() dg, SpawnFiberDlg spawnFiberDlg) {
         import mecca.lib.exception: DBG_ASSERT;
         DBG_ASSERT!"delegate can't be null"(dg !is null);
-        onDemandWorkerFunc = OnDemandWorkerFunc!wrapper(dg, group);
+        onDemandWorkerFunc = OnDemandWorkerFunc!wrapper(dg, spawnFiberDlg);
+    }
+
+    this(void delegate() dg) {
+        this(dg, &theReactor.spawnFiber!(void delegate()));
+    }
+
+    this(void delegate() dg, FiberGroup* group) {
+        ASSERT!"The fiber group must not be null"(group !is null);
+        this(dg, &group.spawnFiber);
     }
 
     private static void wrapper(void delegate() dg) {

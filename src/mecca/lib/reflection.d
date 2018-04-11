@@ -724,11 +724,31 @@ string genMoveArgument(size_t numArgs, string callString, string argumentString,
 }
 
 /+
+/**
+ * Function for selecting a specific overload of a function
+ *
+ * Params:
+ * name = The name of the function to get
+ * Type = The requested type of the result
+ * instance = The instance to which the delegate should refer
+ *
+ * Returns:
+ * The delegate for calling the specific overload over the specific instance.
+ */
+Type getOverload(string name, Type, T)(ref T instance) {
+    pragma(msg, "getOverload ", T.stringof, ".", name, " of type ", Type.stringof);
+    foreach(overload; __traits(getOverloads, instance, name)) {
+        pragma(msg, typeof(overload));
+        static if( isImplicitlyConvertible!( typeof(overload), Type ) ) {
+            return &overload;
+            enum MatchFound = true;
+        }
+    }
+    static assert( __traits(compiles, MatchFound), "Non of the overloads matched" );
+}
+
 XXX Disabled due to compiler bug in __traits(parent)
 
-/**
- * CTFE function for selecting a specific overload of a function
- */
 template getOverload(alias F, Args...) {
     bool predicate(Func)() {
         static if( Parameters!Func == Args ) {

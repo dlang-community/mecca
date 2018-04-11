@@ -124,25 +124,27 @@ public:
         return theReactor.currentFiberPtr in fibersList;
     }
 
+    // DMDBUG https://issues.dlang.org/show_bug.cgi?id=16206
+    // The non-template version must come before the templated version
     /**
      * Spawn a new fiber that will be a member of the group.
      *
      * Arguments and return value are the same as for theReactor.spawnFiber.
      */
+    FiberHandle spawnFiber(void delegate() dg) nothrow @safe @nogc {
+        static void wrapper(void delegate() dg) @system {
+            dg();
+        }
+        return spawnFiber!wrapper(dg);
+    }
+
+    /// ditto
     FiberHandle spawnFiber(alias F)(ParameterTypeTuple!F args) nothrow @safe @nogc {
         ASSERT!"FiberGroup state not Active: %s"(state == State.Active, state);
         alias funcType = typeof(F);
         auto fib = theReactor.spawnFiber( &fiberWrapper!funcType, &F, &this, args );
 
         return fib;
-    }
-
-    /// ditto
-    FiberHandle spawnFiber(void delegate() dg) nothrow @safe @nogc {
-        static void wrapper(void delegate() dg) @system {
-            dg();
-        }
-        return spawnFiber!wrapper(dg);
     }
 
     /**

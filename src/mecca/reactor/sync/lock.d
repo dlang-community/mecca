@@ -468,7 +468,7 @@ unittest {
         scope(exit) allDone.markDone();
 
         foreach(i; 0..NUM_RUNS) {
-            auto locker = Locker!Lock(lock);
+            auto locker = Locker(lock);
             assert(!locked, "Mutual exclusion failed");
             locked = true;
             numRuns++;
