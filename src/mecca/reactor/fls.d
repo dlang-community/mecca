@@ -72,18 +72,30 @@ template FiberLocal(T, string Name, T initVal=T.init) {
     }
 }
 
+template getFiberFlsLvalue(alias FLS) {
+    alias T = ReturnType!FLS;
+
+    T* getFiberFlsLvalue(FiberHandle fib) nothrow @nogc {
+        ReactorFiber* reactorFiber = fib.get();
+        if( reactorFiber is null )
+            return null;
+
+        size_t offset = cast(void*)(&FLS()) - cast(void*)theReactor.thisFiber.params.flsBlock.data.ptr;
+        DBG_ASSERT!"setFiberFls offset %s out of bounds %s"(offset<FLS_AREA_SIZE, offset, FLS_AREA_SIZE);
+        return cast(T*)(reactorFiber.params.flsBlock.data.ptr + offset);
+    }
+}
+
 /// Set the FLS variable of another fiber
 template setFiberFls(alias FLS) {
     alias T = ReturnType!FLS;
 
     void setFiberFls(FiberHandle fib, T value) nothrow @nogc {
-        ReactorFiber* reactorFiber = fib.get();
-        if( reactorFiber is null )
-            return;
+        T* fls = getFiberFlsLvalue!FLS(fib);
 
-        size_t offset = cast(void*)(&FLS()) - cast(void*)theReactor.thisFiber.params.flsBlock.data.ptr;
-        DBG_ASSERT!"setFiberFls offset %s out of bounds %s"(offset<FLS_AREA_SIZE, offset, FLS_AREA_SIZE);
-        *cast(T*)(reactorFiber.params.flsBlock.data.ptr + offset) = value;
+        if( fls !is null ) {
+            *fls = value;
+        }
     }
 }
 
