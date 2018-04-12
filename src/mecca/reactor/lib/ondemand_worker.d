@@ -41,10 +41,18 @@ public:
     @disable this(this);
 
     /// Construct a worker
-    this(ParameterTypeTuple!F args, SpawnFiberDlg spawnFiberDlg = null) {
-        this.args = args;
-        this.defaultArgs = args;
-        this.spawnFiber = spawnFiberDlg;
+    static if( ParameterTypeTuple!F.length>0 ) {
+        this(ParameterTypeTuple!F args, SpawnFiberDlg spawnFiberDlg = null) {
+            this.args = args;
+            this.defaultArgs = args;
+            this.spawnFiber = spawnFiberDlg;
+        }
+    } else {
+        // The above definition works for this case as well, but results in a constructor with default values to
+        // all arguments.
+        this(SpawnFiberDlg spawnFiberDlg) {
+            this.spawnFiber = spawnFiberDlg;
+        }
     }
 
     /// ditto
