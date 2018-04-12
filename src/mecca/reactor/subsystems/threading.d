@@ -307,13 +307,13 @@ public:
 
         //
         // once submitted, the task no longer belongs (solely) to us. we go to sleep until either:
-        //   * the completion callback fetched the task (suspendThisFiber returns)
-        //   * the fiber was killed/timed out (suspendThisFiber throws)
+        //   * the completion callback fetched the task (suspendCurrentFiber returns)
+        //   * the fiber was killed/timed out (suspendCurrentFiber throws)
         //      - note that the thread may or may not be done
         //      - if it is done, we must release it.
         //
         try {
-            theReactor.suspendThisFiber(timeout);
+            theReactor.suspendCurrentFiber(timeout);
         }
         catch (Throwable ex) {
             if (task.fibHandle.isValid) {

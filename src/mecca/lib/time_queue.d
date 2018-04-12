@@ -788,7 +788,7 @@ unittest {
 
         theReactor.registerRecurringTimer(dur!"seconds"(1), &looper);
 
-        theReactor.suspendThisFiber();
+        theReactor.suspendCurrentFiber();
     }
 
     testWithReactor(&testBody, options);

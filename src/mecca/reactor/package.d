@@ -842,7 +842,7 @@ public:
      */
     @notrace void yield() @safe @nogc {
         resumeFiber(thisFiber);
-        suspendThisFiber();
+        suspendCurrentFiber();
     }
 
     /**
@@ -1039,7 +1039,75 @@ public:
         auto timerHandle = registerTimer!resumeFiber(until, currentFiberHandle, false);
         scope(failure) cancelTimer(timerHandle);
 
-        suspendThisFiber();
+        suspendCurrentFiber();
+    }
+
+    /**
+      Resume a suspended fiber
+
+      You are heartily encouraged not to use this function directly. In almost all cases, it is better to use one of the
+      synchronization primitives instead.
+
+      Params:
+      handle = the handle of the fiber to be resumed.
+      priority = If true, schedule the fiber before all currently scheduled fibers. If the fiber is already scheduled
+        (`getFiberState` returns `Scheduled`), this will move it to the top of the queue.
+     */
+    @notrace void resumeFiber(FiberHandle handle, bool priority = false) nothrow @safe @nogc {
+        resumeFiber(handle.get(), priority);
+    }
+
+    /**
+      Suspend the current fiber
+
+      If `timeout` is given and expires, the suspend will throw a `TimeoutExpired` exception.
+
+      You are heartily encouraged not to use this function directly. In almost all cases, it is better to use one of the
+      synchronization primitives instead.
+     */
+    @notrace void suspendCurrentFiber(Timeout timeout) @trusted @nogc {
+        if (timeout == Timeout.infinite)
+            return suspendCurrentFiber();
+
+        ASSERT!"suspendCurrentFiber called while inside a critical section"(!isInCriticalSection);
+
+        TimerHandle timeoutHandle;
+        scope(exit) cancelTimer( timeoutHandle );
+        bool timeoutExpired;
+
+        if (timeout == Timeout.elapsed) {
+            throw mkEx!TimeoutExpired;
+        }
+
+        static void resumer(FiberHandle fibHandle, TimerHandle* cookie, bool* timeoutExpired) nothrow @safe @nogc{
+            *cookie = TimerHandle.init;
+            ReactorFiber* fib = fibHandle.get;
+            assert( fib !is null, "Fiber disappeared while suspended with timer" );
+
+            // Throw TimeoutExpired only if we're the ones who resumed the fiber. this prevents a race when
+            // someone else had already woken the fiber, but it just didn't get time to run while the timer expired.
+            // this probably indicates fibers hogging the CPU for too long (starving others)
+            *timeoutExpired = ! fib.flag!"SCHEDULED";
+
+            /+
+                    if (! *timeoutExpired)
+                        fib.WARN_AS!"#REACTOR fiber resumer invoked, but fiber already scheduled (starvation): %s scheduled, %s pending"(
+                                theReactor.scheduledFibers.length, theReactor.pendingFibers.length);
+            +/
+
+            theReactor.resumeFiber(fib);
+        }
+
+        timeoutHandle = registerTimer!resumer(timeout, currentFiberHandle, &timeoutHandle, &timeoutExpired);
+        switchToNext();
+
+        if( timeoutExpired )
+            throw mkEx!TimeoutExpired();
+    }
+
+    /// ditto
+    @notrace void suspendCurrentFiber() @safe @nogc {
+         switchToNext();
     }
 
     /**
@@ -1259,50 +1327,6 @@ private:
         return skipBody;
     }
 
-    @notrace package void suspendThisFiber(Timeout timeout) @trusted @nogc {
-        if (timeout == Timeout.infinite)
-            return suspendThisFiber();
-
-        ASSERT!"suspendThisFiber called while inside a critical section"(!isInCriticalSection);
-
-        TimerHandle timeoutHandle;
-        scope(exit) cancelTimer( timeoutHandle );
-        bool timeoutExpired;
-
-        if (timeout == Timeout.elapsed) {
-            throw mkEx!TimeoutExpired;
-        }
-
-        static void resumer(FiberHandle fibHandle, TimerHandle* cookie, bool* timeoutExpired) nothrow @safe @nogc{
-            *cookie = TimerHandle.init;
-            ReactorFiber* fib = fibHandle.get;
-            assert( fib !is null, "Fiber disappeared while suspended with timer" );
-
-            // Throw TimeoutExpired only if we're the ones who resumed the fiber. this prevents a race when
-            // someone else had already woken the fiber, but it just didn't get time to run while the timer expired.
-            // this probably indicates fibers hogging the CPU for too long (starving others)
-            *timeoutExpired = ! fib.flag!"SCHEDULED";
-
-            /+
-                    if (! *timeoutExpired)
-                        fib.WARN_AS!"#REACTOR fiber resumer invoked, but fiber already scheduled (starvation): %s scheduled, %s pending"(
-                                theReactor.scheduledFibers.length, theReactor.pendingFibers.length);
-            +/
-
-            theReactor.resumeFiber(fib);
-        }
-
-        timeoutHandle = registerTimer!resumer(timeout, currentFiberHandle, &timeoutHandle, &timeoutExpired);
-        switchToNext();
-
-        if( timeoutExpired )
-            throw mkEx!TimeoutExpired();
-    }
-
-    package void suspendThisFiber() @safe @nogc {
-         switchToNext();
-    }
-
     void resumeSpecialFiber(ReactorFiber* fib) nothrow @safe @nogc {
         assert (fib.flag!"SPECIAL");
         assert (fib.flag!"CALLBACK_SET");
@@ -1312,10 +1336,6 @@ private:
             fib.flag!"SCHEDULED" = true;
             scheduledFibers.prepend(fib);
         }
-    }
-
-    package void resumeFiber(FiberHandle handle, bool immediate = false) nothrow @safe @nogc {
-        resumeFiber(handle.get(), immediate);
     }
 
     void resumeFiber(ReactorFiber* fib, bool immediate = false) nothrow @safe @nogc {
@@ -1850,7 +1870,7 @@ unittest {
         bool thrown;
 
         try {
-            theReactor.suspendThisFiber( Timeout(dur!"msecs"(4)) );
+            theReactor.suspendCurrentFiber( Timeout(dur!"msecs"(4)) );
         } catch(TimeoutExpired ex) {
             thrown = true;
         }

@@ -105,7 +105,7 @@ public:
         ctx.fibHandle = theReactor.currentFiberHandle;
         scope(exit) destroy(ctx.fibHandle);
 
-        theReactor.suspendThisFiber(timeout);
+        theReactor.suspendCurrentFiber(timeout);
     }
 
 private:

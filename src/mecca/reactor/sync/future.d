@@ -18,7 +18,7 @@ struct Future(T) {
         }
         scope(exit) fibHandle = null;
         fibHandle = theReactor.currentFiberHandle;
-        theReactor.suspendThisFiber();
+        theReactor.suspendCurrentFiber();
         static if (!is(T == void)) {
             return *value;
         }

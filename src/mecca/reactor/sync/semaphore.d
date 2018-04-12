@@ -164,7 +164,7 @@ private:
         DBG_ASSERT!"Cannot have two primary waiters"(!primaryWaiter.isValid);
         primaryWaiter = theReactor.currentFiberHandle();
         scope(exit) primaryWaiter.reset();
-        theReactor.suspendThisFiber(timeout);
+        theReactor.suspendCurrentFiber(timeout);
         ASSERT!"Semaphore woke up without anyone owning up to waking us up."(resumePending);
 
         resumePending = false;

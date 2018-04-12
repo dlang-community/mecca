@@ -57,7 +57,7 @@ public:
             }
         }
 
-        theReactor.suspendThisFiber(timeout);
+        theReactor.suspendCurrentFiber(timeout);
 
         // Since we're the fiber management, the fiber should not be able to exit without going through this point
         DBG_ASSERT!"Fiber handle for %s became invalid while it slept"(ourHandle.isValid, ourHandle);
