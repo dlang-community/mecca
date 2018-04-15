@@ -398,6 +398,77 @@ unittest {
     assert (SIGRTMAX < NUM_SIGS);
 }
 
+
+extern(C) nothrow /*@nogc*/ {
+    public alias CloneFunction = extern(C) int function(void*) nothrow /*@nogc*/;
+    public int clone(CloneFunction fn, void* child_stack, int flags, void* args);
+    public int unshare(int flags);
+    public int chroot(const char* dirname);
+    public enum {
+        CSIGNAL                 = 0x000000ff,     // signal mask to be sent at exit
+        CLONE_VM                = 0x00000100,     // set if VM shared between processes
+        CLONE_FS                = 0x00000200,     // set if fs info shared between processes
+        CLONE_FILES             = 0x00000400,     // set if open files shared between processes
+        CLONE_SIGHAND           = 0x00000800,     // set if signal handlers and blocked signals shared
+        CLONE_PTRACE            = 0x00002000,     // set if we want to let tracing continue on the child too
+        CLONE_VFORK             = 0x00004000,     // set if the parent wants the child to wake it up on mm_release
+        CLONE_PARENT            = 0x00008000,     // set if we want to have the same parent as the cloner
+        CLONE_THREAD            = 0x00010000,     // Same thread group?
+        CLONE_NEWNS             = 0x00020000,     // New namespace group?
+        CLONE_SYSVSEM           = 0x00040000,     // share system V SEM_UNDO semantics
+        CLONE_SETTLS            = 0x00080000,     // create a new TLS for the child
+        CLONE_PARENT_SETTID     = 0x00100000,     // set the TID in the parent
+        CLONE_CHILD_CLEARTID    = 0x00200000,     // clear the TID in the child
+        CLONE_DETACHED          = 0x00400000,     // Unused, ignored
+        CLONE_UNTRACED          = 0x00800000,     // set if the tracing process can't force CLONE_PTRACE on this clone
+        CLONE_CHILD_SETTID      = 0x01000000,     // set the TID in the child
+        CLONE_NEWUTS            = 0x04000000,     // New utsname group?
+        CLONE_NEWIPC            = 0x08000000,     // New ipcs
+        CLONE_NEWUSER           = 0x10000000,     // New user namespace
+        CLONE_NEWPID            = 0x20000000,     // New pid namespace
+        CLONE_NEWNET            = 0x40000000,     // New network namespace
+        CLONE_IO                = 0x80000000,     // Clone io context
+    }
+
+    public int mount(in char* __special_file, in char* __dir, in char* __fstype, ulong __rwflag, in void* __data);
+    public int umount(in char* target);
+    public int umount2(in char* target, int flags);
+    public enum MountOptions {
+        MS_RDONLY = 1,                // Mount read-only.
+        MS_NOSUID = 2,                // Ignore suid and sgid bits.
+        MS_NODEV = 4,                 // Disallow access to device special files.
+        MS_NOEXEC = 8,                // Disallow program execution.
+        MS_SYNCHRONOUS = 16,          // Writes are synced at once.
+        MS_REMOUNT = 32,              // Alter flags of a mounted FS.
+        MS_MANDLOCK = 64,             // Allow mandatory locks on an FS.
+        MS_DIRSYNC = 128,             // Directory modifications are synchronous.
+        MS_NOATIME = 1024,            // Do not update access times.
+        MS_NODIRATIME = 2048,         // Do not update directory access times.
+        MS_BIND = 4096,               // Bind directory at different place.
+        MS_MOVE = 8192,
+        MS_REC = 16384,
+        MS_SILENT = 32768,
+        MS_POSIXACL = 1 << 16,        // VFS does not apply the umask.
+        MS_UNBINDABLE = 1 << 17,      // Change to unbindable.
+        MS_PRIVATE = 1 << 18,         // Change to private.
+        MS_SLAVE = 1 << 19,           // Change to slave.
+        MS_SHARED = 1 << 20,          // Change to shared.
+        MS_RELATIME = 1 << 21,        // Update atime relative to mtime/ctime.
+        MS_KERNMOUNT = 1 << 22,       // This is a kern_mount call.
+        MS_I_VERSION =  1 << 23,      // Update inode I_version field.
+        MS_STRICTATIME = 1 << 24,     // Always perform atime updates.
+        MS_ACTIVE = 1 << 30,
+        MS_NOUSER = 1 << 31
+    }
+    public enum {
+        MNT_FORCE = 1,                /* Force unmounting.  */
+        MNT_DETACH = 2,               /* Just detach from the tree.  */
+        MNT_EXPIRE = 4,               /* Mark for expiry.  */
+        UMOUNT_NOFOLLOW = 8           /* Don't follow symlink on umount.  */
+    };
+}
+
+
 enum SyscallTracePoint {
     PRE_SYSCALL,
     POST_SYSCALL,
