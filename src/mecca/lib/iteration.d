@@ -17,7 +17,7 @@ auto ptrInputRange(Range)(Range range) if( isRefInputRange!Range ) {
         Range range;
 
         @property auto front() {
-            return &range.front;
+            return &(range.front());
         }
 
         alias range this;
