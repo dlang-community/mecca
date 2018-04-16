@@ -1,7 +1,7 @@
 /// Various utilities for hacking the D type system
 module mecca.lib.reflection;
 
-import std.algorithm: move, moveEmplace;
+import std.algorithm: move, moveEmplace, any;
 public import std.traits;
 public import std.meta;
 import std.conv;
@@ -874,4 +874,59 @@ unittest {
     assertEQ( bitEnumToString!Test(8), "C" );
     assertEQ( bitEnumToString!Test(11), "A|C|0x2" );
     assertEQ( bitEnumToString!Test(12), "B|C" );
+}
+
+/**
+Returns $(D true) if $(D R) is a pseudo input range with ref return.
+
+An input range must
+define the primitives $(D empty), $(D popFront), and $(D front). The
+following code should compile for any input range.
+
+----
+R r;              // can define a range object
+if (r.empty) {}   // can test for empty
+r.popFront();     // can invoke popFront()
+auto h = r.front; // can get the front of the range of non-void type
+----
+
+The last line fails if the underlying type is non-copyable. It is still possible
+to define a pseudo input range that works with non-copyable types by having `r.front`
+return a reference, but `isInputRange` will return `false` for it.
+
+Params:
+    R = type to be tested
+
+Returns:
+    true if R is a pseudo InputRange with ref front, false if not
+ */
+template isRefInputRange(R) {
+    static if(
+            is(typeof(R.init) == R) &&
+            is(ReturnType!((R r) => r.empty) == bool) &&
+            __traits(hasMember, R, "front") &&
+            [__traits(getFunctionAttributes, R.front)].any!("a == \"ref\"") &&
+            is(typeof((R r) => r.popFront))
+            )
+    {
+        enum bool isRefInputRange = true;
+    } else {
+        enum bool isRefInputRange = false;
+    }
+}
+
+
+unittest {
+    struct S {
+        int a;
+
+        void popFront() {
+        }
+
+        @property bool empty() { return true; }
+
+        @property ref int front() { return a; }
+    }
+
+    static assert( isRefInputRange!S );
 }
