@@ -27,7 +27,7 @@ private:
 public:
     @disable this(this);
 
-    this(size_t capacity, size_t used = 0) {
+    this(size_t capacity, size_t used = 0) nothrow @safe @nogc {
         open(capacity, used);
     }
 
