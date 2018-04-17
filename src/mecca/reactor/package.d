@@ -87,7 +87,7 @@ align(1):
     FiberIdx                                    _prevId;
     FiberIncarnation                            incarnationCounter;
     ubyte                                       _flags;
-    FiberState                                  state;
+    FiberState                                  _state;
 
     // We define this struct align(1) for the sole purpose of making the following static assert verify what it's supposed to
     static assert (this.sizeof == 32);  // keep it small and cache-line friendly
@@ -166,6 +166,21 @@ align(1):
             import mecca.lib.integers: bitComplement;
             _flags &= bitComplement(__traits(getMember, Flags, NAME));
         }
+    }
+
+    @property FiberState state() pure const nothrow @safe @nogc {
+        return _state;
+    }
+
+    @property void state(FiberState newState) nothrow @safe @nogc {
+        DBG_ASSERT!"%s trying to switch state from %s to %s, but histogram claims no fibers in this state. %s"(
+                theReactor.stats.fibersHistogram[_state]>0, identity, _state, newState,
+                theReactor.stats.fibersHistogram );
+
+        theReactor.stats.fibersHistogram[_state]--;
+        theReactor.stats.fibersHistogram[newState]++;
+
+        _state = newState;
     }
 
 private:
@@ -398,6 +413,41 @@ struct Reactor {
         }
     }
 
+    /// Used by `reportStats` to report statistics about the reactor
+    struct Stats {
+        ulong[FiberState.max+1] fibersHistogram;        /// Total number of user fibers in each `FiberState`
+        ulong numContextSwitches;                       /// Number of time we switched between fibers
+        ulong idleCycles;                               /// Total number of idle cycles
+
+        /// Returns number of currently used fibers
+        @property ulong numUsedFibers() pure const nothrow @safe @nogc {
+            ulong ret;
+
+            with(FiberState) {
+                foreach( state; [Starting, Scheduled, Running, Sleeping]) {
+                    ret += fibersHistogram[state];
+                }
+            }
+
+            return ret;
+        }
+
+        /// Returns number of fibers available to be run
+        @property ulong numFreeFibers() pure const nothrow @safe @nogc {
+            ulong ret;
+
+            with(FiberState) {
+                foreach( state; [None]) {
+                    ret += fibersHistogram[state];
+                }
+
+                DBG_ASSERT!"%s fibers in Done state. Should be 0"(fibersHistogram[Done] == 0, fibersHistogram[Done]);
+            }
+
+            return ret;
+        }
+    }
+
 private:
     enum MAX_IDLE_CALLBACKS = 16;
     enum TIMER_NUM_BINS = 256;
@@ -420,8 +470,8 @@ private:
     FiberIdx.UnderlyingType maxNumFibersMask;
     int reactorReturn;
     int criticalSectionNesting;
-    ulong idleCycles;
     OpenOptions optionsInEffect;
+    Stats stats;
 
     MmapBuffer fiberStacks;
     MmapArray!ReactorFiber allFibers;
@@ -487,6 +537,9 @@ public:
 
         maxNumFibersBits = bitsInValue(optionsInEffect.numFibers - 1);
         maxNumFibersMask = createBitMask!(FiberIdx.UnderlyingType)(maxNumFibersBits);
+
+        stats = Stats.init;
+        stats.fibersHistogram[FiberState.None] = options.numFibers;
 
         const stackPerFib = (((options.fiberStackSize + SYS_PAGE_SIZE - 1) / SYS_PAGE_SIZE) + 1) * SYS_PAGE_SIZE;
         fiberStacks.allocate(stackPerFib * options.numFibers);
@@ -574,7 +627,6 @@ public:
         mainFiber = null;
         idleFiber = null;
         idleCallbacks.length = 0;
-        idleCycles = 0;
 
         _isReactorThread = false;
         _open = false;
@@ -1231,6 +1283,21 @@ public:
         DBG_ASSERT!"Fiber handle %s is valid after signalling done"(!fh.isValid, fh);
     }
 
+    /// Report the current reactor statistics.
+    @property Stats reactorStats() const nothrow @safe @nogc {
+        Stats ret = stats;
+
+        foreach( FiberIdx.UnderlyingType i; 0..NUM_SPECIAL_FIBERS ) {
+            auto fiberIdx = FiberIdx(i);
+            auto fiber = to!(ReactorFiber*)(fiberIdx);
+            DBG_ASSERT!"%s is in state %s with histogram of 0"(
+                    ret.fibersHistogram[fiber.state]>0, fiber.identity, fiber.state );
+            ret.fibersHistogram[fiber.state]--;
+        }
+
+        return ret;
+    }
+
 private:
     package @property inout(ReactorFiber)* thisFiber() inout nothrow pure @safe @nogc {
         DBG_ASSERT!"No current fiber as reactor was not started"(isRunning);
@@ -1244,6 +1311,8 @@ private:
     void switchToNext() @safe @nogc {
         //DEBUG!"SWITCH out of %s"(thisFiber.identity);
         ASSERT!"Context switch while inside a critical section"(!isInCriticalSection);
+
+        stats.numContextSwitches++;
 
         // in source fiber
         {
@@ -1412,7 +1481,7 @@ private:
                     import core.thread; Thread.sleep(sleepDuration);
                 }
             }
-            idleCycles += end.diff!"cycles"(start);
+            stats.idleCycles += end.diff!"cycles"(start);
             switchToNext();
         }
     }
@@ -1978,12 +2047,19 @@ unittest {
 
     void fib1() {
         assertEQ( theReactor.getFiberState(theReactor.currentFiberHandle), FiberState.Running );
+        assertEQ( theReactor.reactorStats.fibersHistogram[FiberState.Starting], 0 );
         auto fib = theReactor.spawnFiber(&fib2);
         assertEQ( theReactor.getFiberState(fib), FiberState.Starting );
+        assertEQ( theReactor.reactorStats.fibersHistogram[FiberState.Starting], 1 );
 
         evt1.wait();
 
+        assertEQ( theReactor.reactorStats.fibersHistogram[FiberState.Starting], 0 );
+        assertEQ( theReactor.reactorStats.fibersHistogram[FiberState.Sleeping], 2 );
         theReactor.throwInFiber(fib, new TheException);
+        // The following should be "1", because the state would switch to Scheduled. Since that's not implemented yet...
+        assertEQ( theReactor.reactorStats.fibersHistogram[FiberState.Sleeping], 2 ); // Should be 1
+        assertEQ( theReactor.reactorStats.fibersHistogram[FiberState.Scheduled], 0 ); // Should 1
         evt2.set();
     }
 
