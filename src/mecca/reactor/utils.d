@@ -1,6 +1,8 @@
 /// Assorted helpers
 module mecca.reactor.utils;
 
+import std.range;
+
 import mecca.log;
 import mecca.reactor;
 
@@ -58,4 +60,24 @@ public:
 
     /// The `FiberPointer` acts as the pointer itself
     alias get this;
+}
+
+/**
+  "Play nice" input range filter
+
+  Injecting this into an input range processing chain will make sure that an occasional context switch happens during
+  long processing.
+
+  Each call to `popFront` may result in a context switch
+ */
+auto contextSwitchingRange(R)(R range) if( isInputRange!R ) {
+    static struct ContextSwitchingRange(R) {
+        R range;
+        alias range this;
+        ref auto popFront() {
+            theReactor.considerYield();
+            return range.popFront;
+        }
+    }
+    return ContextSwitchingRange!R(range);
 }
