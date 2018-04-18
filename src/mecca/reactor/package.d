@@ -923,10 +923,17 @@ public:
      Perform yield if fiber is running long enough.
 
      Arguments and meaning are the same as for `shouldYield`.
+
+     Returns:
+     Whether a yield actually took place.
      */
-    @notrace void considerYield(uint tolerance = 1) @safe @nogc {
-        if( shouldYield(tolerance) )
+    @notrace bool considerYield(uint tolerance = 1) @safe @nogc {
+        if( shouldYield(tolerance) ) {
             yield();
+            return true;
+        }
+
+        return false;
     }
 
     /**
