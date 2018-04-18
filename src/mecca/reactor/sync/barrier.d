@@ -8,10 +8,11 @@ import mecca.reactor.sync.event;
 /**
  * A cross fibers synchronization point.
  *
- * Barrier has several deployment methods. The basic idea is to divide the fibers into those who need to "check in", and those that wait for
- * the check in counter to reach the correct amount.
+ * Barrier has several deployment methods. The basic idea is to divide the fibers into those who need to "check in", and
+ * those that wait for the check in counter to reach the correct amount.
  *
- * The most common use case is waiting for launched fibers to finish. To facilitate this mode, the following code structure is used:
+ * The most common use case is waiting for launched fibers to finish. To facilitate this mode, the following code
+ * structure is used:
  * ---
  * void fiberDlg() {
  *   scope(exit) barrier.markDone();
@@ -27,7 +28,7 @@ import mecca.reactor.sync.event;
 struct Barrier {
 private:
     Event evt = Event(true);
-    uint numWaiters = 0;
+    uint _numWaiters = 0;
 
 public:
     /**
@@ -35,7 +36,7 @@ public:
      */
     void addWaiter() nothrow @safe @nogc {
         evt.reset();
-        numWaiters++;
+        _numWaiters++;
     }
 
     /**
@@ -44,18 +45,25 @@ public:
      * Call this when the completion event the barrier synchronizes on happens. This function does not sleep.
      */
     void markDone() nothrow @safe @nogc {
-        assert (numWaiters > 0, "numWaiters=0");
-        numWaiters--;
-        if (numWaiters == 0) {
+        assert (_numWaiters > 0, "numWaiters=0");
+        _numWaiters--;
+        if (_numWaiters == 0) {
             evt.set();
         }
     }
 
     /**
-     * Report whether anyone is waiting for the barrier to complete.
+     * Report whether there are any fibers we might be waiting for
      */
-    auto hasWaiters() pure const nothrow @safe @nogc {
-        return numWaiters > 0;
+    @property bool hasWaiters() pure const nothrow @safe @nogc {
+        return _numWaiters > 0;
+    }
+
+    /**
+     * Report how many fibers we are waiting for
+     */
+    @property auto numWaiters() pure const nothrow @safe @nogc {
+        return _numWaiters;
     }
 
     /**
