@@ -98,24 +98,34 @@ public:
      * The main difference between this method and wait is that this method supports the case where the struct holding the Event is freed
      * while the fiber is sleeping. As a result, two main differences are possible:
      * $(OL
-     * $(LI Spurious wakeups are possible $(LPAREN)i.e. - unreliableWait returns, but the event is not set$(RPAREN) )
+     * $(LI Spurious wakeups are possible $(LPAREN)i.e. - `unreliableWait` returns, but the event is not set$(RPAREN) )
      * $(LI The VerboseEvent will not report when we wake up from the sleep.) )
+     *
+     * Proper invocation should use the following pattern:
+     * ----
+     * while( isEventValid && !event.unreliableWait ) {}
+     * ----
      *
      * Params:
      * timeout = sets a timeout for the wait.
      *
-     * Throws:
-     * TimeoutExpired if the timeout expires.
+     * Returns:
+     * Returns `true` if the event was already set when the call was made.
      *
-     * Any other exception injected to this fiber using Reactor.throwInFiber
+     * Throws:
+     * `TimeoutExpired` if the timeout expires.
+     *
+     * Any other exception injected to this fiber using `Reactor.throwInFiber`
      */
-    void unreliableWait(Timeout timeout = Timeout.infinite) @safe @nogc {
+    bool unreliableWait(Timeout timeout = Timeout.infinite) @safe @nogc {
         if( isSet )
-            return;
+            return true;
 
         report(SyncVerbosityEventType.Contention);
         waiters.suspend(timeout);
         // Will not report wakeup, as we cannot know that the event still exists: report(SyncVerbosityEventType.Wakeup);
+
+        return false;
     }
 
 package:
