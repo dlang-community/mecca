@@ -109,8 +109,7 @@ public:
     }
 
 private:
-    @notrace void reactorIdle(Duration timeout) {
-
+    @notrace bool reactorIdle(Duration timeout) {
         int intTimeout;
         if( timeout == Duration.max )
             intTimeout = -1;
@@ -125,7 +124,7 @@ private:
 
         if( res<0 &&  errno==EINTR ) {
             DEBUG!"epoll call interrupted by signal"();
-            return;
+            return true;
         }
 
         errnoEnforceNGC( res>=0, "epoll_wait failed" );
@@ -139,6 +138,8 @@ private:
 
             theReactor.resumeFiber(ctx.fibHandle);
         }
+
+        return true;
     }
 }
 

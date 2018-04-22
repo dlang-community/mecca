@@ -481,7 +481,7 @@ private:
     ReactorFiber* _thisFiber;
     ReactorFiber* mainFiber;
     ReactorFiber* idleFiber;
-    alias IdleCallbackDlg = void delegate(Duration);
+    alias IdleCallbackDlg = bool delegate(Duration);
     FixedArray!(IdleCallbackDlg, MAX_IDLE_CALLBACKS) idleCallbacks;
     __gshared OSSignal hangDetectorSig;
     posix_time.timer_t hangDetectorTimerId;
@@ -635,16 +635,20 @@ public:
     /**
       Register an idle handler callback.
 
-      The reactor handles scheduling and fibers switching, but has no built-in mechanism for scheduling sleeping fibers back to execution
-      (except fibers sleeping on a timer, of course). Mechanisms such as file descriptor watching are external, and are registered using
-      this function.
+      The reactor handles scheduling and fibers switching, but has no built-in mechanism for scheduling sleeping fibers
+      back to execution (except fibers sleeping on a timer, of course). Mechanisms such as file descriptor watching are
+      external, and are registered using this function.
 
-      The idler callback should receive a timeout variable. This indicates the time until the closest timer expires. If no other event comes
-      in, the idler should strive to wake up after that long. Waking up sooner will, likely, cause the idler to be called again. Waking up
-      later will delay timer tasks (which is allowed by the API contract).
+      The idler callback should receive a timeout variable. This indicates the time until the closest timer expires. If
+      no other event comes in, the idler should strive to wake up after that long. Waking up sooner will, likely, cause
+      the idler to be called again. Waking up later will delay timer tasks (which is allowed by the API contract).
 
-      It is allowed to register more than one idler callback. Doing so, however, will cause $(B all) of them to be called with a timeout of
-      zero (i.e. - don't sleep), resulting in a busy wait for events.
+      It is allowed to register more than one idler callback. Doing so, however, will cause $(B all) of them to be
+      called with a timeout of zero (i.e. - don't sleep), resulting in a busy wait for events.
+
+      The idler is expected to return a boolean value indicating whether the time spent inside the idler is to be
+      counted as idle time, or whether that's considered "work". This affects the results returned by the `idleCycles`
+      field returned by the `reactorStats`.
      */
     void registerIdleCallback(IdleCallbackDlg dg) nothrow @safe @nogc {
         // You will notice our deliberate lack of function to unregister
@@ -1464,9 +1468,8 @@ private:
             end = start = TscTimePoint.hardNow;
 
             while (scheduledFibers.empty) {
-                //enterCriticalSection();
-                //scope(exit) leaveCriticalSection();
-                end = TscTimePoint.hardNow;
+                auto critSect = criticalSection();
+
                 /*
                    Since we've updated "end" before calling the timers, these timers won't count as idle time, unless....
                    after running them the scheduledFibers list is still empty, in which case they do.
@@ -1476,17 +1479,21 @@ private:
 
                 // We only reach here if runTimedCallbacks did nothing, in which case "end" is recent enough
                 Duration sleepDuration = timeQueue.timeTillNextEntry(end);
+                bool countsAsIdle = true;
                 if( idleCallbacks.length==1 ) {
-                    //DEBUG!"idle callback called with duration %s"(sleepDuration);
-                    idleCallbacks[0](sleepDuration);
+                    countsAsIdle = idleCallbacks[0](sleepDuration) && countsAsIdle;
+                    DBG_ASSERT!"Single idle callback must always count as idle"(countsAsIdle);
                 } else if ( idleCallbacks.length>1 ) {
                     foreach(cb; idleCallbacks) {
-                        cb(ZERO_DURATION);
+                        countsAsIdle = cb(ZERO_DURATION) && countsAsIdle;
                     }
                 } else {
                     DEBUG!"Idle fiber called with no callbacks, sleeping %sus"(sleepDuration.total!"usecs");
                     import core.thread; Thread.sleep(sleepDuration);
                 }
+
+                if( countsAsIdle )
+                    end = TscTimePoint.hardNow;
             }
             stats.idleCycles += end.diff!"cycles"(start);
             switchToNext();
