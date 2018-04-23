@@ -1,5 +1,7 @@
 module mecca.lib.time_queue;
 
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
+
 import std.algorithm : min, max;
 import std.math : abs;
 

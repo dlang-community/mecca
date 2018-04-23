@@ -3,6 +3,8 @@
 /// Intended for use only by sync object developers
 module mecca.reactor.sync.verbose;
 
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
+
 import mecca.log;
 
 enum SyncVerbosityEventType {

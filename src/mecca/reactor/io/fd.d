@@ -1,6 +1,8 @@
 /// Reactor aware FD (file descriptor) operations
 module mecca.reactor.io.fd;
 
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
+
 import core.stdc.errno;
 import core.sys.posix.netinet.in_;
 import core.sys.posix.netinet.tcp;

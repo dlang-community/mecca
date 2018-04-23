@@ -1,6 +1,8 @@
 /// Various utilities for hacking the D type system
 module mecca.lib.reflection;
 
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
+
 import std.algorithm: move, moveEmplace, any;
 public import std.traits;
 public import std.meta;

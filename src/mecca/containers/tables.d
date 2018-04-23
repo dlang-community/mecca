@@ -1,5 +1,7 @@
 module mecca.containers.tables;
 
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
+
 import std.traits: isArray;
 import mecca.lib.exception;
 

@@ -1,8 +1,7 @@
 /// Fiber queue helper for writing synchronization objects
-
-// Authors: Shachar Shemesh
-// Copyright: ©2017 Weka.io Ltd.
 module mecca.reactor.sync.fiber_queue;
+
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
 
 import mecca.containers.lists;
 import mecca.lib.exception;

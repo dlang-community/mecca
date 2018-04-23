@@ -1,6 +1,8 @@
 /// Reactor aware queue that waits for operations to be possible
 module mecca.reactor.sync.queue;
 
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
+
 import mecca.containers.queue;
 import mecca.lib.time;
 import mecca.log;

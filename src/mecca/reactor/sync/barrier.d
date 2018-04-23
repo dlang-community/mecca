@@ -1,6 +1,8 @@
 /// Cross fibers synchronization point
 module mecca.reactor.sync.barrier;
 
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
+
 import mecca.lib.time;
 import mecca.log;
 import mecca.reactor.sync.event;

@@ -1,5 +1,7 @@
 module mecca.reactor.sync.future;
 
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
+
 import mecca.reactor;
 import mecca.log;
 

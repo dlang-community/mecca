@@ -1,6 +1,8 @@
 /// Reactor aware semaphore
 module mecca.reactor.sync.semaphore;
 
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
+
 import std.algorithm;
 
 import mecca.lib.exception;

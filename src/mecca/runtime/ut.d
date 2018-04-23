@@ -1,6 +1,8 @@
 /// Mecca UT support
 module mecca.runtime.ut;
 
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
+
 version(unittest):
 
 import std.file: read;

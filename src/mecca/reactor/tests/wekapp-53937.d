@@ -1,5 +1,7 @@
 module mecca.reactor.tests.wekapp_53937;
 
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
+
 version(unittest):
 
 import std.string;

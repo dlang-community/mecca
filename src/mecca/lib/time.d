@@ -1,6 +1,8 @@
 /// It's about time
 module mecca.lib.time;
 
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
+
 public import std.datetime;
 import mecca.lib.division: S64Divisor;
 public import mecca.platform.x86: readTSC;

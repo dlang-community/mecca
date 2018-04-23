@@ -1,5 +1,7 @@
 module mecca.reactor.subsystems.threading;
 
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
+
 import core.atomic;
 import core.thread;
 import core.sys.posix.signal;

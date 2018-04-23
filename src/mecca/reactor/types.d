@@ -1,6 +1,8 @@
 /// Type definitions for reactor related types
 module mecca.reactor.types;
 
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
+
 import mecca.lib.exception;
 import mecca.lib.typedid;
 

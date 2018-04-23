@@ -1,5 +1,7 @@
 module mecca.lib.hashing;
 
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
+
 //
 // adapted from https://github.com/gchatelet/murmurhash3_d/blob/8cb8ebe284a085abbd1d97eff8f3a3e78a95f995/murmurhash3.d
 // can be used in CTFE

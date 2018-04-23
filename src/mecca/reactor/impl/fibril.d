@@ -1,5 +1,7 @@
 module mecca.reactor.impl.fibril;
 
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
+
 // Disable tracing instrumentation for the whole file
 @("notrace") void traceDisableCompileTimeInstrumentation();
 

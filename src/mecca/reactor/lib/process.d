@@ -1,6 +1,8 @@
 /// Reactor aware process management
 module mecca.reactor.lib.process;
 
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
+
 import core.stdc.errno;
 import core.sys.posix.sys.wait;
 import core.sys.posix.unistd;

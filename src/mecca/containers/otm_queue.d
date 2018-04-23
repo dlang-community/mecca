@@ -1,6 +1,8 @@
 /// Lock free one-to-many queues
 module mecca.containers.otm_queue;
 
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
+
 import core.atomic;
 import core.thread: thread_isMainThread;
 import std.string;

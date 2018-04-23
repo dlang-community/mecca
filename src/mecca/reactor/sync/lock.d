@@ -5,6 +5,8 @@
  */
 module mecca.reactor.sync.lock;
 
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
+
 import mecca.lib.reflection;
 
 import mecca.log;

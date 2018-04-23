@@ -1,6 +1,8 @@
 /// Define the micro-threading reactor
 module mecca.reactor;
 
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
+
 static import posix_signal = core.sys.posix.signal;
 static import posix_time = core.sys.posix.time;
 static import posix_ucontext = core.sys.posix.ucontext;

@@ -1,6 +1,8 @@
 /// Fiber local storage
 module mecca.reactor.fls;
 
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
+
 import std.traits;
 
 import mecca.log;

@@ -3,6 +3,8 @@
  */
 module mecca.reactor.sync.event;
 
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
+
 import mecca.lib.exception;
 import mecca.lib.time;
 import mecca.log;

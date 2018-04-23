@@ -1,6 +1,8 @@
 /// When things go wrong....
 module mecca.lib.exception;
 
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
+
 public import core.exception: AssertError, RangeError;
 public import std.exception: ErrnoException;
 import std.algorithm : min;

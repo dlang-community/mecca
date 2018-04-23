@@ -1,5 +1,7 @@
 module mecca.lib.integers;
 
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
+
 import std.traits;
 import std.meta: AliasSeq;
 import std.conv;

@@ -1,6 +1,8 @@
 /// allows throttling the rate at which operations are done
 module mecca.reactor.sync.throttler;
 
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
+
 import mecca.lib.division;
 import mecca.lib.exception;
 import mecca.lib.time;

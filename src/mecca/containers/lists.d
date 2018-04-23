@@ -1,5 +1,7 @@
 module mecca.containers.lists;
 
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
+
 import std.traits;
 
 import mecca.lib.memory: prefetch;

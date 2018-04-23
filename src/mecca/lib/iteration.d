@@ -1,6 +1,8 @@
 /// Library for iterating over stuff
 module mecca.lib.iteration;
 
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
+
 import std.traits;
 import std.range;
 

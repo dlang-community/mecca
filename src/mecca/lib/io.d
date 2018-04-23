@@ -1,6 +1,8 @@
 /// File descriptor management
 module mecca.lib.io;
 
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
+
 import core.sys.posix.unistd;
 public import core.sys.posix.fcntl :
     O_ACCMODE, O_RDONLY, O_WRONLY, O_RDWR, O_CREAT, O_EXCL, O_TRUNC, O_APPEND, O_DSYNC, O_RSYNC, O_SYNC, O_NOCTTY;

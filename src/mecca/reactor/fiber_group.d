@@ -1,6 +1,8 @@
 /// group related fibers so they can all be killed together, if needed
 module mecca.reactor.fiber_group;
 
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
+
 import std.traits;
 
 import mecca.containers.lists;

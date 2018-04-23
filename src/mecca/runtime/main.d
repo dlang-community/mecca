@@ -1,6 +1,8 @@
 /// Mecca main entrypoint
 module mecca.runtime.main;
 
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
+
 import std.stdio;
 import std.string;
 import mecca.reactor: theReactor;

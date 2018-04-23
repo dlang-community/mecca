@@ -1,0 +1,19 @@
+Mecca is copyright (C) 2014-2018 Weka.IO Ltd.
+Mecca is distributed under the Boost Software License, Version 1.0.
+See LICENSE_1_0.txt for the license, or https://www.boost.org/LICENSE_1_0.txt
+
+The following people are responsible for writing Mecca as part of their
+Weka.IO Ltd. work:
+Shachar Shemesh
+Tomer Filiba
+Eyal Lotem
+
+Contributions to Mecca not done by Weka.IO employees are subject to their
+respective copyright, but licensed under the same license unless explicitly
+stated otherwise.
+
+Mecca uses code adapted from libdivide (http://libdivide.com). That code
+is copyright (C) 2010-2018 ridiculous_fish, libdivide@ridiculousfish.com
+and also available under the Boost license.
+
+Additional non-Weka contributers:

@@ -1,6 +1,8 @@
 /// Manage signals as reactor callbacks
 module mecca.reactor.io.signals;
 
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
+
 import core.sys.posix.signal;
 import core.sys.posix.unistd;
 import core.sys.linux.sys.signalfd;

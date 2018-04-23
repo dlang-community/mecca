@@ -1,6 +1,8 @@
 /// Utility functions for handling strings
 module mecca.lib.string;
 
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
+
 import std.ascii;
 import std.conv;
 import std.string;

@@ -1,5 +1,7 @@
 module mecca.reactor.subsystems.processes;
 
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
+
 import unistd = core.sys.posix.unistd;
 import signal = core.sys.posix.signal;
 

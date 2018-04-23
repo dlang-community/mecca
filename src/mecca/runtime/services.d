@@ -1,5 +1,7 @@
 module mecca.runtime.services;
 
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
+
 
 private __gshared void delegate()[] _atExitCallbacks;
 

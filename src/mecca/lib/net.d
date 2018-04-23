@@ -1,6 +1,8 @@
 /// Various networking support tools
 module mecca.lib.net;
 
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
+
 import core.stdc.errno : errno, EINVAL;
 import core.sys.posix.sys.socket;
 import core.sys.posix.netinet.in_;

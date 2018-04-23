@@ -1,5 +1,7 @@
 module mecca.log.impl;
 
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
+
 version(MeccaAlternateLogger) {
     static if( __traits(compiles, import("MeccaAlternateLoggerImpl.txt")) ) {
         mixin("public import " ~ import("MeccaAlternateLoggerImpl.txt") ~ ";");

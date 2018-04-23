@@ -1,5 +1,7 @@
 module mecca.lib.memory;
 
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
+
 import std.exception;
 import std.string;
 import std.conv;

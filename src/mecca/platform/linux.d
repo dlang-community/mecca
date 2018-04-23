@@ -1,5 +1,7 @@
 module mecca.platform.linux;
 
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
+
 import mecca.log: notrace;
 
 version(linux):

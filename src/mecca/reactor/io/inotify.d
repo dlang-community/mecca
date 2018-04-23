@@ -1,6 +1,8 @@
 /// Reactor friendly interface for Linux's inotify
 module mecca.reactor.io.inotify;
 
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
+
 import core.sys.linux.sys.inotify;
 
 import mecca.lib.exception;

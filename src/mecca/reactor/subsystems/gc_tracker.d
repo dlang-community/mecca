@@ -4,6 +4,8 @@
  */
 module mecca.reactor.subsystems.gc_tracker;
 
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
+
 version(supports_pluggable_gc):
 
 import mecca.lib.exception;

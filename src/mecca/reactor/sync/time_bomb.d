@@ -1,6 +1,8 @@
 /// Set deadline for specific code execution
 module mecca.reactor.sync.time_bomb;
 
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
+
 import mecca.log;
 import mecca.lib.exception;
 import mecca.lib.time;

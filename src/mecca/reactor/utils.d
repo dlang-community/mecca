@@ -1,6 +1,8 @@
 /// Assorted helpers
 module mecca.reactor.utils;
 
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
+
 import std.range;
 
 import mecca.log;

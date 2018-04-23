@@ -1,5 +1,7 @@
 module mecca.reactor.subsystems.epoll;
 
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
+
 import core.stdc.errno;
 import core.sys.linux.epoll;
 import core.sys.posix.fcntl;

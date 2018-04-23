@@ -1,6 +1,8 @@
 /// Run a job in a fiber, but never two simultaneously
 module mecca.reactor.lib.ondemand_worker;
 
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
+
 import std.traits;
 
 import mecca.lib.exception;

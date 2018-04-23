@@ -1,6 +1,8 @@
 /// Tools for manipulating the console
 module mecca.lib.console;
 
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
+
 /**
  * Encode an ANSI console sequence.
  */

@@ -1,6 +1,8 @@
 /// Helpers for asynchronously executing code
 module mecca.lib.concurrency;
 
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
+
 import core.atomic;
 
 /**

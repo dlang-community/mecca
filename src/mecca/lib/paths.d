@@ -1,5 +1,7 @@
 module mecca.lib.paths;
 
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
+
 
 struct Path {
     string _path;

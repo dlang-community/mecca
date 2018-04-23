@@ -1,4 +1,7 @@
+/// X86 platform specific utils
 module mecca.platform.x86;
+
+// Licensed under the Boost license. Full copyright information in the AUTHORS file
 
 /// Size in bytes of a single cache line
 enum CACHE_LINE_SIZE = 64;
