@@ -92,16 +92,16 @@ struct ToStringz(size_t N) {
     @disable this();
     @disable this(this);
 
-    this(string str) nothrow @trusted @nogc {
+    this(const(char)[] str) nothrow @safe @nogc {
         opAssign(str);
     }
-    ref ToStringz opAssign(string str) nothrow @trusted @nogc {
+    ref ToStringz opAssign(const(char)[] str) nothrow @safe @nogc {
         assert (str.length < buffer.length, "Input string too long");
         buffer[0 .. str.length] = str;
         buffer[str.length] = '\0';
         return this;
     }
-    @property const(char)* ptr() const nothrow @trusted @nogc {
+    @property const(char)* ptr() const nothrow @system @nogc {
         return buffer.ptr;
     }
     alias ptr this;

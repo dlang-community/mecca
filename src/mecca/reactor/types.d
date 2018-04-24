@@ -30,6 +30,10 @@ class FiberInterrupt : Throwable {
     mixin ExceptionBody;
 }
 
+class FiberKilled : FiberInterrupt {
+    mixin ExceptionBody!"Fiber was killed by another fiber";
+}
+
 class ReactorExit : FiberInterrupt {
     mixin ExceptionBody!("Reactor is quitting");
 }

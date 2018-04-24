@@ -39,11 +39,11 @@ struct Inotifier {
         @disable this(this);
 
         inotify_event event;
-        @property WatchDescriptor wd() const pure @safe @nogc {
+        @property WatchDescriptor wd() const pure nothrow @safe @nogc {
             return WatchDescriptor( event.wd );
         }
 
-        @property string name() const @nogc {
+        @property string name() const nothrow @trusted @nogc {
             if( event.len==0 )
                 return null;
 
@@ -112,6 +112,11 @@ public:
         fd.close();
     }
 
+    /// Report whether Inotifier is open
+    bool isOpen() const nothrow @safe @nogc {
+        return fd.isValid;
+    }
+
     /**
      * add or change a watch point
      *
@@ -122,7 +127,7 @@ public:
      * Returns:
      * the WatchDescriptor of the added or modified watch point.
      */
-    WatchDescriptor watch( string path, uint mask ) @trusted @nogc {
+    WatchDescriptor watch( const(char)[] path, uint mask ) @trusted @nogc {
         auto wd = WatchDescriptor( fd.osCallErrno!(.inotify_add_watch)(ToStringz!(NAME_MAX+1)(path), mask) );
 
         return wd;
@@ -144,7 +149,7 @@ public:
      * This function may sleep.
      *
      * Returns:
-     * A pointer to a const Event. This pointer remains valid until the next call to getEvent or consumeAllEvents.
+     * A pointer to a const Event. This pointer remains valid until the next call to `getEvent` or `consumeAllEvents`.
      *
      * Bugs:
      * Only one fiber at a time may use this function
