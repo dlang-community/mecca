@@ -326,10 +326,24 @@ struct Socket {
     /**
      * send data over an unconnected socket
      */
-    ssize_t sendto(const void[] data, int flags, const ref SockAddr destAddr, Timeout timeout = Timeout.infinite)
+    ssize_t sendTo(const void[] data, int flags, ref const(SockAddr) destAddr, Timeout timeout = Timeout.infinite)
             @trusted @nogc
     {
         return fd.blockingCall!(.sendto)(data.ptr, data.length, flags, &destAddr.base, SockAddr.sizeof, timeout); 
+    }
+
+    /**
+     * send an entire object over an unconnected socket
+     */
+    @notrace void sendObjTo(T)(
+            const(T)* data, ref const(SockAddr) dst, int flags=0, Timeout timeout = Timeout.infinite) @safe @nogc
+    {
+        objectCall!sendTo(data, flags, dst, timeout);
+    }
+
+    /// ditto
+    @notrace void sendObjTo(T)(const(T)* data, ref const(SockAddr) dst, Timeout timeout) @safe @nogc {
+        sendObj(data, dst, 0, timeout);
     }
 
     /**
@@ -389,10 +403,16 @@ struct Socket {
     /**
      * recv data from an unconnected socket
      */
-    ssize_t recvfrom(void[] buffer, int flags, out SockAddr srcAddr, Timeout timeout = Timeout.infinite) @trusted @nogc
+    ssize_t recvFrom(void[] buffer, int flags, out SockAddr srcAddr, Timeout timeout = Timeout.infinite) @trusted @nogc
     {
         socklen_t addrLen = SockAddr.sizeof;
         return fd.blockingCall!(.recvfrom)(buffer.ptr, buffer.length, flags, &srcAddr.base, &addrLen, timeout);
+    }
+
+    /// ditto
+    ssize_t recvFrom(void[] buffer, out SockAddr srcAddr, Timeout timeout = Timeout.infinite) @safe @nogc
+    {
+        return recvFrom( buffer, 0, srcAddr, timeout );
     }
 
     /// Implement the recvmsg system call in a reactor friendly way.

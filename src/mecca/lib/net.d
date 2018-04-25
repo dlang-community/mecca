@@ -12,8 +12,10 @@ import std.conv;
 
 import mecca.lib.exception;
 import mecca.lib.string;
+import mecca.log;
 
 /// An IPv4 address
+@FMT("{bytes[0]}.{bytes[1]}.{bytes[2]}.{bytes[3]}")
 struct IPv4 {
     enum IPv4 loopback  = IPv4(cast(ubyte[])[127, 0, 0, 1]);            /// Lookpack address
     enum IPv4 none      = IPv4(cast(ubyte[])[255, 255, 255, 255]);      /// No address
@@ -26,15 +28,15 @@ struct IPv4 {
     }
 
     /// Construct an IPv4 address
-    this(uint netOrder) nothrow @safe @nogc {
+    this(uint netOrder) pure nothrow @safe @nogc {
         inaddr.s_addr = netOrder;
     }
     /// ditto
-    this(ubyte[4] bytes) nothrow @safe @nogc {
+    this(ubyte[4] bytes) pure nothrow @safe @nogc {
         this.bytes = bytes;
     }
     /// ditto
-    this(in_addr ia) nothrow @safe @nogc {
+    this(in_addr ia) pure nothrow @safe @nogc {
         inaddr = ia;
     }
     /// ditto
@@ -43,17 +45,17 @@ struct IPv4 {
     }
 
     /// Assignment
-    ref typeof(this) opAssign(uint netOrder) nothrow @safe @nogc {
+    ref typeof(this) opAssign(uint netOrder) pure nothrow @safe @nogc {
         inaddr.s_addr = netOrder;
         return this;
     }
     /// ditto
-    ref typeof(this) opAssign(ubyte[4] bytes) nothrow @safe @nogc {
+    ref typeof(this) opAssign(ubyte[4] bytes) pure nothrow @safe @nogc {
         this.bytes = bytes;
         return this;
     }
     /// ditto
-    ref typeof(this) opAssign(in_addr ia) nothrow @safe @nogc {
+    ref typeof(this) opAssign(in_addr ia) pure nothrow @safe @nogc {
         inaddr = ia;
         return this;
     }
@@ -204,6 +206,16 @@ struct SockAddrIPv4 {
     /// ditto
     @property ushort port() const pure nothrow @safe @nogc {
         return ntohs(sa.sin_port);
+    }
+
+    /// Get/set the sa's addr
+    @property void addr(IPv4 address) nothrow @safe @nogc {
+        sa.sin_addr = address.inaddr;
+    }
+
+    /// ditto
+    @property IPv4 addr() const pure nothrow @safe @nogc {
+        return IPv4(sa.sin_addr);
     }
 
     /// Convert the address to GC allocated string in the format addr:port
