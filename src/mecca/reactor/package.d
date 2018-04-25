@@ -343,6 +343,9 @@ package:
   The main scheduler for the micro-threading architecture.
  */
 struct Reactor {
+    /// Delegates passed to `registerIdleCallback` must be of this signature
+    alias IdleCallbackDlg = bool delegate(Duration);
+
     /// The options control aspects of the reactor's operation
     struct OpenOptions {
         /// Maximum number of fibers.
@@ -483,7 +486,6 @@ private:
     ReactorFiber* _thisFiber;
     ReactorFiber* mainFiber;
     ReactorFiber* idleFiber;
-    alias IdleCallbackDlg = bool delegate(Duration);
     FixedArray!(IdleCallbackDlg, MAX_IDLE_CALLBACKS) idleCallbacks;
     __gshared OSSignal hangDetectorSig;
     posix_time.timer_t hangDetectorTimerId;
