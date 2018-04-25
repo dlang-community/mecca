@@ -1194,10 +1194,10 @@ public:
      *
      * Will rethrow whatever the thread throws in the waiting fiber.
      */
-    auto deferToThread(alias F, alias Fini = null)(Parameters!F args) @nogc {
+    auto deferToThread(alias F, alias Fini = null)(Parameters!F args, Timeout timeout = Timeout.infinite) @nogc {
         DBG_ASSERT!"deferToThread called but thread deferral isn't enabled in the reactor"(
                 optionsInEffect.threadDeferralEnabled);
-        return threadPool.deferToThread!(F, Fini)(Timeout.infinite, args);
+        return threadPool.deferToThread!(F, Fini)(timeout, args);
     }
 
     /// ditto
