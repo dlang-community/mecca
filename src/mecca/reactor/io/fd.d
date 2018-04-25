@@ -35,7 +35,7 @@ struct DatagramSocket {
     /**
      * Create a datagram socket
      *
-     * This creates a SOCK_DATAGRAM socket.
+     * This creates a SOCK_DGRAM (UDP type) socket.
      *
      * Params:
      *  bindAddr = a socket address for the server to connect to.
@@ -47,7 +47,7 @@ struct DatagramSocket {
      * ErrnoException if the connection fails. Also throws this if one of the system calls fails.
      */
     static DatagramSocket create(SockAddr bindAddr) @safe @nogc {
-        return DatagramSocket( Socket.socket(bindAddr.family, SOCK_SEQPACKET, 0) );
+        return DatagramSocket( Socket.socket(bindAddr.family, SOCK_DGRAM, 0) );
     }
 }
 
