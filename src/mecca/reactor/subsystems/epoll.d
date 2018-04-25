@@ -70,6 +70,7 @@ public:
     }
 
     FdContext* registerFD(ref FD fd, bool alreadyNonBlocking = false) @trusted @nogc {
+        ASSERT!"registerFD called outside of an open reactor"( theReactor.isOpen );
         ASSERT!"registerFD called without first calling ReactorFD.openReactor"( epollFd.isValid );
         FdContext* ctx = fdPool.alloc();
         scope(failure) fdPool.release(ctx);

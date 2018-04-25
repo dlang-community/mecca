@@ -49,6 +49,15 @@ struct DatagramSocket {
     static DatagramSocket create(SockAddr bindAddr) @safe @nogc {
         return DatagramSocket( Socket.socket(bindAddr.family, SOCK_DGRAM, 0) );
     }
+
+    /**
+     * Enable `SOL_BROADCAST` on the socket
+     *
+     * This allows the socket to send datagrams to broadcast addresses.
+     */
+    void enableBroadcast(bool enabled = true) @trusted @nogc {
+        sock.setSockOpt(SOL_SOCKET, SO_BROADCAST, enabled);
+    }
 }
 
 /**
@@ -262,8 +271,7 @@ struct ConnectedSocket {
      * This function allows selectively enabling/disabling Nagle on TCP sockets.
      */
     void setNagle(bool on) @trusted @nogc {
-        int flag = cast(int) on;
-        sock.osCallErrno!(.setsockopt)( IPPROTO_TCP, TCP_NODELAY, &flag, flag.sizeof );
+        sock.setSockOpt( IPPROTO_TCP, TCP_NODELAY, cast(int)on );
     }
 }
 
@@ -425,6 +433,52 @@ struct Socket {
         fd.osCallErrno!(.getpeername)(&sa.base, &saLen);
 
         return sa;
+    }
+
+    /**
+     * Call the `setsockopt` on the socket
+     *
+     * Throws ErrnoException on failure
+     */
+    void setSockOpt(int level, int optname, const(void)[] optval) @nogc {
+        fd.osCallErrno!(.setsockopt)( level, optname, optval.ptr, cast(socklen_t)optval.length );
+    }
+
+    /// ditto
+    void setSockOpt(T)(int level, int optname, auto ref const(T) optval) @nogc {
+        const(T)[] optvalRange = (&optval)[0..1];
+        setSockOpt(level, optname, optvalRange);
+    }
+
+    /**
+     * Call the `getsockopt` on the socket
+     *
+     * Throws ErrnoException on failure
+     */
+    T[] getSockOpt(T)(int level, int optname, T[] optval) @nogc {
+        void[] option = optval;
+        socklen_t len = cast(socklen_t)option.length;
+        fd.osCallErrno!(.getsockopt)( level, optname, option.ptr, &len );
+
+        return cast(T[]) option[0..len];
+    }
+
+    unittest {
+        import mecca.reactor : testWithReactor;
+        testWithReactor({
+            enum SO_BINDTODEVICE = 25; // on Linux
+            char[25] nicName;
+
+            auto sock = ConnectedSocket.listen( SockAddr( SockAddrIPv4.any() ) );
+            char[] name = sock.getSockOpt(SOL_SOCKET, SO_BINDTODEVICE, nicName);
+            assertEQ(name.length, 0);
+        });
+    }
+
+    /// ditto
+    void getSockOpt(T)(int level, int optname, ref T optval) @nogc if(! isArray!T) {
+        T[] optvalRange = (&optval)[0..1];
+        getSockOpt(level, optname, optvalRange);
     }
 
 private:
