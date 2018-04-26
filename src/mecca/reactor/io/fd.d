@@ -16,7 +16,7 @@ import std.traits;
 
 import mecca.lib.exception;
 import mecca.lib.io;
-import mecca.lib.net;
+public import mecca.lib.net;
 import mecca.lib.string;
 import mecca.lib.time;
 import mecca.log;
@@ -153,7 +153,7 @@ struct ConnectedDatagramSocket {
     /**
      * send an entire object
      */
-    @notrace void sendObj(T)(T* data, int flags=MSG_EOR, Timeout timeout = Timeout.infinite) @safe @nogc {
+    @notrace void sendObj(T)(auto ref const(T) data, int flags=MSG_EOR, Timeout timeout = Timeout.infinite) @safe @nogc {
         sock.sendObj(data, flags, timeout);
     }
 }
@@ -314,12 +314,12 @@ struct Socket {
     /**
      * send an entire object over a connected socket
      */
-    @notrace void sendObj(T)(const(T)* data, int flags=0, Timeout timeout = Timeout.infinite) @safe @nogc {
-        objectCall!send(data, flags, timeout);
+    @notrace void sendObj(T)(auto ref const(T) data, int flags=0, Timeout timeout = Timeout.infinite) @trusted @nogc {
+        objectCall!send(&data, flags, timeout);
     }
 
     /// ditto
-    @notrace void sendObj(T)(const(T)* data, Timeout timeout) @safe @nogc {
+    @notrace void sendObj(T)(auto ref const(T) data, Timeout timeout) @safe @nogc {
         sendObj(data, 0, timeout);
     }
 
@@ -336,14 +336,15 @@ struct Socket {
      * send an entire object over an unconnected socket
      */
     @notrace void sendObjTo(T)(
-            const(T)* data, ref const(SockAddr) dst, int flags=0, Timeout timeout = Timeout.infinite) @safe @nogc
+            auto ref const(T) data, ref const(SockAddr) dst, int flags=0, Timeout timeout = Timeout.infinite)
+            @trusted @nogc
     {
-        objectCall!sendTo(data, flags, dst, timeout);
+        objectCall!sendTo(&data, flags, dst, timeout);
     }
 
     /// ditto
-    @notrace void sendObjTo(T)(const(T)* data, ref const(SockAddr) dst, Timeout timeout) @safe @nogc {
-        sendObj(data, dst, 0, timeout);
+    @notrace void sendObjTo(T)(auto ref const(T) data, ref const(SockAddr) dst, Timeout timeout) @safe @nogc {
+        sendObjTo(data, dst, 0, timeout);
     }
 
     /**
