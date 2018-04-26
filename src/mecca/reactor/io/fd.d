@@ -24,6 +24,20 @@ import mecca.reactor.subsystems.epoll;
 
 enum LISTEN_BACKLOG = 10;
 
+/// Exception thrown if `Socket.recvObj` receives partial data
+///
+/// `ErrnoException.errno` will report `EREMOTEIO`.
+class ShortRead : ErrnoException {
+    this(string msg, string file = __FILE__, size_t line = __LINE__) @trusted {
+        super(msg, EREMOTEIO, file, line);
+    }
+}
+
+unittest {
+    auto except = new ShortRead("Message");
+    assert(except.errno == EREMOTEIO);
+}
+
 /**
   Wrapper for datagram oriented socket (such as UDP)
  */
@@ -387,8 +401,9 @@ struct Socket {
      * timeout = timeout
      *
      * Throws:
-     * May throw an ErrnoException in case of a socket error. If amount of bytes received is not identical to sizeof(T),
-     * errno will be EREMOTEIO (remote IO error).
+     * May throw an `ErrnoException` in case of a socket error. If amount of bytes received is not identical to
+     * `sizeof(T)`, will throw `ShortRead` excetpion, which inherits from `ErrnoException` with `errno` set to
+     * `EREMOTEIO` (remote IO error).
      *
      * Will throw TimeoutExpired if the timeout expired
      */
@@ -515,10 +530,10 @@ private:
         if( size!=T.sizeof ) {
             if( size==0 ) {
                 errno = ECONNRESET; // Other side closed. Inject "Connection reset by peer"
+                throw mkExFmt!ErrnoException("%s(%s)", __traits(identifier, F), fd.get().fileNo);
             } else {
-                errno = EREMOTEIO; // Inject a "remote IO error"
+                throw mkExFmt!ShortRead("%s(%s)", __traits(identifier, F), fd.get().fileNo);
             }
-            throw mkExFmt!ErrnoException("%s(%s)", __traits(identifier, F), fd.get().fileNo);
         }
     }
 }
