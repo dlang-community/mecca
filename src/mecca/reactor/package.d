@@ -332,10 +332,18 @@ package:
     }
 
     ReactorFiber* get() const nothrow @safe @nogc {
-        if (!identity.isValid || theReactor.allFibers[to!FiberIdx(identity).value].incarnationCounter != incarnation) {
+        if (!identity.isValid) {
             return null;
         }
-        return &theReactor.allFibers[to!FiberIdx(identity).value];
+
+        ReactorFiber* fiber = &theReactor.allFibers[to!FiberIdx(identity).value];
+
+        DBG_ASSERT!"Fiber state is transient state Done"(fiber.state != FiberState.Done);
+        if(fiber.state == FiberState.None || fiber.incarnationCounter != incarnation) {
+            return null;
+        }
+
+        return fiber;
     }
 }
 
