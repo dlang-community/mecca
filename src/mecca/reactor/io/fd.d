@@ -722,6 +722,33 @@ public:
         return move(fd);
     }
 
+    /**
+     * Register a user callback to be called if the FD is "active"
+     *
+     * $(B Warning): Using this function without understanding the underlying mechanism might cause the callback to not
+     * get called. Use with caution!
+     *
+     * Registers a callback to be called the next time an event is available on the file descriptor. The semantics of
+     * when the callback will be called follow the same rules as epoll's edge trigger mode. This means that if the
+     * last operation performed with the FD did not block, the callback will not be called.
+     *
+     * One way to make sure this doesn't happen is to call a blocking function with a timeout of zero.
+     *
+     * Use `unregisterCallback` to unregister the callback.
+     *
+     * Params:
+     * dlg = the delegate to be called
+     * opaq = a value that will be passed, as is, to the delegate.
+     * oneShot = if set to `true`, the callback will automatically be deregistered after being called once.
+     */
+    void registerCallback(void delegate(void*) dlg, void* opaq, bool oneShot = true) nothrow @safe @nogc {
+        epoller.registerFdCallback(ctx, fd.fileNo, dlg, opaq, oneShot);
+    }
+
+    void unregisterCallback() nothrow @safe @nogc {
+        epoller.unregisterFdCallback(ctx, fd.fileNo);
+    }
+
 package:
     auto blockingCall(alias F)(Parameters!F[1 .. $] args, Timeout timeout) @system @nogc {
         static assert (is(Parameters!F[0] == int));

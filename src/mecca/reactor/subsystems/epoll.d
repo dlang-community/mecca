@@ -37,7 +37,13 @@ private extern(C) {
 
 struct Epoll {
     struct FdContext {
-        FiberHandle fibHandle;
+        enum Type { None, FiberHandle, Callback, CallbackOneShot }
+        Type type = Type.None;
+        union {
+            FiberHandle fibHandle;
+            void delegate(void* opaq) callback;
+        }
+        void* opaq;
     }
 
 private: // Not that this does anything, as the struct itself is only visible to this file.
@@ -73,6 +79,7 @@ public:
         ASSERT!"registerFD called outside of an open reactor"( theReactor.isOpen );
         ASSERT!"registerFD called without first calling ReactorFD.openReactor"( epollFd.isValid );
         FdContext* ctx = fdPool.alloc();
+        ctx.type = FdContext.Type.None;
         scope(failure) fdPool.release(ctx);
 
         if( !alreadyNonBlocking ) {
@@ -103,15 +110,45 @@ public:
             TODO: In the future, we might wish to allow one fiber to read from an ReactorFD while another writes to the same ReactorFD. As the code
             currently stands, this will trigger the assert below
          */
-        ASSERT!"Two fibers cannot wait on the same ReactorFD %s at once: %s asked to wait with %s already waiting"(
-                !ctx.fibHandle.isValid, fd, theReactor.currentFiberHandle, ctx.fibHandle );
+        with(FdContext.Type) final switch(ctx.type) {
+        case None:
+            break;
+        case FiberHandle:
+            ASSERT!"Two fibers cannot wait on the same ReactorFD %s at once: %s asked to wait with %s already waiting"(
+                    false, fd, theReactor.currentFiberHandle.fiberId, ctx.fibHandle.fiberId );
+            break;
+        case Callback:
+        case CallbackOneShot:
+            ASSERT!"Cannot wait on FD %s already waiting on a callback"(false, fd);
+            break;
+        }
+        ctx.type = FdContext.Type.FiberHandle;
+        scope(exit) ctx.type = FdContext.Type.None;
         ctx.fibHandle = theReactor.currentFiberHandle;
-        scope(exit) destroy(ctx.fibHandle);
 
         theReactor.suspendCurrentFiber(timeout);
     }
 
-private:
+    @notrace void registerFdCallback(FdContext* ctx, int fd, void delegate(void*) callback, void* opaq, bool oneShot)
+            nothrow @trusted @nogc
+    {
+        INFO!"Registered callback %s on fd %s one shot %s"(&callback, fd, oneShot);
+        ASSERT!"Trying to register callback on busy FD %s: state %s"( ctx.type==FdContext.Type.None, fd, ctx.type );
+        ASSERT!"Cannot register a null callback on FD %s"( callback !is null, fd );
+
+        ctx.type = oneShot ? FdContext.Type.CallbackOneShot : FdContext.Type.Callback;
+        ctx.callback = callback;
+        ctx.opaq = opaq;
+    }
+
+    @notrace void unregisterFdCallback(FdContext* ctx, int fd) nothrow @trusted @nogc {
+        INFO!"Unregistered callback on fd %s"(fd);
+        ASSERT!"Trying to deregister callback on non-registered FD %s: state %s"(
+                ctx.type==FdContext.Type.Callback || ctx.type==FdContext.Type.CallbackOneShot, fd, ctx.type);
+
+        ctx.type = FdContext.Type.None;
+    }
+
     @notrace bool reactorIdle(Duration timeout) {
         int intTimeout;
         if( timeout == Duration.max )
@@ -134,12 +171,22 @@ private:
 
         foreach( ref event; events[0..res] ) {
             auto ctx = cast(FdContext*)event.data.ptr;
-            if( !ctx.fibHandle.isValid ) {
-                WARN!"epoll returned handle %s which is no longer valid"(ctx.fibHandle);
-                continue;
-            }
 
-            theReactor.resumeFiber(ctx.fibHandle);
+            with(FdContext.Type) final switch(ctx.type) {
+            case None:
+                WARN!"epoll returned handle %s which is no longer valid"(ctx);
+                break;
+            case FiberHandle:
+                theReactor.resumeFiber(ctx.fibHandle);
+                break;
+            case Callback:
+                ctx.callback(ctx.opaq);
+                break;
+            case CallbackOneShot:
+                ctx.type = None;
+                ctx.callback(ctx.opaq);
+                break;
+            }
         }
 
         return true;
