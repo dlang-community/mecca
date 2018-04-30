@@ -634,7 +634,7 @@ struct SockAddr {
     /// Returns the length of the data in the struct
     ///
     /// This is needed for underlying system calls that accept `sockaddr`
-    @property uint length() const pure nothrow @safe @nogc {
+    @property uint len() const pure nothrow @safe @nogc {
         switch(family) {
         case AF_UNSPEC:
             return SockAddr.sizeof;
