@@ -105,6 +105,14 @@ public:
 /// A nogc mutable char array (string)
 alias FixedString(size_t N) = FixedArray!(char, N, false);
 
+/// Shorten a null terminated `FixedString` to be the size of the actual string (without the null)
+///
+/// Will throw a RangeError if the string is not null terminated
+void setStringzLength(size_t N)(ref FixedArray!(char, N, false) str) pure nothrow @safe @nogc {
+    import std.string : indexOf;
+    str.length = str.array.indexOf('\0');
+}
+
 unittest {
     FixedArray!(uint, 8) fa;
     assert (fa.length == 0);

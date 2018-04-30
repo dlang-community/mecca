@@ -10,6 +10,7 @@ import core.sys.posix.sys.un;
 import core.sys.posix.netdb;
 import std.conv;
 
+import mecca.containers.arrays: FixedString, setStringzLength;
 import mecca.lib.exception;
 import mecca.lib.string;
 import mecca.log;
@@ -231,6 +232,17 @@ struct SockAddrIPv4 {
         return IPv4(sa.sin_addr).toString();
     }
 
+    auto toFixedStringAddr() const nothrow @trusted @nogc {
+        ASSERT!"Address family is %s, not IPv4"( sa.sin_family == AF_INET, sa.sin_family );
+
+        FixedString!INET_ADDRSTRLEN buf;
+        buf.length = buf.capacity;
+        ASSERT!"Address translation failed"(inet_ntop(AF_INET, &sa.sin_addr, buf.ptr, buf.len) !is null);
+        setStringzLength(buf);
+
+        return buf;
+    }
+
     /// Convert just the port part to a GC allocated string
     string toStringPort() const nothrow @safe {
         if( port!=PORT_ANY )
@@ -261,6 +273,7 @@ unittest {
 
     assertEQ(s1.toString(), "127.0.0.1:1234");
     assertEQ(s1.toStringAddr(), "127.0.0.1");
+    assertEQ(s1.toFixedStringAddr(), "127.0.0.1");
     assertEQ(s1.toStringPort(), "1234");
     //assertEQ(s1.addrFixedString(), "127.0.0.1");
     assertEQ(s2.toString(), "10.11.12.13:*");
@@ -434,6 +447,17 @@ struct SockAddrIPv6 {
         return to!string(buffer.ptr);
     }
 
+    auto toFixedStringAddr() const nothrow @trusted @nogc {
+        ASSERT!"Address family is %s, not IPv6"( sa.sin6_family == AF_INET6, sa.sin6_family );
+
+        FixedString!INET6_ADDRSTRLEN buf;
+        buf.length = buf.capacity;
+        ASSERT!"Address translation failed"(inet_ntop(AF_INET6, &sa.sin6_addr, buf.ptr, buf.len) !is null);
+        setStringzLength(buf);
+
+        return buf;
+    }
+
     /// Convert just the port part to a GC allocated string
     string toStringPort() const nothrow @safe {
         if( port!=PORT_ANY )
@@ -464,9 +488,9 @@ unittest {
     SockAddrIPv6 s2 = SockAddrIPv6(test_ip6, 1234);
 
     assertEQ(s1.toString(), "::1:1234");
-    // assertEQ(s1.addrFixedString(), "::1");
+    assertEQ(s1.toFixedStringAddr(), "::1");
     assertEQ(s2.toString(), "1111:1111:1111:1111:1111:1111:1111:1111:1234");
-    // assertEQ(s2.addrFixedString(), "1111:1111:1111:1111:1111:1111:1111:1111");
+    assertEQ(s2.toFixedStringAddr(), "1111:1111:1111:1111:1111:1111:1111:1111");
 }
 
 /// A D representation of the `sockaddr_un` struct
