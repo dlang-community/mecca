@@ -111,6 +111,11 @@ struct ConnectedDatagramSocket {
         return ret;
     }
 
+    /// ditto
+    static ConnectedDatagramSocket connect(SockAddrUnix sa, Timeout timeout = Timeout.infinite) @safe @nogc {
+        return connect(SockAddr(sa));
+    }
+
     /**
      * Create a datagram stream socket and bind, as a listening server, to the address supplied
      *
@@ -133,6 +138,11 @@ struct ConnectedDatagramSocket {
         sock.osCallErrno!(.listen)(LISTEN_BACKLOG);
 
         return sock;
+    }
+
+    /// ditto
+    @notrace static ConnectedDatagramSocket listen(SockAddrUnix sa) @safe @nogc {
+        return listen( SockAddr(sa) );
     }
 
     /**
@@ -187,10 +197,10 @@ struct ConnectedSocket {
      * waits, through the reactor, for the connection to be established.
      *
      * Params:
-     *  sa = a socket address for the server to connect to.
+     *  sa = a socket address for the server to connect to (either `SockAddr` or `SockAddr*` where * is IPv4, IPv6 or Unix.
      *  timeout = the timeout for the connection. Throws TimeoutExpired if the timeout expires
-     *  nodelay = by default, Nagle algorithm is disabled for TCP connections. Setting this parameter to false reverts to the system-wide
-     *         configuration.
+     *  nodelay = by default, Nagle algorithm is disabled for TCP connections. Setting this parameter to false reverts
+     *    to the system-wide configuration.
      *
      * Returns:
      *  Returns the connected socket.
@@ -198,8 +208,8 @@ struct ConnectedSocket {
      * Throws:
      * TimeoutExpired if the timeout expires
      *
-     * ErrnoException if the connection fails (e.g. - ECONNREFUSED if connecting to a non-listening port). Also throws this if one of the
-     *                  system calls fails.
+     * ErrnoException if the connection fails (e.g. - ECONNREFUSED if connecting to a non-listening port). Also throws
+     * this if one of the system calls fails.
      *
      * Anything else: May throw any exception injected using throwInFiber.
      */
@@ -216,6 +226,13 @@ struct ConnectedSocket {
         return ret;
     }
 
+    /// ditto
+    static ConnectedSocket connect(SA)(SA sa, Timeout timeout = Timeout.infinite, bool nodelay = true) @safe @nogc
+            if( is( typeof( SockAddr(sa) ) == SockAddr ) )
+    {
+        return connect( SockAddr(sa) );
+    }
+
     /**
      * Create a stream socket and bind, as a listening server, to the address supplied
      *
@@ -223,7 +240,8 @@ struct ConnectedSocket {
      * puts it in listening mode.
      *
      * Params:
-     *  sa = a socket address for the server to listen on.
+     *  sa = a socket address for the server to listen on. The second form is for passing protocol specific addresses
+     *    (`SockAddrIPv4`, `SockAddrIPv6`, `SockAddrUnix`).
      *
      * Returns:
      *  Returns the listening socket.
@@ -239,6 +257,11 @@ struct ConnectedSocket {
         sock.osCallErrno!(.listen)(LISTEN_BACKLOG);
 
         return sock;
+    }
+
+    /// ditto
+    @notrace static ConnectedSocket listen(SA)(SA sa) @trusted @nogc if( is( typeof(SockAddr(sa)) == SockAddr ) ) {
+        return listen( SockAddr(sa) );
     }
 
     /**

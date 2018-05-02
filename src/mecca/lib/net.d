@@ -561,19 +561,19 @@ struct SockAddr {
     }
 
     /// ditto
-    this(SockAddrIPv4 sa) {
+    this(SockAddrIPv4 sa) nothrow @safe @nogc {
         ipv4 = sa;
         ASSERT!"Called with mismatching address family. Expected IPv4(%s), got %s"( AF_INET == family, AF_INET, family );
     }
 
     /// ditto
-    this(SockAddrIPv6 sa) {
+    this(SockAddrIPv6 sa) nothrow @safe @nogc {
         ipv6 = sa;
         ASSERT!"Called with mismatching address family. Expected IPv6(%s), got %s"( AF_INET6 == family, AF_INET6, family );
     }
 
     /// ditto
-    this(SockAddrUnix sa) {
+    this(SockAddrUnix sa) nothrow @safe @nogc {
         unix = sa;
         ASSERT!"Called with mismatching address family. Expected Unix domain(%s), got %s"( AF_UNIX == family, AF_UNIX, family );
     }
