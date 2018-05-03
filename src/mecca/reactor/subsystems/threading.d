@@ -223,7 +223,7 @@ public:
     }
 
     void close() {
-        theReactor.cancelTimer(timerHandle);
+        timerHandle.cancelTimer();
         active = false;
         foreach(i; 0 .. threads.length) {
             queue.submitRequest(POISON);

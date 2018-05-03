@@ -39,8 +39,7 @@ public:
 
     ~this() {
         if (timebombHandle.isValid) {
-            theReactor.cancelTimer(timebombHandle);
-            timebombHandle.reset();
+            timebombHandle.cancelTimer();
         }
     }
 }

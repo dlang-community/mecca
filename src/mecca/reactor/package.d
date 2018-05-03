@@ -999,8 +999,20 @@ public:
             return callback !is null && callback._owner !is null;
         }
 
+        /// Revert the handle to init value, forgetting the timer it points to
+        ///
+        /// This call will $(B not) cancel the actual timer. Use `cancelTimer` for that.
         @notrace void reset() nothrow @safe @nogc {
             callback = null;
+        }
+
+        /// Cancel a currently registered timer
+        void cancelTimer() nothrow @safe @nogc {
+            if( isValid ) {
+                theReactor.cancelTimerInternal(this);
+            }
+
+            reset();
         }
     }
 
@@ -1081,10 +1093,8 @@ public:
         return TimerHandle(callback);
     }
 
-    /// Cancel a currently registered timer
-    void cancelTimer(TimerHandle handle) nothrow @safe @nogc {
-        if( !handle.isValid )
-            return;
+    private void cancelTimerInternal(TimerHandle handle) nothrow @safe @nogc {
+        DBG_ASSERT!"cancelTimerInternal called with invalid handle"( handle.isValid );
         timeQueue.cancel(handle.callback);
         timedCallbacksPool.release(handle.callback);
     }
@@ -1112,7 +1122,7 @@ public:
     void sleep(Timeout until) @safe @nogc {
         assert(until != Timeout.init, "sleep argument uninitialized");
         auto timerHandle = registerTimer!resumeFiber(until, currentFiberHandle, false);
-        scope(failure) cancelTimer(timerHandle);
+        scope(failure) timerHandle.cancelTimer();
 
         suspendCurrentFiber();
     }
@@ -1147,7 +1157,7 @@ public:
         ASSERT!"suspendCurrentFiber called while inside a critical section"(!isInCriticalSection);
 
         TimerHandle timeoutHandle;
-        scope(exit) cancelTimer( timeoutHandle );
+        scope(exit) timeoutHandle.cancelTimer();
         bool timeoutExpired;
 
         if (timeout == Timeout.elapsed) {
@@ -2025,8 +2035,8 @@ unittest {
         theReactor.sleep(dur!"msecs"(3));
 
         // Cancel one expired timeout and one yet to happen
-        theReactor.cancelTimer(handles[0]);
-        theReactor.cancelTimer(handles[6]);
+        handles[0].cancelTimer();
+        handles[6].cancelTimer();
 
         // Wait for all timers to run
         theReactor.sleep(dur!"msecs"(200));
