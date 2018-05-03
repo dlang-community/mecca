@@ -522,18 +522,6 @@ struct Socket {
         return cast(T[]) option[0..len];
     }
 
-    unittest {
-        import mecca.reactor : testWithReactor;
-        testWithReactor({
-            enum SO_BINDTODEVICE = 25; // on Linux
-            char[25] nicName;
-
-            auto sock = ConnectedSocket.listen( SockAddr( SockAddrIPv4.any() ) );
-            char[] name = sock.getSockOpt(SOL_SOCKET, SO_BINDTODEVICE, nicName);
-            assertEQ(name.length, 0);
-        });
-    }
-
     /// ditto
     void getSockOpt(T)(int level, int optname, ref T optval) @nogc if(! isArray!T) {
         T[] optvalRange = (&optval)[0..1];

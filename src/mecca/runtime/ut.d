@@ -166,7 +166,7 @@ FilterLine[] filters;
 bool listModules;
 bool runTests = true;
 
-void logLine(string text) {
+@notrace void logLine(string text) {
     auto t = Clock.currTime();
     writefln(FG.grey("%02d:%02d:%02d.%03d") ~ " %s", t.hour, t.minute, t.second,
             t.fracSecs.total!"msecs", text);
