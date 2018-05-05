@@ -175,7 +175,9 @@ public:
                 D dg;
                 T args;
             }
-            static assert (Typed.sizeof <= argsBuf.sizeof, "Args too big");
+            import std.string: format;
+            static assert(Typed.sizeof <= ARGS_SIZE, "Arguments to function need %s bytes, can only store up to %s".
+                    format(Typed.sizeof, ARGS_SIZE) );
 
             static void wrapper(Closure* closure) {
                 auto typed = cast(Typed*)closure.argsBuf.ptr;
@@ -225,6 +227,9 @@ public:
             struct Typed {
                 staticMap!(Unqual, Parameters!F) args;
             }
+            import std.string: format;
+            static assert(Typed.sizeof <= ARGS_SIZE, "Arguments to function need %s bytes, can only store up to %s".
+                    format(Typed.sizeof, ARGS_SIZE) );
             static void wrapper(Closure* closure) {
                 Typed* typed = cast(Typed*)closure.argsBuf.ptr;
                 mixin( genMoveArgument(args.length, "F", "typed.args") );
