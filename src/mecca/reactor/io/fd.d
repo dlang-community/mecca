@@ -123,6 +123,7 @@ struct ConnectedDatagramSocket {
      *
      * Params:
      *  sa = a socket address for the server to listen on.
+     *  reuseAddr = Whether to set the `SO_REUSEADDR` socket option
      *
      * Returns:
      *  Returns the listening socket.
@@ -131,8 +132,12 @@ struct ConnectedDatagramSocket {
      * ErrnoException if the connection fails (e.g. - EADDRINUSE if binding to a used port). Also throws this if one of the
      *                  system calls fails.
      */
-    @notrace static ConnectedDatagramSocket listen(SockAddr sa) @trusted @nogc {
+    @notrace static ConnectedDatagramSocket listen(SockAddr sa, bool reuseAddr = false) @trusted @nogc {
         ConnectedDatagramSocket sock = ConnectedDatagramSocket( Socket.socket(sa.family, SOCK_SEQPACKET, 0) );
+
+        if( reuseAddr ) {
+            sock.setSockOpt( SOL_SOCKET, SO_REUSEADDR, 1 );
+        }
 
         sock.osCallErrno!(.bind)(&sa.base, sa.len);
         sock.osCallErrno!(.listen)(LISTEN_BACKLOG);
@@ -141,8 +146,8 @@ struct ConnectedDatagramSocket {
     }
 
     /// ditto
-    @notrace static ConnectedDatagramSocket listen(SockAddrUnix sa) @safe @nogc {
-        return listen( SockAddr(sa) );
+    @notrace static ConnectedDatagramSocket listen(SockAddrUnix sa, bool reuseAddr = false) @safe @nogc {
+        return listen( SockAddr(sa), reuseAddr );
     }
 
     /**
@@ -242,6 +247,7 @@ struct ConnectedSocket {
      * Params:
      *  sa = a socket address for the server to listen on. The second form is for passing protocol specific addresses
      *    (`SockAddrIPv4`, `SockAddrIPv6`, `SockAddrUnix`).
+     *  reuseAddr = Whether to set the `SO_REUSEADDR` socket option
      *
      * Returns:
      *  Returns the listening socket.
@@ -250,8 +256,12 @@ struct ConnectedSocket {
      * ErrnoException if the connection fails (e.g. - EADDRINUSE if binding to a used port). Also throws this if one of the
      *                  system calls fails.
      */
-    @notrace static ConnectedSocket listen(SockAddr sa) @trusted @nogc {
+    @notrace static ConnectedSocket listen(SockAddr sa, bool reuseAddr = false) @trusted @nogc {
         ConnectedSocket sock = ConnectedSocket( Socket.socket(sa.family, SOCK_STREAM, 0) );
+
+        if( reuseAddr ) {
+            sock.setSockOpt( SOL_SOCKET, SO_REUSEADDR, 1 );
+        }
 
         sock.osCallErrno!(.bind)(&sa.base, sa.len);
         sock.osCallErrno!(.listen)(LISTEN_BACKLOG);
@@ -260,8 +270,10 @@ struct ConnectedSocket {
     }
 
     /// ditto
-    @notrace static ConnectedSocket listen(SA)(SA sa) @trusted @nogc if( is( typeof(SockAddr(sa)) == SockAddr ) ) {
-        return listen( SockAddr(sa) );
+    @notrace static ConnectedSocket listen(SA)(SA sa, bool reuseAddr = false) @trusted @nogc
+            if( is( typeof(SockAddr(sa)) == SockAddr ) )
+    {
+        return listen( SockAddr(sa), reuseAddr );
     }
 
     /**
