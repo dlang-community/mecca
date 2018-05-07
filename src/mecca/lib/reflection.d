@@ -59,7 +59,7 @@ private enum badStorageClass(uint cls) = (cls != ParameterStorageClass.none);
  * Non-GC postponed function call with arguments (closure)
  */
 struct Closure {
-    enum ARGS_SIZE = 64;
+    enum ARGS_SIZE = 128;
 
 private:
     enum DIRECT_FN = cast(void function(Closure*))0x1;
