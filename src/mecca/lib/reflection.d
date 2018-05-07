@@ -439,7 +439,26 @@ unittest {
     assert (arr[0].a == 999 && arr[$-1].a == 999);
 }
 
-public import std.typecons: staticIota;
+template staticIota(int beg, int end)
+{
+    static if (beg + 1 >= end)
+    {
+        static if (beg >= end)
+        {
+            alias staticIota = AliasSeq!();
+        }
+        else
+        {
+            alias staticIota = AliasSeq!(+beg);
+        }
+    }
+    else
+    {
+        enum mid = beg + (end - beg) / 2;
+        alias staticIota = AliasSeq!(staticIota!(beg, mid), staticIota!(mid, end));
+    }
+}
+
 
 alias IOTA(size_t end) = staticIota!(0, end);
 
