@@ -403,7 +403,7 @@ public:
      * Instance must be open and not already attached
      */
     ref BufferedIO opAssign(T fd) {
-        ASSERT!"Attaching fd to an open buffered IO"(!fd.isValid);
+        ASSERT!"Attaching fd to an open buffered IO"(!this.fd.isValid);
         ASSERT!"Trying to attach an fd to a closed BufferedIO"( !rawMemory.closed );
         move(fd, this.fd);
 
