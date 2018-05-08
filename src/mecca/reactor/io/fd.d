@@ -157,13 +157,14 @@ struct ConnectedDatagramSocket {
      *
      * Params:
      *  clientAddr = an out parameter that receives the socket address of the client that connected.
+     *  timeout = how long to wait for a new connection
      *
      * Returns:
      *  Returns the connected socket.
      *
      * Throws:
-     * ErrnoException if the connection fails (e.g. - EINVAL if accepting from a non-listening socket, or ECONNABORTED
-     * if a connection was aborted). Also throws this if one of the system calls fails.
+     * ErrnoException if the connection fails $(LPAREN)e.g. - EINVAL if accepting from a non-listening socket, or
+     * ECONNABORTED if a connection was aborted$(RPAREN). Also throws this if one of the system calls fails.
      *
      * TimeoutExpired if the timeout expires
      *
@@ -202,7 +203,7 @@ struct ConnectedSocket {
      * waits, through the reactor, for the connection to be established.
      *
      * Params:
-     *  sa = a socket address for the server to connect to (either `SockAddr` or `SockAddr*` where * is IPv4, IPv6 or Unix.
+     *  sa = a socket address for the server to connect to (either `SockAddr` or `SockAddr*` where * is IPv4, IPv6 or Unix.)
      *  timeout = the timeout for the connection. Throws TimeoutExpired if the timeout expires
      *  nodelay = by default, Nagle algorithm is disabled for TCP connections. Setting this parameter to false reverts
      *    to the system-wide configuration.
@@ -283,8 +284,9 @@ struct ConnectedSocket {
      *
      * Params:
      *  clientAddr = an out parameter that receives the socket address of the client that connected.
-     *  nodelay = by default, Nagle algorithm is disabled for TCP connections. Setting this parameter to false reverts to the system-wide
-     *         configuration.
+     *  nodelay = by default, Nagle algorithm is disabled for TCP connections. Setting this parameter to false reverts
+     *         to the system-wide configuration.
+     *  timeout = how long to wait for an incoming connection
      *
      * Returns:
      *  Returns the connected socket.
@@ -411,6 +413,7 @@ struct Socket {
      * Params:
      * buffer = the buffer range to send
      * flags = flags argument as defined for the standard socket recv
+     * timeout = how long to wait for data
      *
      * Returns:
      * The number of bytes actually received

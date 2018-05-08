@@ -118,7 +118,7 @@ public:
      * Pop one value from the queue, if one is available. Only one thread can simulteneously safely call this function.
      *
      * Params:
-     * T = out parameter where to store the result.
+     * result = out parameter where to store the result.
      *
      * Returns:
      * true if a value was, indeed, popped from the queue. False if the queue was empty.
@@ -269,7 +269,7 @@ public:
      * Please note that failure to pop a value from the queue does not necessarily mean that the queue is empty.
      *
      * Params:
-     * T = out parameter where to store the result.
+     * result = out parameter where to store the result.
      *
      * Returns:
      * true if a value was, indeed, popped from the queue. False if failed.
