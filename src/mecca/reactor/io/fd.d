@@ -716,13 +716,23 @@ public:
     }
 
     /// Perform reactor aware @safe read
-    ssize_t read(void[] buffer, Timeout timeout = Timeout.infinite) @trusted @nogc {
+    @notrace ssize_t read(void[] buffer, Timeout timeout = Timeout.infinite) @trusted @nogc {
         return blockingCall!(unistd.read)( buffer.ptr, buffer.length, timeout );
     }
 
+    /// ditto
+    @notrace ssize_t read(T)(T* ptr, Timeout timeout = Timeout.infinite) @trusted @nogc {
+        return read(ptr[0..1], timeout);
+    }
+
     /// Perform reactor aware @safe write
-    ssize_t write(const void[] buffer, Timeout timeout = Timeout.infinite) @trusted @nogc {
+    @notrace ssize_t write(const void[] buffer, Timeout timeout = Timeout.infinite) @trusted @nogc {
         return blockingCall!(unistd.write)( buffer.ptr, buffer.length, timeout );
+    }
+
+    /// ditto
+    @notrace ssize_t write(T)(const(T)* buffer, Timeout timeout = Timeout.infinite) @trusted @nogc {
+        return write(buffer[0..1], timeout);
     }
 
     alias fcntl = osCallErrno!(.fcntl.fcntl);
