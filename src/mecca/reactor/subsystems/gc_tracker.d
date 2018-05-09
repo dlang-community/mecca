@@ -35,12 +35,12 @@ void disableGCTracking() {
  */
 void disableGCTrackingForFiber() nothrow @safe @nogc {
     ASSERT!"Cannot disable GC tracking for fiber when not on the main thread"(isReactorThread);
-    ASSERT!"Cannot disable GC tracking for special fibers"(theReactor.isSpecialFiber);
+    ASSERT!"Cannot disable GC tracking for special fibers"(!theReactor.isSpecialFiber);
     theReactor.currentFiberPtr.flag!"GC_ENABLED" = true;
 }
 void enableGCTrackingForFiber() nothrow @safe @nogc {
     ASSERT!"Cannot disable GC tracking for fiber when not on the main thread"(isReactorThread);
-    ASSERT!"Cannot disable GC tracking for special fibers"(theReactor.isSpecialFiber);
+    ASSERT!"Cannot disable GC tracking for special fibers"(!theReactor.isSpecialFiber);
     theReactor.currentFiberPtr.flag!"GC_ENABLED" = false;
 }
 
