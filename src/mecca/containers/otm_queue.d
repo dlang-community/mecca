@@ -38,12 +38,12 @@ struct SCMPQueue(T, size_t size)
             __traits( compiles, { shared T t; atomicLoad!(MemoryOrder.raw)(t); } ), "T is incompatible with atomic operations" );
 
 private:
-    static struct QueueNode {
+    static struct Slot {
         shared ubyte phase = 1;
         T data;
     }
 
-    QueueNode[size] queue;
+    Slot[size] queue;
     shared ulong readIndex;
     shared ulong writeIndex;
 
@@ -215,12 +215,12 @@ struct MCSPQueue(T, size_t size)
     static assert(
             __traits( compiles, { shared T t; atomicLoad!(MemoryOrder.raw)(t); } ), "T is incompatible with atomic operations" );
 private:
-    static struct QueueNode {
+    static struct Slot {
         shared ubyte phase = 0;
         T data;
     }
 
-    QueueNode[size] queue;
+    Slot[size] queue;
     shared ulong readIndex;
     shared ulong writeIndex;
 
