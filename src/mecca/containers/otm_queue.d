@@ -27,15 +27,13 @@ private enum UtExtraDebug = false;
  * Single consumer multiple producers queue
  *
  * Params:
- * T = the type handled by the queue. Must be one that supports atomic operations.
+ * T = the type handled by the queue.
  * size = the number of raw elements in the queue (actual queue size will be somewhat smaller). Must be a power of 2.
  */
 struct SCMPQueue(T, size_t size)
 {
     // This is "just" a performance issue rather than an actual problem. It is a major performance issue, however.
     static assert( (size & -size) == size, "One to many queue size not a power of 2" );
-    static assert(
-            __traits( compiles, { shared T t; atomicLoad!(MemoryOrder.raw)(t); } ), "T is incompatible with atomic operations" );
 
 private:
     static struct Slot {
@@ -199,15 +197,14 @@ private:
  * Multiple consumers single producer queue
  *
  * Params:
- * T = the type handled by the queue. Must be one that supports atomic operations.
+ * T = the type handled by the queue.
  * size = the number of raw elements in the queue (actual queue size will be somewhat smaller). Must be a power of 2.
  */
 struct MCSPQueue(T, size_t size)
 {
     // This is a performance issue rather than an actual problem. It is a major performance issue, however.
     static assert( (size & -size) == size, "One to many queue size not a power of 2" );
-    static assert(
-            __traits( compiles, { shared T t; atomicLoad!(MemoryOrder.raw)(t); } ), "T is incompatible with atomic operations" );
+
 private:
     static struct Slot {
         shared ubyte phase = 0;
