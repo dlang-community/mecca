@@ -185,7 +185,7 @@ private:
         version(assert) {
             const myReadIndex = atomicLoad!(MemoryOrder.raw)(readIndex);
             const myWriteIndex = atomicLoad!(MemoryOrder.raw)(writeIndex);
-            ASSERT!"writeIndex %d < ConsumerPtr %d"(myReadIndex <= myWriteIndex, myReadIndex, myWriteIndex);
+            ASSERT!"readIndex %d > writeIndex %d"(myReadIndex <= myWriteIndex, myReadIndex, myWriteIndex);
         }
         // Since we don't want to enforce SC on the consumer pointer, we cannot be sure of an override,
         // this is JUST a speculation, the following assert should remain commented out.
