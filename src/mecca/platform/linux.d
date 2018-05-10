@@ -1,3 +1,4 @@
+/// Linux platform specific functions
 module mecca.platform.linux;
 
 // Licensed under the Boost license. Full copyright information in the AUTHORS file
@@ -470,6 +471,46 @@ extern(C) nothrow /*@nogc*/ {
     };
 }
 
+/** Intercept a library of a system call
+ *
+ * To use: define a function (typically, with `extern(C)` linkage) that performs the alternative implementation of
+ * the library call. Then expand the template mixin here, giving it your function as a template argument.
+ *
+ * The template mixin will define a function called `next_` $(I yourfunction)
+ *
+ * Example:
+ * ---
+ * extern(C) int socket(int domain, int type, int protocol) {
+ *     import std.stdio;
+ *     int ret = next_socket(domain, type, protocol);
+ *
+ *     writefln("socket(%s, %s, %s) = %s", domain, type, protocol, ret);
+ *
+ *     return ret;
+ * }
+ * 
+ * mixin InterceptCall!socket;
+ * ---
+ */
+mixin template InterceptCall(alias F) {
+private:
+    import core.sys.posix.dlfcn: dlsym;
+    import core.sys.linux.dlfcn: RTLD_NEXT;
+    import std.string: format;
+    import mecca.lib.reflection:  funcAttrToString;
+
+    mixin(q{
+            typeof(F)* next_%1$s = &stub_%1$s;
+
+            extern(%2$s) ReturnType!F stub_%1$s(Parameters!F args) %3$s {
+                if( next_%1$s is &stub_%1$s ) {
+                    next_%1$s = cast(typeof(F)*)dlsym(RTLD_NEXT, "%1$s");
+                }
+
+                return next_%1$s(args);
+            }
+        }.format(mangledName!F, functionLinkage!F, funcAttrToString(functionAttributes!F)));
+}
 
 enum SyscallTracePoint {
     PRE_SYSCALL,

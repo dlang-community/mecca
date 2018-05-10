@@ -461,6 +461,59 @@ FunctionAttribute toFuncAttrs(string attrs) {
         }).fold!((a, b) => a|b)(FunctionAttribute.none);
 }
 
+/// Return a `FunctionAttribute` converted to a mixinable string
+string funcAttrToString(FunctionAttribute attr) {
+    string ret;
+    string space;
+
+    if( attr & FunctionAttribute.pure_ ) {
+        ret ~= "pure";
+        space = " ";
+    }
+    if( attr & FunctionAttribute.nothrow_ ) {
+        ret ~= "nothrow" ~ space;
+        space = " ";
+    }
+    if( attr & FunctionAttribute.property ) {
+        ret ~= "@property" ~ space;
+        space = " ";
+    }
+    if( attr & FunctionAttribute.trusted ) {
+        ret ~= "@trusted" ~ space;
+        space = " ";
+    }
+    if( attr & FunctionAttribute.safe ) {
+        ret ~= "@safe" ~ space;
+        space = " ";
+    }
+    if( attr & FunctionAttribute.nogc ) {
+        ret ~= "@nogc" ~ space;
+        space = " ";
+    }
+    if( attr & FunctionAttribute.system ) {
+        ret ~= "@system" ~ space;
+        space = " ";
+    }
+    if( attr & FunctionAttribute.const_ ) {
+        ret ~= "const" ~ space;
+        space = " ";
+    }
+    if( attr & FunctionAttribute.immutable_ ) {
+        ret ~= "immutable" ~ space;
+        space = " ";
+    }
+    if( attr & FunctionAttribute.inout_ ) {
+        ret ~= "inout" ~ space;
+        space = " ";
+    }
+    if( attr & FunctionAttribute.shared_ ) {
+        ret ~= "shared" ~ space;
+        space = " ";
+    }
+
+    return ret;
+}
+
 /// Execute a given piece of code while casting it:
 auto ref as(string attrs, Func)(scope Func func) if (isFunctionPointer!Func || isDelegate!Func) {
     pragma(inline, true);
