@@ -49,8 +49,8 @@ private:
 
     // No synchronization here because the number of producers is constant while multiple threads are
     // accessing the object.
-    ulong producers;
     size_t maxQueueCapacity = size - 1;
+    @property producers() pure const nothrow @safe @nogc { return size - 1 - maxQueueCapacity; }
 
 public:
     /**
@@ -65,16 +65,10 @@ public:
      */
     void addProducers(size_t numProducers) nothrow @nogc @safe {
         ASSERT!"addProducer called on an already active queue"(readIndex==0 && writeIndex==0);
+        const newCapacity = maxQueueCapacity - numProducers;
         DBG_ASSERT!"Cannot register %s producers on queue of size %s with %s producers already"
-                ( numProducers+producers < size/2, numProducers, size, producers );
-        producers += numProducers;
-        maxQueueCapacity -= numProducers;
-        DBG_ASSERT!"queue capacity calculation is off. Capacity %s size %s producers %s registered now %s"
-                ( maxQueueCapacity == size - producers - 1,
-                  maxQueueCapacity,
-                  size,
-                  producers,
-                  numProducers );
+                (newCapacity >= size / 2, numProducers, size, producers);
+        maxQueueCapacity = newCapacity;
     }
 
     /// ditto
