@@ -90,7 +90,7 @@ public:
      *
      * Please note that the value returned may change by other threads at any point.
      */
-    @property bool isFull() const nothrow @trusted @nogc {
+    @property bool isFull() const nothrow @safe @nogc {
         // We use raw memory order to make the check cheap: Even if writeIndex is out of date for a producer, the
         // (size - maxQueueCapacity) extra elements make sure it is safe to go ahead with push(). If readIndex is
         // not up to date, a producer might wait unnecessarily long for space to become available, which is not
@@ -116,7 +116,7 @@ public:
      * Returns:
      * true if a value was, indeed, popped from the queue. False if the queue was empty.
      */
-    @notrace bool pop(out T result) nothrow @trusted @nogc {
+    @notrace bool pop(out T result) nothrow @nogc {
         version (unittest) {
             sanity();
             scope(exit) sanity();
@@ -155,7 +155,7 @@ public:
      * Returns:
      * true if value was successfully pushed. False if the queue was full.
      */
-    @notrace bool push(T data) nothrow @trusted @nogc {
+    @notrace bool push(T data) nothrow @nogc {
         DBG_ASSERT!"Must register number of concurrent producers"( producers>0 );
         version (unittest) {
             sanity();
@@ -181,7 +181,7 @@ private:
         return (ptr / size) &1;
     }
 
-    version (unittest) @notrace void sanity() nothrow @system @nogc {
+    version (unittest) @notrace void sanity() nothrow @safe @nogc {
         version(assert) {
             const myReadIndex = atomicLoad!(MemoryOrder.raw)(readIndex);
             const myWriteIndex = atomicLoad!(MemoryOrder.raw)(writeIndex);
@@ -233,7 +233,7 @@ public:
      *
      * Please note that the value returned may change by other threads at any point.
      */
-    @property bool isFull() nothrow @trusted @nogc {
+    @property bool isFull() nothrow @safe @nogc {
         // We use raw memory order to make the check cheap: The worst that can happen is that readIndex
         // lags far behind the consumers, in which case the producer might wait unnecessarily before pushing
         // more elements.
@@ -260,7 +260,7 @@ public:
      * Returns:
      * true if a value was, indeed, popped from the queue. False if failed.
      */
-    @notrace bool pop(out T result) nothrow @trusted @nogc {
+    @notrace bool pop(out T result) nothrow @nogc {
         // See whether there might be data available.
         //
         // A raw load is fine for the read index in terms of correctness, as we will (try to) claim the slot
@@ -306,7 +306,7 @@ public:
      * Returns:
      * true if value was successfully pushed. False if the queue was full.
      */
-    @notrace bool push(T data) nothrow @trusted @nogc {
+    @notrace bool push(T data) nothrow @nogc {
         if (isFull()) {
             return false;
         }
