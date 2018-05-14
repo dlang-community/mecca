@@ -1893,6 +1893,7 @@ version (unittest) {
 
     mixin template TEST_FIXTURE_REACTOR(FIXTURE) {
         import mecca.runtime.ut: runFixtureTestCases;
+        import mecca.reactor: testWithReactor;
         unittest {
             testWithReactor({
                     runFixtureTestCases!(FIXTURE)();
