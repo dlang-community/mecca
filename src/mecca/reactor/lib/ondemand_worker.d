@@ -73,13 +73,12 @@ public:
      If the worker is already executing, this will cause it to execute again once it completes. Otheriwse, opens a new
      fiber and starts executing.
      */
-    void run() nothrow @safe @nogc {
+    @notrace void run() nothrow @safe @nogc {
         if(disabled) {
             WARN!"#ONDEMAND(%s) worker is #DISABLED, not running!"(&this);
             return;
         }
         if (spawned) {
-            DEBUG!"telling existing fiber %s to run again"(fiberHandle.fiberId);
             requestGeneration++;
             cancelAll = false;
         } else {
@@ -219,7 +218,7 @@ struct OnDemandWorkerDelegate {
         this(dg, &group.spawnFiber);
     }
 
-    private static void wrapper(void delegate() dg) {
+    @notrace private static void wrapper(void delegate() dg) {
         dg();
     }
 
