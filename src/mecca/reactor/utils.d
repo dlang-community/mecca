@@ -64,6 +64,11 @@ public:
     alias get this;
 }
 
+/// Create a FiberPointer from a pointer
+auto makeFiberPointer(T)(T* ptr) {
+    return FiberPointer!T(ptr);
+}
+
 /**
   "Play nice" input range filter
 

@@ -101,7 +101,7 @@ public:
         argsBuf[] = 0;
     }
 
-    void set(F, T...)(F f, T args) pure nothrow @nogc @trusted if (isFunctionPointer!F) {
+    void set(F, T...)(F f, T args) nothrow @nogc @trusted if (isFunctionPointer!F) {
         static assert (is(ReturnType!F == void), "Delegate must return void");
         static assert (is(typeof(f(args))), "Args don't match passed delegate");
 
