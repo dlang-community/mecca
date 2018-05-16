@@ -55,16 +55,21 @@ static assert((FLSArea.data.offsetof % (void*).alignof) == 0, "FLSArea data must
 /**
  Construct for defining new fiber local storage variables.
 
+ The file, mod and line template params should be ignored. They are used merely to ensure that each FiberLocal
+ definition is unique.
+
 Params:
 T = The type of the FLS variable
-Name = The name of the new FLS variable
 initVal = The variable initial value
 */
-template FiberLocal(T, string Name, T initVal=T.init) {
+template FiberLocal(T, T initVal=T.init, string file = __FILE__, string mod = __MODULE__, ulong line = __LINE__) {
     __gshared int offset = -1;
 
     shared static this() {
-        assert (offset == -1);
+        static int var;
+        if( offset!=-1 ) {
+            META!"#DMDBUG static this ran twice for FiberLocal!(%s) defined at %s:%s"(T.stringof, file, line);
+        }
         offset = FLSArea.alloc!T(initVal);
     }
 
@@ -102,8 +107,8 @@ template setFiberFls(alias FLS) {
 }
 
 version (unittest) {
-    alias myFls = FiberLocal!(int, "myFls", 200);
-    alias yourFls = FiberLocal!(double, "yourFls", 0.9);
+    alias myFls = FiberLocal!(int, 200);
+    alias yourFls = FiberLocal!(double, 0.9);
 }
 
 unittest {

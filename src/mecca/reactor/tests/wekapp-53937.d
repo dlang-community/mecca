@@ -82,7 +82,7 @@ unittest {
 
     Barrier entryBarrier, exitBarrier;
 
-    alias utGcArray = FiberLocal!(ubyte[], "utGcArray");
+    alias utGcArray = FiberLocal!(ubyte[]);
 
     static void allocate() {
         pragma(inline, false);
