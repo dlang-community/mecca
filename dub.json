@@ -32,6 +32,13 @@
             "importPaths": ["examples"],
             "sourcePaths": ["examples/sleeper"],
             "targetName": "sleeper"
+        },
+        {
+            "name": "echo-server",
+            "targetType": "executable",
+            "importPaths": ["examples"],
+            "sourcePaths": ["examples/echo-server"],
+            "targetName": "echo-server"
         }
     ]
 }
