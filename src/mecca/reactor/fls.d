@@ -88,9 +88,10 @@ template FiberLocal(T, T initVal=T.init, string file = __FILE__, string mod = __
     shared static this() {
         static int var;
         if( offset!=-1 ) {
-            META!"#DMDBUG static this ran twice for FiberLocal!(%s) defined at %s:%s"(T.stringof, file, line);
+            META!"#DMDBUG issue 18868: static this ran twice for FiberLocal!(%s) defined at %s:%s"(T.stringof, file, line);
+        } else {
+            offset = FLSArea.alloc!T(initVal);
         }
-        offset = FLSArea.alloc!T(initVal);
     }
 
     @property ref T FiberLocal() @trusted {
