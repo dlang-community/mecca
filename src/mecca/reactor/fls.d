@@ -58,6 +58,26 @@ static assert((FLSArea.data.offsetof % (void*).alignof) == 0, "FLSArea data must
  The file, mod and line template params should be ignored. They are used merely to ensure that each FiberLocal
  definition is unique.
 
+ To use, alias a name to FiberLocal like so:
+
+---
+alias someName = FiberLocal!(uint, 12);
+---
+
+ Any reference to `someName` will reference a fiber local variable of type `uint` with an init value of 12.
+
+Note:
+ It is important to understand that `someName` actually aliases a `@property` function that returns a reference to said
+ variable. Under most circumstances this makes no difference. If you wish to take the variable's address, however, you
+ need to explicitly invoke the function, or you'll get a pointer to the function rather than the variable:
+
+---
+auto ptr1 = &someName;
+pragma(msg, typeof(ptr1)); // ref uint function() nothrow @nogc @property @trusted
+auto ptr2 = &someName();
+pragma(msg, typeof(ptr2)); // uint*
+---
+
 Params:
 T = The type of the FLS variable
 initVal = The variable initial value
@@ -73,12 +93,14 @@ template FiberLocal(T, T initVal=T.init, string file = __FILE__, string mod = __
         offset = FLSArea.alloc!T(initVal);
     }
 
-    @property ref T FiberLocal() {
+    @property ref T FiberLocal() @trusted {
         assert (FLSArea.thisFls !is null && offset >= 0);
         return *cast(T*)(FLSArea.thisFls.data.ptr + offset);
     }
 }
 
+// XXX Deprecation candidate, intentionally left undocumented
+// Returns a $(B reference) to another fiber's FLS variable.
 template getFiberFlsLvalue(alias FLS) {
     alias T = ReturnType!FLS;
 
@@ -174,3 +196,14 @@ unittest {
         assert(myFls == 200);
     });
 }
+
+/+
+unittest {
+    alias someName = FiberLocal!(uint, 12);
+
+    auto ptr1 = &someName;
+    pragma(msg, typeof(ptr1));
+    auto ptr2 = &someName();
+    pragma(msg, typeof(ptr2));
+}
++/

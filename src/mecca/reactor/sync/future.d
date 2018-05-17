@@ -91,7 +91,11 @@ public:
         }
     }
 
+    /// Sets the future
     static if (is(T == void)) {
+        // DDOXBUG this documentation will not be picked due to the static if
+
+        /// Sets the future with no value
         @notrace void set() {
             enforce(!isSet, "Future already set");
             assert(_exBuf.get is null, "ex is set");
@@ -100,6 +104,7 @@ public:
         }
     }
     else {
+        /// Sets the future with value
         @notrace void set(const ref T value) {
             enforce(!isSet, "Future already set");
             assert(_exBuf.get is null, "ex is set");
@@ -108,6 +113,7 @@ public:
             suspender.signal();
         }
 
+        /// ditto
         @notrace void set(T value) {
             enforce(!isSet, "Future already set");
             assert(_exBuf.get() is null, "ex is set");
@@ -117,10 +123,22 @@ public:
         }
     }
 
+    /**
+     * Launch a new fiber that will run the specified callback, set the future when the callback returns
+     *
+     * The first form runs F function with all arguments.
+     *
+     * The second form does the same, but specified a different context to spawn the fiber in. The first argument can
+     * be any object with a `spawnFiber` function. The most obvious example is a `FiberGroup` for the fiber to belong
+     * to.
+     *
+     * The third and fourth forms are for running a supplied delegate instead of an aliased function.
+     */
     @notrace auto runInFiber(alias F)(Parameters!F args) {
         return runInFiber!F(theReactor, args);
     }
 
+    /// ditto
     @notrace auto runInFiber(alias F, Runner)(ref Runner runner, Parameters!F args) {
         alias RetType = ReturnType!F;
         static void run(FiberPointer!(Future!RetType) pFut, Parameters!F args) {
@@ -152,12 +170,18 @@ public:
         return fiberHandle;
     }
 
+    /// ditto
     @notrace auto runInFiber(T)(T delegate() dlg) {
+        runInFiber(theReactor, dlg);
+    }
+
+    /// ditto
+    @notrace auto runInFiber(T, Runner)(ref Runner runner, T delegate() dlg) {
         static auto proxyCall(T delegate() dlg) {
             return dlg();
         }
 
-        return runInFiber!proxyCall(dlg);
+        return runInFiber!proxyCall(runner, dlg);
     }
 }
 
