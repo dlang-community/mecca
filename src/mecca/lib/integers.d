@@ -185,7 +185,14 @@ struct Integer(T, char E) {
     static if (signed) {
         auto opUnary(string op)() const if (op == "+" || op == "-") {
             pragma(inline, true);
-            return Integer(cast(T) mixin(op ~ "inHostOrder"));
+            // Make the integer promotion cast explicit, to avoid compiler deprecation messages.
+            static if (bits < 32) {
+                enum promotionCast = "cast(int)";
+            }
+            else {
+                enum promotionCast = "";
+            }
+            return Integer(cast(T) mixin(op ~ promotionCast ~ "inHostOrder"));
         }
 
         private alias binOps = AliasSeq!("+", "-", "*", "/", "%", "^");
@@ -193,7 +200,14 @@ struct Integer(T, char E) {
     else {
         auto opUnary(string op)() const if (op == "~") {
             pragma(inline, true);
-            return Integer(cast(T) mixin(op ~ "inHostOrder"));
+            // Make the integer promotion cast explicit, to avoid compiler deprecation messages.
+            static if (bits < 32) {
+                enum promotionCast = "cast(uint)";
+            }
+            else {
+                enum promotionCast = "";
+            }
+            return Integer(cast(T) mixin(op ~ promotionCast ~ "inHostOrder"));
         }
 
         private alias binOps = AliasSeq!("+", "-", "*", "/", "%", "^", "&", "|", "^", "<<", ">>", ">>>");
@@ -232,6 +246,9 @@ unittest {
     auto x = 17.U8;
     auto y = 17.S8;
     auto z = 17.U16;
+    auto x64 = 17.U64;
+    auto y64 = 17.S64;
+    auto w = (-128).S8;
 
     static assert (!is(typeof(x + y)));
     static assert (!is(typeof(x > y)));
@@ -247,6 +264,9 @@ unittest {
     assert (y * 2 == 34);
     assert (z * 2 == 34);
     assert (-y == -17);
+    assert (~x64 == 0xFFFF_FFFF_FFFF_FFEE);
+    assert (-y64 == -long(17) );
+    assert (-w == -128); // We don't want the result to be promoted to int (==128).
 
     x++;
     y++;
