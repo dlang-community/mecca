@@ -168,36 +168,37 @@ ubyte[16] murmurHash3_128_ubytes(string data) pure nothrow @safe @nogc {
 }
 
 unittest {
+    import std.conv: hexString;
     static assert (murmurHash3_128_ubytes("abcdefghijklmnopqrstuvwxyz") ==
-        cast(ubyte[])x"A94A6F517E9D9C7429D5A7B6899CADE9");
+        cast(ubyte[])hexString!"A94A6F517E9D9C7429D5A7B6899CADE9");
 
-    foreach(inp, outp; ["" : x"00000000000000000000000000000000",
-                        "a" : x"897859F6655555855A890E51483AB5E6",
-                        "ab" : x"2E1BED16EA118B93ADD4529B01A75EE6",
-                        "abc" : x"6778AD3F3F3F96B4522DCA264174A23B",
-                        "abcd" : x"4FCD5646D6B77BB875E87360883E00F2",
-                        "abcde" : x"B8BB96F491D036208CECCF4BA0EEC7C5",
-                        "abcdef" : x"55BFA3ACBF867DE45C842133990971B0",
-                        "abcdefg" : x"99E49EC09F2FCDA6B6BB55B13AA23A1C",
-                        "abcdefgh" : x"028CEF37B00A8ACCA14069EB600D8948",
-                        "abcdefghi" : x"64793CF1CFC0470533E041B7F53DB579",
-                        "abcdefghij" : x"998C2F770D5BC1B6C91A658CDC854DA2",
-                        "abcdefghijk" : x"029D78DFB8D095A871E75A45E2317CBB",
-                        "abcdefghijkl" : x"94E17AE6B19BF38E1C62FF7232309E1F",
-                        "abcdefghijklm" : x"73FAC0A78D2848167FCCE70DFF7B652E",
-                        "abcdefghijklmn" : x"E075C3F5A794D09124336AD2276009EE",
-                        "abcdefghijklmno" : x"FB2F0C895124BE8A612A969C2D8C546A",
-                        "abcdefghijklmnop" : x"23B74C22A33CCAC41AEB31B395D63343",
-                        "abcdefghijklmnopq" : x"57A6BD887F746475E40D11A19D49DAEC",
-                        "abcdefghijklmnopqr" : x"508A7F90EC8CF0776BC7005A29A8D471",
-                        "abcdefghijklmnopqrs" : x"886D9EDE23BC901574946FB62A4D8AA6",
-                        "abcdefghijklmnopqrst" : x"F1E237F926370B314BD016572AF40996",
-                        "abcdefghijklmnopqrstu" : x"3CC9FF79E268D5C9FB3C9BE9C148CCD7",
-                        "abcdefghijklmnopqrstuv" : x"56F8ABF430E388956DA9F4A8741FDB46",
-                        "abcdefghijklmnopqrstuvw" : x"8E234F9DBA0A4840FFE9541CEBB7BE83",
-                        "abcdefghijklmnopqrstuvwx" : x"F72CDED40F96946408F22153A3CF0F79",
-                        "abcdefghijklmnopqrstuvwxy" : x"0F96072FA4CBE771DBBD9E398115EEED",
-                        "abcdefghijklmnopqrstuvwxyz" : x"A94A6F517E9D9C7429D5A7B6899CADE9"]) {
+    foreach(inp, outp; ["" : hexString!"00000000000000000000000000000000",
+                        "a" : hexString!"897859F6655555855A890E51483AB5E6",
+                        "ab" : hexString!"2E1BED16EA118B93ADD4529B01A75EE6",
+                        "abc" : hexString!"6778AD3F3F3F96B4522DCA264174A23B",
+                        "abcd" : hexString!"4FCD5646D6B77BB875E87360883E00F2",
+                        "abcde" : hexString!"B8BB96F491D036208CECCF4BA0EEC7C5",
+                        "abcdef" : hexString!"55BFA3ACBF867DE45C842133990971B0",
+                        "abcdefg" : hexString!"99E49EC09F2FCDA6B6BB55B13AA23A1C",
+                        "abcdefgh" : hexString!"028CEF37B00A8ACCA14069EB600D8948",
+                        "abcdefghi" : hexString!"64793CF1CFC0470533E041B7F53DB579",
+                        "abcdefghij" : hexString!"998C2F770D5BC1B6C91A658CDC854DA2",
+                        "abcdefghijk" : hexString!"029D78DFB8D095A871E75A45E2317CBB",
+                        "abcdefghijkl" : hexString!"94E17AE6B19BF38E1C62FF7232309E1F",
+                        "abcdefghijklm" : hexString!"73FAC0A78D2848167FCCE70DFF7B652E",
+                        "abcdefghijklmn" : hexString!"E075C3F5A794D09124336AD2276009EE",
+                        "abcdefghijklmno" : hexString!"FB2F0C895124BE8A612A969C2D8C546A",
+                        "abcdefghijklmnop" : hexString!"23B74C22A33CCAC41AEB31B395D63343",
+                        "abcdefghijklmnopq" : hexString!"57A6BD887F746475E40D11A19D49DAEC",
+                        "abcdefghijklmnopqr" : hexString!"508A7F90EC8CF0776BC7005A29A8D471",
+                        "abcdefghijklmnopqrs" : hexString!"886D9EDE23BC901574946FB62A4D8AA6",
+                        "abcdefghijklmnopqrst" : hexString!"F1E237F926370B314BD016572AF40996",
+                        "abcdefghijklmnopqrstu" : hexString!"3CC9FF79E268D5C9FB3C9BE9C148CCD7",
+                        "abcdefghijklmnopqrstuv" : hexString!"56F8ABF430E388956DA9F4A8741FDB46",
+                        "abcdefghijklmnopqrstuvw" : hexString!"8E234F9DBA0A4840FFE9541CEBB7BE83",
+                        "abcdefghijklmnopqrstuvwx" : hexString!"F72CDED40F96946408F22153A3CF0F79",
+                        "abcdefghijklmnopqrstuvwxy" : hexString!"0F96072FA4CBE771DBBD9E398115EEED",
+                        "abcdefghijklmnopqrstuvwxyz" : hexString!"A94A6F517E9D9C7429D5A7B6899CADE9"]) {
         assert(murmurHash3_128_ubytes(inp) == cast(ubyte[])outp, inp);
     }
 }
