@@ -154,7 +154,8 @@ public:
         disabled = true;
 
         // Don't interrupt a running task, but prevent future ones from starting
-        cancelAll = true;
+        if( spawned )
+            cancelAll = true;
 
         // Mark all pending tasks as done
 

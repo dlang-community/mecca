@@ -463,7 +463,7 @@ unittest {
 }
 
 /// Create a mask with `bits` set bits
-T createBitMask(T = ulong)(uint numBits) if(isIntegral!T && isUnsigned!T)
+@notrace T createBitMask(T = ulong)(uint numBits) if(isIntegral!T && isUnsigned!T)
 {
     DBG_ASSERT!"numBits=%s"(numBits <= (T.sizeof * 8), numBits);
 

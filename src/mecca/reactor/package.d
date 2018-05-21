@@ -732,8 +732,11 @@ public:
         return FiberHandle(thisFiber);
     }
     @property package ReactorFiber* currentFiberPtr() nothrow @safe @nogc {
+        return getCurrentFiberPtr(false);
+    }
+    @notrace private ReactorFiber* getCurrentFiberPtr(bool specialOkay) nothrow @safe @nogc {
         // XXX This assert may be incorrect, but it is easier to remove an assert than to add one
-        assert(!isSpecialFiber, "Should not blindly get fiber handle of special fibers");
+        ASSERT!"Should not blindly get fiber handle of special fibers %s"(specialOkay || !isSpecialFiber, currentFiberId);
         return thisFiber;
     }
     /**
@@ -995,6 +998,7 @@ public:
     public:
         /// Returns whether the handle describes a currently registered task
         @property bool isValid() const nothrow @safe @nogc {
+            DBG_ASSERT!"Handling TimerHandle with on a non-running reactor"(theReactor.isOpen);
             // TODO make the handle resilient to ABA changes
             return callback !is null && callback._owner !is null;
         }
@@ -1688,7 +1692,7 @@ private:
         auto pc = contextPtr ? contextPtr.uc_mcontext.gregs[posix_ucontext.REG_RIP] : 0;
 
         if( isReactorThread ) {
-            auto onStackParams = theReactor.currentFiberPtr.params;
+            auto onStackParams = theReactor.getCurrentFiberPtr(true).params;
             ERROR!"%s on %s address 0x%x, PC 0x%x stack params at 0x%x"(
                     faultName, theReactor.currentFiberId, info.si_addr, pc, onStackParams);
             ERROR!"Stack is at [%s .. %s]"( onStackParams.stackDescriptor.bstack, onStackParams.stackDescriptor.tstack );
@@ -1798,7 +1802,7 @@ private:
                 return;
             }
 
-            auto currentFiber = currentFiberPtr();
+            auto currentFiber = getCurrentFiberPtr(true);
             fiber.logSwitchInto();
             scope(exit) currentFiber.logSwitchInto();
 

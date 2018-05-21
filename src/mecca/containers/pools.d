@@ -81,7 +81,7 @@ struct FixedPool(T, size_t N) {
         return N - used;
     }
 
-    void open() nothrow @trusted @nogc {
+    @notrace void open() nothrow @trusted @nogc {
         foreach(i, ref e; elems[0..$-1]) {
             e.nextIdx = cast(IdxType)(i+1);
         }
@@ -90,7 +90,7 @@ struct FixedPool(T, size_t N) {
         used = 0;
         isInited = true;
     }
-    void close() {
+    @notrace void close() {
         // XXX: release all allocated elements?
     }
 
@@ -113,7 +113,7 @@ struct FixedPool(T, size_t N) {
         return e.value;
     }
 
-    IdxType indexOf(T* obj) const pure @trusted nothrow @nogc {
+    @notrace IdxType indexOf(T* obj) const pure @trusted nothrow @nogc {
         assert (isInited);
         assert (used > 0);
         auto e = cast(Elem*)((cast(void*)obj) - Elem.data.offsetof);

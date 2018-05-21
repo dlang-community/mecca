@@ -35,7 +35,7 @@ struct MmapArray(T) {
         free();
     }
 
-    void allocate(size_t numElements, bool registerWithGC = false) @trusted @nogc {
+    @notrace void allocate(size_t numElements, bool registerWithGC = false) @trusted @nogc {
         assert (arr is null, "Already open");
         assert (numElements > 0);
         auto size = T.sizeof * numElements;
@@ -55,7 +55,7 @@ struct MmapArray(T) {
             }
         }
     }
-    void free() nothrow @trusted @nogc {
+    @notrace void free() nothrow @trusted @nogc {
         if (arr) {
             import core.memory;
             GC.removeRange(arr.ptr);
