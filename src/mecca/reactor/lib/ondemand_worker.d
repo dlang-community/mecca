@@ -117,7 +117,7 @@ public:
     /// Wait for all $(I currently) pending tasks to complete
     void waitComplete(Timeout timeout = Timeout.infinite) @safe @nogc {
         auto targetGeneration = requestGeneration;
-        while( targetGeneration<completedGeneration ) {
+        while( targetGeneration>completedGeneration ) {
             done.wait(timeout);
         }
     }
@@ -185,6 +185,7 @@ private:
             }
             theReactor.setFiberName(fiberHandle, __traits(identifier, F), &F);
             do {
+                scope(success) theReactor.yield();
                 scope(exit) done.signal();
                 scope(exit) args = defaultArgs;
 
@@ -192,7 +193,7 @@ private:
                 scope(exit) completedGeneration = targetGeneration;
 
                 F(args);
-            } while (!cancelAll && requestGeneration<completedGeneration);
+            } while (!cancelAll && requestGeneration>completedGeneration);
         } catch(Throwable t) {
             DEBUG!"becoming #DISABLED due to exception: %s"(t.msg);
             disable();
@@ -230,4 +231,45 @@ struct OnDemandWorkerDelegate {
     alias onDemandWorkerFunc this;
     // XXX for OndemandWorkerDelegate we don't want to allow calling run(void delegate()) and replace the delegate.
     //@disable void run(void delegate() dg) {}
+}
+
+unittest {
+    import mecca.reactor.sync.event;
+
+    Event blocker;
+    uint counter;
+
+    void worker() {
+        blocker.wait();
+        counter++;
+    }
+
+    auto odw = OnDemandWorkerDelegate(&worker);
+
+    void waiter(uint expected) {
+        odw.waitComplete();
+        assertEQ(counter, expected, "Counter expected");
+    }
+
+    void testBody() {
+        odw.run();
+        odw.run();
+        odw.run();
+
+        theReactor.spawnFiber(&waiter, 1);
+        // as fast as you can
+        theReactor.yield();
+        theReactor.yield();
+
+        odw.run();
+        odw.run();
+        odw.run();
+
+        assertEQ(counter, 0, "worker ran with event reset");
+        blocker.set();
+        odw.waitComplete();
+        assertEQ(counter, 2, "counter-expected");
+    }
+
+    testWithReactor(&testBody);
 }
