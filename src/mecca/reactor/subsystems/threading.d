@@ -77,10 +77,6 @@ class WorkerThread: Thread {
     }
 }
 
-class DeferredTaskFailed: Exception {
-    mixin ExceptionBody;
-}
-
 alias DeferredTaskCookie = TypedIdentifier!("DeferredTaskCookie", ulong, ulong.max, ulong.max);
 
 struct DeferredTask {
@@ -88,8 +84,8 @@ struct DeferredTask {
     Closure finiClosure;
     TscTimePoint timeAdded;
     TscTimePoint timeFinished;
-    bool hasException;
     FiberHandle fibHandle;
+    ExcBuf pendingException;
 
     union {
         void[128] result;
@@ -139,17 +135,13 @@ struct DeferredTask {
         }
 
         scope(exit) timeFinished = TscTimePoint.hardNow;
-        hasException = false;
+        pendingException = ExcBuf.init;
         try {
             DEBUG!"#THD running %s in thread"(cookie);
             taskClosure();
         }
         catch (Throwable ex) {
-            hasException = true;
-            excType = typeid(ex).name;
-            excMsg.safeSetPrefix(ex.msg);
-            excFile = ex.file;
-            excLine = ex.line;
+            pendingException.set(ex);
         }
     }
 
@@ -335,12 +327,10 @@ public:
 
         // we reach this part if-and-only-if the thread is done with the task.
         // the task is already finalized
-        if (task.hasException) {
-            auto ex = mkExFmt!DeferredTaskFailed("%s: %s", task.excType, task.excMsg);
-            ex.file = task.excFile;
-            ex.line = task.excLine;
-            tasksPool.release(task);
-            throw ex;
+        Throwable ex = task.pendingException.get();
+        if (ex !is null) {
+            // We don't know what the lifetime of the task is, so copy the exception again
+            throw setEx(ex);
         }
         else {
             static if (is(ReturnType!F == void)) {
@@ -445,6 +435,32 @@ unittest {
         context.done.wait(Timeout(50.msecs));
         assert(!context.inThread);
         assert(context.counter==1);
+    }
+
+    Reactor.OpenOptions options;
+    options.threadDeferralEnabled = true;
+    testWithReactor(&testBody, options);
+}
+
+unittest {
+    // Make sure an exception thrown from a thread is forwarded as is
+    import mecca.reactor;
+
+    class SomeException : Exception {
+        mixin ExceptionBody!"Just some exception";
+    }
+
+    static void threadBody() {
+        throw mkEx!SomeException;
+    }
+
+    void testBody() {
+        try {
+            theReactor.deferToThread!threadBody();
+        } catch(SomeException ex) {
+        } catch(Throwable ex) {
+            ASSERT!"Received wrong exception %s"(false, ex.msg);
+        }
     }
 
     Reactor.OpenOptions options;

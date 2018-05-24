@@ -1860,6 +1860,12 @@ private bool /* thread local */ _isReactorThread;
 }
 
 version (unittest) {
+    /**
+     * Run a test inside a reactor
+     *
+     * This is a convenience function for running a UT as a reactor fiber. A new reactor will be initialized, `dg` called
+     * and the reactor will automatically stop when `dg` is done.
+     */
     int testWithReactor(int delegate() dg, Reactor.OpenOptions options = Reactor.OpenOptions.init) {
         sigset_t emptyMask;
         errnoEnforceNGC( sigprocmask( SIG_SETMASK, &emptyMask, null )==0, "sigprocmask failed" );
@@ -1883,6 +1889,7 @@ version (unittest) {
         return ret;
     }
 
+    /// ditto
     void testWithReactor(void delegate() dg, Reactor.OpenOptions options = Reactor.OpenOptions.init) {
         int wrapper() {
             dg();
@@ -1897,11 +1904,17 @@ version (unittest) {
 
     mixin template TEST_FIXTURE_REACTOR(FIXTURE) {
         import mecca.runtime.ut: runFixtureTestCases;
-        import mecca.reactor: testWithReactor;
+        import mecca.reactor: testWithReactor, Reactor;
         unittest {
+            Reactor.OpenOptions options;
+
+            static if( __traits(hasMember, FIXTURE, "reactorOptions") ) {
+                options = FIXTURE.reactorOptions;
+            }
+
             testWithReactor({
                     runFixtureTestCases!(FIXTURE)();
-                    });
+                    }, options);
         }
     }
 }

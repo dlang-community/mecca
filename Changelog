@@ -1,3 +1,5 @@
  * Start a change log
  * Fix incorrect condition in OnDemandWorker (resolves WEKAPP-65189)
+ * Exceptions thrown by deferred thread don't change when rethrown in the
+   fiber.
 
