@@ -52,6 +52,19 @@ struct FLSArea {
 static assert(FLSArea.alignof == (void*).alignof, "FLSArea must have same alignement as a pointer");
 static assert((FLSArea.data.offsetof % (void*).alignof) == 0, "FLSArea data must have same alignement as a pointer");
 
+private template FLSOffset(T, T initVal, string file, string mod, ulong line) {
+    __gshared int FLSOffset = -1;
+
+    shared static this() {
+        static int var;
+        if( FLSOffset!=-1 ) {
+            META!"#DMDBUG issue 18868: static this ran twice for FiberLocal!(%s) defined at %s:%s"(T.stringof, file, line);
+        } else {
+            FLSOffset = FLSArea.alloc!T(initVal);
+        }
+    }
+}
+
 /**
  Construct for defining new fiber local storage variables.
 
@@ -83,16 +96,7 @@ T = The type of the FLS variable
 initVal = The variable initial value
 */
 template FiberLocal(T, T initVal=T.init, string file = __FILE__, string mod = __MODULE__, ulong line = __LINE__) {
-    __gshared int offset = -1;
-
-    shared static this() {
-        static int var;
-        if( offset!=-1 ) {
-            META!"#DMDBUG issue 18868: static this ran twice for FiberLocal!(%s) defined at %s:%s"(T.stringof, file, line);
-        } else {
-            offset = FLSArea.alloc!T(initVal);
-        }
-    }
+    alias offset = FLSOffset!(T, initVal, file, mod, line);
 
     @property ref T FiberLocal() @trusted {
         assert (FLSArea.thisFls !is null && offset >= 0);
@@ -103,29 +107,44 @@ template FiberLocal(T, T initVal=T.init, string file = __FILE__, string mod = __
 // XXX Deprecation candidate, intentionally left undocumented
 // Returns a $(B reference) to another fiber's FLS variable.
 template getFiberFlsLvalue(alias FLS) {
-    alias T = ReturnType!FLS;
+    static if( __traits(isSame, TemplateOf!FLS, FiberLocal) ) {
+        alias T = ReturnType!FLS;
+        alias offset = FLSOffset!(TemplateArgsOf!FLS);
 
-    T* getFiberFlsLvalue(FiberHandle fib) nothrow @nogc {
-        ReactorFiber* reactorFiber = fib.get();
-        if( reactorFiber is null )
-            return null;
+        T* getFiberFlsLvalue(FiberHandle fib) nothrow @nogc {
+            ReactorFiber* reactorFiber = fib.get();
+            if( reactorFiber is null )
+                return null;
 
-        size_t offset = cast(void*)(&FLS()) - cast(void*)theReactor.thisFiber.params.flsBlock.data.ptr;
-        DBG_ASSERT!"setFiberFls offset %s out of bounds %s"(offset<FLS_AREA_SIZE, offset, FLS_AREA_SIZE);
-        return cast(T*)(reactorFiber.params.flsBlock.data.ptr + offset);
+            DBG_ASSERT!"Cannot manipulate FLS of a special fiber"( !reactorFiber.flag!"SPECIAL" );
+            ASSERT!"FLS area is null"( reactorFiber.params.flsBlock.data.ptr !is null );
+            DBG_ASSERT!"invalid FLS offset %s"( offset>=0, offset );
+            DBG_ASSERT!"setFiberFls offset %s out of bounds %s"(offset<FLS_AREA_SIZE, offset, FLS_AREA_SIZE);
+            return cast(T*)(reactorFiber.params.flsBlock.data.ptr + offset);
+        }
+    } else {
+        // Directly defining as static assert causes the compilation to fail on another line, resulting in a less
+        // readable error message
+        static assert(false, "getFiberFlsLvalue's template argument must be a FiberLocal");
     }
 }
 
 /// Set the FLS variable of another fiber
 template setFiberFls(alias FLS) {
-    alias T = ReturnType!FLS;
+    static if( __traits(isSame, TemplateOf!FLS, FiberLocal) ) {
+        alias T = ReturnType!FLS;
 
-    void setFiberFls(FiberHandle fib, T value) nothrow @nogc {
-        T* fls = getFiberFlsLvalue!FLS(fib);
+        void setFiberFls(FiberHandle fib, T value) nothrow @nogc {
+            T* fls = getFiberFlsLvalue!FLS(fib);
 
-        if( fls !is null ) {
-            *fls = value;
+            if( fls !is null ) {
+                *fls = value;
+            }
         }
+    } else {
+        // Directly defining as static assert causes the compilation to fail on another line, resulting in a less
+        // readable error message
+        static assert(false, "setFiberFls's template argument must be a FiberLocal");
     }
 }
 
@@ -197,6 +216,18 @@ unittest {
         assert(myFls == 200);
     });
 }
+
+/+
+// Check the compilation error message when passing wrong type to setFiberFls
+unittest {
+    template NotFiberLocal(T, T initVal=T.init, string file = __FILE__, string mod = __MODULE__, ulong line = __LINE__) {
+    }
+
+    alias notFls = NotFiberLocal!(uint);
+
+    auto t = setFiberFls!notFls(FiberHandle(), 12);
+}
++/
 
 /+
 unittest {
