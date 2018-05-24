@@ -52,7 +52,7 @@ struct FLSArea {
 static assert(FLSArea.alignof == (void*).alignof, "FLSArea must have same alignement as a pointer");
 static assert((FLSArea.data.offsetof % (void*).alignof) == 0, "FLSArea data must have same alignement as a pointer");
 
-private template FLSOffset(T, T initVal, string file, string mod, ulong line) {
+private template FLSOffset(T, T initVal, string id, string file, string mod, ulong line) {
     __gshared int FLSOffset = -1;
 
     shared static this() {
@@ -91,12 +91,37 @@ auto ptr2 = &someName();
 pragma(msg, typeof(ptr2)); // uint*
 ---
 
+ The different FLS variables are distinguished based on their template paramters. Usually this is not a problem, as the
+ source file and line number where the variable is defined is coded. Under some cases, however, this is not unique
+ enough.
+
+---
+static foreach(id; ["fls1", "fls2", "someOtherFls"] ) {
+    mixin(q{alias %s = FiberLocal!int;}.format(id));
+}
+---
+
+ The above code creates three variables, called `fls1`, `fls2` and `someOtherFls`, all aliased to the same actual value.
+ This is because all three are defined on the same source line.
+
+ To solve this problem, use the `id` template argument. It does not matter what it is, so long as it is unique. The
+ following code generates three variables, as before, but all three are unique:
+
+---
+static foreach(id; ["fls1", "fls2", "someOtherFls"] ) {
+    mixin(q{alias %s = FiberLocal!(int, int.init, id);}.format(id));
+}
+---
+
 Params:
 T = The type of the FLS variable
 initVal = The variable initial value
+id = Optional identifier for defining multiple FLSes from the same line of code
 */
-template FiberLocal(T, T initVal=T.init, string file = __FILE__, string mod = __MODULE__, ulong line = __LINE__) {
-    alias offset = FLSOffset!(T, initVal, file, mod, line);
+template FiberLocal(
+        T, T initVal=T.init, string id = null, string file = __FILE__, string mod = __MODULE__, ulong line = __LINE__)
+{
+    alias offset = FLSOffset!(T, initVal, id, file, mod, line);
 
     @property ref T FiberLocal() @trusted {
         assert (FLSArea.thisFls !is null && offset >= 0);
@@ -217,10 +242,24 @@ unittest {
     });
 }
 
+unittest {
+    import std.format;
+    static foreach(id; ["fls1", "fls2"] ) {
+        mixin(q{alias %s = FiberLocal!(int, 0, id);}.format(id));
+    }
+
+    testWithReactor({
+            fls1 = 12;
+            assert(fls2 == 0);
+            });
+}
+
 /+
 // Check the compilation error message when passing wrong type to setFiberFls
 unittest {
-    template NotFiberLocal(T, T initVal=T.init, string file = __FILE__, string mod = __MODULE__, ulong line = __LINE__) {
+    template NotFiberLocal(
+            T, T initVal=T.init, string id = null, string file = __FILE__, string mod = __MODULE__, ulong line = __LINE__)
+    {
     }
 
     alias notFls = NotFiberLocal!(uint);
