@@ -539,6 +539,8 @@ public:
       All options must be set before calling this function.
      */
     void setup(OpenOptions options = OpenOptions.init) {
+        INFO!"Setting up reactor"();
+
         assert (!isOpen, "reactor.setup called twice");
         _open = true;
         assert (thread_isMainThread);
@@ -604,6 +606,8 @@ public:
       Shut the reactor down.
      */
     void teardown() {
+        INFO!"Tearing down reactor"();
+
         ASSERT!"reactor teardown called on non-open reactor"(isOpen);
         ASSERT!"reactor teardown called on still running reactor"(!isRunning);
         ASSERT!"reactor teardown called inside a critical section"(criticalSectionNesting==0);
@@ -998,7 +1002,7 @@ public:
     public:
         /// Returns whether the handle describes a currently registered task
         @property bool isValid() const nothrow @safe @nogc {
-            DBG_ASSERT!"Handling TimerHandle with on a non-running reactor"(theReactor.isOpen);
+            DBG_ASSERT!"Handling TimerHandle with on a non-open reactor"(theReactor.isOpen);
             // TODO make the handle resilient to ABA changes
             return callback !is null && callback._owner !is null;
         }
