@@ -328,7 +328,7 @@ struct ConnectedSocket {
 
 private void connectHelper(ref Socket sock, SockAddr sa, Timeout timeout) @trusted @nogc {
     int result = sock.osCall!(.connect)(&sa.base, SockAddr.sizeof);
-    ASSERT!"connect returned unexpected value %s errno %s"(result<0 && errno == EINPROGRESS, result, errno);
+    ASSERT!"connect returned unexpected value %s errno %s"(result==0 || errno == EINPROGRESS, result, errno);
 
     // Wait for connect to finish
     epoller.waitForEvent(sock.ctx, sock.get.fileNo, timeout);
