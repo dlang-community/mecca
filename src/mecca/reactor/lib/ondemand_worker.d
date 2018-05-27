@@ -176,18 +176,24 @@ public:
     }
 private:
     void fib() {
-        scope(exit)
+        scope (exit) {
+            fiberHandle.reset();
             cancelAll = false;
+        }
 
         try {
-            scope (exit) {
-                fiberHandle = null;
-            }
             theReactor.setFiberName(fiberHandle, __traits(identifier, F), &F);
+
+            bool firstTime = true;
             do {
-                scope(success) theReactor.yield();
                 scope(exit) done.signal();
                 scope(exit) args = defaultArgs;
+
+                if( firstTime ) {
+                    firstTime = false;
+                } else {
+                    theReactor.yield();
+                }
 
                 auto targetGeneration = requestGeneration;
                 scope(exit) completedGeneration = targetGeneration;
@@ -269,6 +275,36 @@ unittest {
         blocker.set();
         odw.waitComplete();
         assertEQ(counter, 2, "counter-expected");
+    }
+
+    testWithReactor(&testBody);
+}
+
+unittest {
+    import mecca.reactor.sync.event;
+    Event blocker;
+    uint counter;
+
+    void worker() {
+        blocker.wait();
+        counter++;
+    }
+
+    auto odw = OnDemandWorkerDelegate(&worker);
+
+    void testBody() {
+        odw.run();
+        theReactor.yield();
+        theReactor.yield();
+        odw.run();
+
+        assertEQ(counter, 0, "Worker ran prematurely");
+
+        blocker.set();
+        odw.disable();
+        odw.waitIdle();
+
+        assertEQ(counter, 1, "Worker ran incorrect number of times");
     }
 
     testWithReactor(&testBody);
