@@ -517,7 +517,7 @@ enum SyscallTracePoint {
     POST_SYSCALL,
 }
 
-mixin template hookSyscall(alias F, Syscall nr, alias traceFunc, SyscallTracePoint tracePoint=SyscallTracePoint.PRE_SYSCALL, string file = __FILE__, size_t line = __LINE__, string _module_ = __MODULE__) {
+mixin template hookSyscall(alias F, Syscall nr, alias traceFunc, SyscallTracePoint tracePoint=SyscallTracePoint.PRE_SYSCALL, string file = __FILE_FULL_PATH__, size_t line = __LINE__, string _module_ = __MODULE__) {
     import std.traits: Parameters, ReturnType;
     import mecca.platform.linux: syscall;
     enum name = __traits(identifier, F);

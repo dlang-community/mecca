@@ -1264,7 +1264,7 @@ public:
     }
 
     /// ditto
-    bool throwInFiber(T : Throwable, string file = __FILE__, size_t line = __LINE__, A...)
+    bool throwInFiber(T : Throwable, string file = __FILE_FULL_PATH__, size_t line = __LINE__, A...)
             (FiberHandle fHandle, auto ref A args) nothrow @safe @nogc
     {
         pragma(inline, true);
@@ -1797,7 +1797,7 @@ private:
     import std.string : format;
     enum string decl_log_as(string logLevel) = q{
         @notrace public void %1$s_AS(
-            string fmt, string file = __FILE__, string mod = __MODULE__, int line = __LINE__, T...)
+            string fmt, string file = __FILE_FULL_PATH__, string mod = __MODULE__, int line = __LINE__, T...)
             (FiberHandle fh, T args) nothrow @safe @nogc
         {
             auto fiber = fh.get;

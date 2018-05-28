@@ -119,7 +119,7 @@ initVal = The variable initial value
 id = Optional identifier for defining multiple FLSes from the same line of code
 */
 template FiberLocal(
-        T, T initVal=T.init, string id = null, string file = __FILE__, string mod = __MODULE__, ulong line = __LINE__)
+        T, T initVal=T.init, string id = null, string file = __FILE_FULL_PATH__, string mod = __MODULE__, ulong line = __LINE__)
 {
     alias offset = FLSOffset!(T, initVal, id, file, mod, line);
 
@@ -258,7 +258,7 @@ unittest {
 // Check the compilation error message when passing wrong type to setFiberFls
 unittest {
     template NotFiberLocal(
-            T, T initVal=T.init, string id = null, string file = __FILE__, string mod = __MODULE__, ulong line = __LINE__)
+            T, T initVal=T.init, string id = null, string file = __FILE_FULL_PATH__, string mod = __MODULE__, ulong line = __LINE__)
     {
     }
 

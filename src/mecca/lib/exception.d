@@ -302,9 +302,9 @@ void switchCurrExcBuf(ExcBuf* newCurrentExcBuf) nothrow @safe @nogc {
         _currExcBuf = &_tlsExcBuf;
 }
 
-T mkEx(T: Throwable, string file = __FILE__, size_t line = __LINE__, A...)(auto ref A args) @safe @nogc {
+T mkEx(T: Throwable, string file = __FILE_FULL_PATH__, size_t line = __LINE__, A...)(auto ref A args) @safe @nogc {
     version(LDC)
-            // Must inline because of __FILE__ as template parameter. https://github.com/ldc-developers/ldc/issues/1703
+            // Must inline because of __FILE_FULL_PATH__ as template parameter. https://github.com/ldc-developers/ldc/issues/1703
             pragma(inline, true);
 
     return mkExLine!T(file, line, args);
@@ -314,20 +314,20 @@ T mkExLine(T: Throwable, A...)(string file, size_t line, auto ref A args) @safe 
     return _currExcBuf.construct!T(file, line, true, args);
 }
 
-T mkExFmt(T: Throwable, string file = __FILE__, size_t line = __LINE__, A...)(string fmt, auto ref A args) @safe @nogc
+T mkExFmt(T: Throwable, string file = __FILE_FULL_PATH__, size_t line = __LINE__, A...)(string fmt, auto ref A args) @safe @nogc
 {
     version(LDC)
-            // Must inline because of __FILE__ as template parameter. https://github.com/ldc-developers/ldc/issues/1703
+            // Must inline because of __FILE_FULL_PATH__ as template parameter. https://github.com/ldc-developers/ldc/issues/1703
             pragma(inline, true);
 
     return _currExcBuf.constructFmt!T(file, line, fmt, args);
 }
 
-T mkExFmt(string fmt, T: Throwable = Exception, string file = __FILE__, size_t line = __LINE__, A...)(auto ref A args)
+T mkExFmt(string fmt, T: Throwable = Exception, string file = __FILE_FULL_PATH__, size_t line = __LINE__, A...)(auto ref A args)
     @safe @nogc
 {
     version(LDC)
-            // Must inline because of __FILE__ as template parameter. https://github.com/ldc-developers/ldc/issues/1703
+            // Must inline because of __FILE_FULL_PATH__ as template parameter. https://github.com/ldc-developers/ldc/issues/1703
             pragma(inline, true);
 
     return _currExcBuf.constructFmt!(fmt, T)(file, line, args);
@@ -337,9 +337,9 @@ Throwable setEx(Throwable ex, bool setTraceback = false) nothrow @safe @nogc {
     return _currExcBuf.set(ex, setTraceback);
 }
 
-RangeError rangeError(K, string file=__FILE__, size_t line=__LINE__)(K key, string msg = "Index/key not found") {
+RangeError rangeError(K, string file=__FILE_FULL_PATH__, size_t line=__LINE__)(K key, string msg = "Index/key not found") {
     version(LDC)
-            // Must inline because of __FILE__ as template parameter. https://github.com/ldc-developers/ldc/issues/1703
+            // Must inline because of __FILE_FULL_PATH__ as template parameter. https://github.com/ldc-developers/ldc/issues/1703
             pragma(inline, true);
 
     static if ( __traits(compiles, sformat(null, "%s", key))) {
@@ -350,11 +350,11 @@ RangeError rangeError(K, string file=__FILE__, size_t line=__LINE__)(K key, stri
     }
 }
 
-void enforceFmt(T: Throwable = Exception, string file = __FILE__, size_t line = __LINE__, A...)(
+void enforceFmt(T: Throwable = Exception, string file = __FILE_FULL_PATH__, size_t line = __LINE__, A...)(
         bool cond, string fmt, auto ref A args) @safe @nogc
 {
     version(LDC)
-            // Must inline because of __FILE__ as template parameter. https://github.com/ldc-developers/ldc/issues/1703
+            // Must inline because of __FILE_FULL_PATH__ as template parameter. https://github.com/ldc-developers/ldc/issues/1703
             pragma(inline, true);
 
     if (!cond) {
@@ -364,13 +364,13 @@ void enforceFmt(T: Throwable = Exception, string file = __FILE__, size_t line = 
 
 
 mixin template ExceptionBody(string msg) {
-    this(string file = __FILE__, size_t line = __LINE__, Throwable next = null) @safe pure nothrow @nogc {
+    this(string file = __FILE_FULL_PATH__, size_t line = __LINE__, Throwable next = null) @safe pure nothrow @nogc {
         super(msg, file, line, next);
     }
 }
 
 mixin template ExceptionBody() {
-    this(string msg, string file = __FILE__, size_t line = __LINE__, Throwable next = null) @safe pure nothrow @nogc {
+    this(string msg, string file = __FILE_FULL_PATH__, size_t line = __LINE__, Throwable next = null) @safe pure nothrow @nogc {
         super(msg, file, line, next);
     }
     /+import mecca.lib.exception: ExcBuf;
@@ -379,7 +379,7 @@ mixin template ExceptionBody() {
     shared static this() {
         _singletonExBuf = new ExcBuf;
     }
-    @("notrace") static typeof(this) singleton(string file = __FILE__, size_t line = __LINE__) {
+    @("notrace") static typeof(this) singleton(string file = __FILE_FULL_PATH__, size_t line = __LINE__) {
         import mecca.tracing.api: LOG_TRACEBACK;
         auto ex = _singletonExBuf.construct!(typeof(this))(file, line, true, (staticMsg.length == 0 ? typeof(this).stringof : staticMsg));
         LOG_TRACEBACK(ex);
@@ -422,7 +422,7 @@ private @notrace void assertHandlerImpl(string file, size_t line, string msg) no
 
 void function(string msg, string file, size_t line) blowUpHandler;
 
-@notrace void DIE(string msg, string file = __FILE__, size_t line = __LINE__, bool doAbort=false) nothrow @nogc {
+@notrace void DIE(string msg, string file = __FILE_FULL_PATH__, size_t line = __LINE__, bool doAbort=false) nothrow @nogc {
     import core.sys.posix.unistd: write, _exit;
     import core.stdc.stdlib: abort;
     import core.atomic: cas;
@@ -449,17 +449,17 @@ void function(string msg, string file, size_t line) blowUpHandler;
     assert(false);
 }
 
-void ABORT(string msg, string file = __FILE__, size_t line = __LINE__) nothrow @nogc {
+void ABORT(string msg, string file = __FILE_FULL_PATH__, size_t line = __LINE__) nothrow @nogc {
     DIE(msg, file, line, true);
 }
 
 void ASSERT
-    (string fmt, string file = __FILE__, string mod = __MODULE__, size_t line = __LINE__, T...)
+    (string fmt, string file = __FILE_FULL_PATH__, string mod = __MODULE__, size_t line = __LINE__, T...)
     (bool cond, scope lazy T args)
     pure nothrow @trusted @nogc
 {
     version(LDC)
-            // Must inline because of __FILE__ as template parameter. https://github.com/ldc-developers/ldc/issues/1703
+            // Must inline because of __FILE_FULL_PATH__ as template parameter. https://github.com/ldc-developers/ldc/issues/1703
             pragma(inline, true);
 
     if (cond) {
@@ -489,11 +489,11 @@ void ASSERT
     }
 }
 
-void enforceNGC(Ex : Throwable = Exception, string file = __FILE__, size_t line = __LINE__)
+void enforceNGC(Ex : Throwable = Exception, string file = __FILE_FULL_PATH__, size_t line = __LINE__)
     (bool value, scope lazy string msg = null) @trusted @nogc
 {
     version(LDC)
-            // Must inline because of __FILE__ as template parameter. https://github.com/ldc-developers/ldc/issues/1703
+            // Must inline because of __FILE_FULL_PATH__ as template parameter. https://github.com/ldc-developers/ldc/issues/1703
             pragma(inline, true);
 
     if( !value ) {
@@ -503,11 +503,11 @@ void enforceNGC(Ex : Throwable = Exception, string file = __FILE__, size_t line 
     }
 }
 
-void errnoEnforceNGC(string file = __FILE__, size_t line = __LINE__)
+void errnoEnforceNGC(string file = __FILE_FULL_PATH__, size_t line = __LINE__)
     (bool value, scope lazy string msg = null) @trusted @nogc
 {
     version(LDC)
-            // Must inline because of __FILE__ as template parameter. https://github.com/ldc-developers/ldc/issues/1703
+            // Must inline because of __FILE_FULL_PATH__ as template parameter. https://github.com/ldc-developers/ldc/issues/1703
             pragma(inline, true);
 
     as!"@nogc"({ enforceNGC!(ErrnoException, file, line)(value, msg); });
@@ -517,7 +517,7 @@ version(assert) {
     alias DBG_ASSERT = ASSERT;
 }
 else {
-    void DBG_ASSERT(string fmt, string file = __FILE__, size_t line = __LINE__, T...)(scope lazy bool cond, scope lazy T args) @nogc {
+    void DBG_ASSERT(string fmt, string file = __FILE_FULL_PATH__, size_t line = __LINE__, T...)(scope lazy bool cond, scope lazy T args) @nogc {
         pragma(inline, true);
     }
 }
@@ -530,11 +530,11 @@ unittest {
 //
 // useful assert variants
 //
-@notrace void assertOp(string op, L, R, string file = __FILE__, string mod = __MODULE__, size_t line = __LINE__)
+@notrace void assertOp(string op, L, R, string file = __FILE_FULL_PATH__, string mod = __MODULE__, size_t line = __LINE__)
     (L lhs, R rhs, string msg="") nothrow
 {
     version(LDC)
-            // Must inline because of __FILE__ as template parameter. https://github.com/ldc-developers/ldc/issues/1703
+            // Must inline because of __FILE_FULL_PATH__ as template parameter. https://github.com/ldc-developers/ldc/issues/1703
             pragma(inline, true);
 
     static assert(
@@ -551,27 +551,27 @@ unittest {
     ASSERT!("%s %s %s %s", file, mod, line)(mixin("lhsVal " ~ op ~ " rhsVal"), lhs, inverseOp, rhs, msg);
 }
 
-@notrace void assertEQ(L, R, string file = __FILE__, string mod = __MODULE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow {
+@notrace void assertEQ(L, R, string file = __FILE_FULL_PATH__, string mod = __MODULE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow {
     assertOp!("==", L, R, file, mod, line)(lhs, rhs, msg);
 }
-@notrace void assertNE(L, R, string file = __FILE__, string mod = __MODULE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow {
+@notrace void assertNE(L, R, string file = __FILE_FULL_PATH__, string mod = __MODULE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow {
     assertOp!("!=", L, R, file, mod, line)(lhs, rhs, msg);
 }
-@notrace void assertGT(L, R, string file = __FILE__, string mod = __MODULE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow {
+@notrace void assertGT(L, R, string file = __FILE_FULL_PATH__, string mod = __MODULE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow {
     assertOp!(">", L, R, file, mod, line)(lhs, rhs, msg);
 }
-@notrace void assertGE(L, R, string file = __FILE__, string mod = __MODULE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow {
+@notrace void assertGE(L, R, string file = __FILE_FULL_PATH__, string mod = __MODULE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow {
     assertOp!(">=", L, R, file, mod, line)(lhs, rhs, msg);
 }
-@notrace void assertLT(L, R, string file = __FILE__, string mod = __MODULE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow {
+@notrace void assertLT(L, R, string file = __FILE_FULL_PATH__, string mod = __MODULE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow {
     assertOp!("<", L, R, file, mod, line)(lhs, rhs, msg);
 }
-@notrace void assertLE(L, R, string file = __FILE__, string mod = __MODULE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow {
+@notrace void assertLE(L, R, string file = __FILE_FULL_PATH__, string mod = __MODULE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow {
     assertOp!("<=", L, R, file, mod, line)(lhs, rhs, msg);
 }
 
 version(unittest) {
-    void assertThrows(T = Throwable, E, string file = __FILE__, string mod = __MODULE__, size_t line = __LINE__)(scope lazy E expr) {
+    void assertThrows(T = Throwable, E, string file = __FILE_FULL_PATH__, string mod = __MODULE__, size_t line = __LINE__)(scope lazy E expr) {
         try {
             expr();
         }
@@ -589,10 +589,10 @@ unittest {
     assertThrows(assertEQ(7, 17));
 }
 
-int errnoCall(alias F, string file=__FILE__, size_t line=__LINE__)(Parameters!F args) @nogc if (is(ReturnType!F == int))
+int errnoCall(alias F, string file=__FILE_FULL_PATH__, size_t line=__LINE__)(Parameters!F args) @nogc if (is(ReturnType!F == int))
 {
     version(LDC)
-            // Must inline because of __FILE__ as template parameter. https://github.com/ldc-developers/ldc/issues/1703
+            // Must inline because of __FILE_FULL_PATH__ as template parameter. https://github.com/ldc-developers/ldc/issues/1703
             pragma(inline, true);
 
     int res = F(args);

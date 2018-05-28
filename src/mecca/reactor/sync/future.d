@@ -46,7 +46,7 @@ public:
 
     /// Wait for the future to be set
     @notrace @nogc
-    void wait(Timeout timeout = Timeout.infinite, string file = __FILE__, ulong line = __LINE__) {
+    void wait(Timeout timeout = Timeout.infinite, string file = __FILE_FULL_PATH__, ulong line = __LINE__) {
         if (fiberHandle.isSet) {
             theReactor.joinFiber(fiberHandle, timeout);
 

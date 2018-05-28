@@ -28,7 +28,7 @@ enum LISTEN_BACKLOG = 10;
 ///
 /// `ErrnoException.errno` will report `EREMOTEIO`.
 class ShortRead : ErrnoException {
-    this(string msg, string file = __FILE__, size_t line = __LINE__) @trusted {
+    this(string msg, string file = __FILE_FULL_PATH__, size_t line = __LINE__) @trusted {
         super(msg, EREMOTEIO, file, line);
     }
 }

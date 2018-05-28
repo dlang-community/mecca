@@ -29,7 +29,7 @@ import mecca.log;
 
 
 class PoolDepleted: Error {
-    this(string msg, string file=__FILE__, size_t line=__LINE__) nothrow @nogc {
+    this(string msg, string file=__FILE_FULL_PATH__, size_t line=__LINE__) nothrow @nogc {
         super(msg, file, line);
     }
 }

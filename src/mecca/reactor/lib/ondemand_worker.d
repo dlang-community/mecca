@@ -64,7 +64,7 @@ public:
     }
 
     /// Helper for more verbose DEBUG logging
-    void DEBUG(string fmt, string file = __FILE__, string mod = __MODULE__, uint line = __LINE__, Args...)(Args args) {
+    void DEBUG(string fmt, string file = __FILE_FULL_PATH__, string mod = __MODULE__, uint line = __LINE__, Args...)(Args args) {
         .DEBUG!("#ONDEMAND(%s) worker: " ~ fmt, file, mod, line)(&this, args);
     }
 

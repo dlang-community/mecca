@@ -10,7 +10,7 @@ import mecca.reactor;
 
 /// Exception thrown if the deadline expired
 class TimeBombExploded : Exception {
-    this(string file = __FILE__, size_t line = __LINE__, Throwable next = null) @safe pure nothrow @nogc {
+    this(string file = __FILE_FULL_PATH__, size_t line = __LINE__, Throwable next = null) @safe pure nothrow @nogc {
         super("Time bomb exploded", file, line, next);
     }
 }
