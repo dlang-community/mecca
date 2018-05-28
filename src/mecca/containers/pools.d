@@ -42,12 +42,15 @@ class PoolDepleted: Error {
 //
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 struct FixedPool(T, size_t N) {
+    import std.algorithm : max;
+
     alias IdxType = CapacityType!(N+1);
     static assert (N < IdxType.max);
     enum INVALID = IdxType.max;
     enum capacity = N;
+    private enum ALIGNMENT = max(T.alignof, IdxType.alignof);
 
-    struct Elem {
+    align(ALIGNMENT) struct Elem {
         @disable this(this);
         union{
             void[T.sizeof] data;
