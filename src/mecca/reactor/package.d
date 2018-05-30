@@ -500,9 +500,11 @@ private:
 
     SignalHandlerValue!TscTimePoint fiberRunStartTime;
 
+    alias TimedCallbackGeneration = TypedIdentifier!("TimedCallbackGeneration", ulong, ulong.max, ulong.max);
     struct TimedCallback {
         TimedCallback* _next, _prev;
         timeQueue.OwnerAttrType _owner;
+        TimedCallbackGeneration generation;
         TscTimePoint timePoint;
         ulong intervalCycles; // How many cycles between repeatetions. Zero means non-repeating
 
@@ -511,6 +513,7 @@ private:
 
     // TODO change to mmap pool or something
     SimplePool!(TimedCallback) timedCallbacksPool;
+    TimedCallbackGeneration.Allocator timedCallbackGeneration;
     CascadingTimeQueue!(TimedCallback*, TIMER_NUM_BINS, TIMER_NUM_LEVELS, true) timeQueue;
 
     ThreadPool!MAX_DEFERRED_TASKS threadPool;
@@ -998,13 +1001,20 @@ public:
     struct TimerHandle {
     private:
         TimedCallback* callback;
+        TimedCallbackGeneration generation;
 
     public:
+
+        this(TimedCallback* callback) nothrow @safe @nogc {
+            DBG_ASSERT!"Constructing TimedHandle from null callback"(callback !is null);
+            this.callback = callback;
+            this.generation = callback.generation;
+        }
+
         /// Returns whether the handle describes a currently registered task
         @property bool isValid() const nothrow @safe @nogc {
             DBG_ASSERT!"Handling TimerHandle with on a non-open reactor"(theReactor.isOpen);
-            // TODO make the handle resilient to ABA changes
-            return callback !is null && callback._owner !is null;
+            return callback !is null && callback._owner !is null && generation == callback.generation;
         }
 
         /// Revert the handle to init value, forgetting the timer it points to
@@ -1012,6 +1022,7 @@ public:
         /// This call will $(B not) cancel the actual timer. Use `cancelTimer` for that.
         @notrace void reset() nothrow @safe @nogc {
             callback = null;
+            generation = TimedCallbackGeneration.invalid;
         }
 
         /// Cancel a currently registered timer
@@ -1036,7 +1047,7 @@ public:
      * A handle to the just registered timer.
      */
     TimerHandle registerTimer(alias F)(Timeout timeout, Parameters!F params) nothrow @safe @nogc {
-        TimedCallback* callback = timedCallbacksPool.alloc();
+        TimedCallback* callback = allocTimedCallback();
         callback.closure.set(&F, params);
         callback.timePoint = timeout.expiry;
         callback.intervalCycles = 0;
@@ -1057,7 +1068,7 @@ public:
      * Same as `registerTimer!F`, except with the callback as an argument. Callback cannot accept parameters.
      */
     TimerHandle registerTimer(T)(Timeout timeout, T dg) nothrow @safe @nogc {
-        TimedCallback* callback = timedCallbacksPool.alloc();
+        TimedCallback* callback = allocTimedCallback();
         callback.closure.set(dg);
         callback.timePoint = timeout.expiry;
         callback.intervalCycles = 0;
@@ -1073,7 +1084,7 @@ public:
     }
 
     private TimedCallback* _registerRecurringTimer(Duration interval) nothrow @safe @nogc {
-        TimedCallback* callback = timedCallbacksPool.alloc();
+        TimedCallback* callback = allocTimedCallback();
         callback.intervalCycles = TscTimePoint.toCycles(interval);
         rescheduleRecurringTimer(callback);
         return callback;
@@ -1252,6 +1263,9 @@ public:
      * to sleep.
      */
     bool throwInFiber(FiberHandle fHandle, Throwable ex) nothrow @safe @nogc {
+        if( !fHandle.isValid )
+            return false;
+
         ExcBuf* fiberEx = prepThrowInFiber(fHandle, false);
 
         if( fiberEx is null )
@@ -1268,6 +1282,9 @@ public:
             (FiberHandle fHandle, auto ref A args) nothrow @safe @nogc
     {
         pragma(inline, true);
+        if( !fHandle.isValid )
+            return false;
+
         ExcBuf* fiberEx = prepThrowInFiber(fHandle, true);
 
         if( fiberEx is null )
@@ -1343,6 +1360,13 @@ private:
     package @property inout(ReactorFiber)* thisFiber() inout nothrow pure @safe @nogc {
         DBG_ASSERT!"No current fiber as reactor was not started"(isRunning);
         return _thisFiber;
+    }
+
+    @notrace TimedCallback* allocTimedCallback() nothrow @safe @nogc {
+        auto ret = timedCallbacksPool.alloc();
+        ret.generation = timedCallbackGeneration.getNext();
+
+        return ret;
     }
 
     @property bool shouldRunTimedCallbacks() nothrow @safe @nogc {
@@ -2267,5 +2291,27 @@ unittest {
             theReactor.joinFiber(fh);
             assertEQ( theReactor.getFiberState(fh), FiberState.None );
             theReactor.joinFiber(fh, Timeout(Duration.zero));
+        });
+}
+
+unittest {
+    testWithReactor({
+            void doNothing() {
+                while( true )
+                    theReactor.sleep(1.msecs);
+            }
+
+            FiberHandle[] handles;
+            handles ~= theReactor.spawnFiber(&doNothing);
+            handles ~= theReactor.spawnFiber(&doNothing);
+            theReactor.sleep(5.msecs);
+
+            foreach(fh; handles) {
+                theReactor.throwInFiber!FiberKilled(fh);
+            }
+
+            DEBUG!"Sleeping for 1ms"();
+            theReactor.sleep(1.msecs);
+            DEBUG!"Woke up from sleep"();
         });
 }

@@ -193,7 +193,7 @@ struct SimplePool(T) {
     struct Elem {
         @disable this(this);
         union {
-            void[T.sizeof] data;
+            align(T.alignof) void[T.sizeof] data;
             Elem* next;
         }
         static if (__traits(hasMember, T, "_poolElementAlignment")) {
