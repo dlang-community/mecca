@@ -1546,8 +1546,15 @@ private:
                     import core.thread; Thread.sleep(sleepDuration);
                 }
 
-                if( countsAsIdle )
+                if( countsAsIdle ) {
                     end = TscTimePoint.hardNow;
+                } else {
+                    if( scheduledFibers.empty ) {
+                        // We are going in for another round, but this round should not count as idle time
+                        stats.idleCycles += end.diff!"cycles"(start);
+                        end = start = TscTimePoint.hardNow;
+                    }
+                }
             }
             stats.idleCycles += end.diff!"cycles"(start);
             switchToNext();
