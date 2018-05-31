@@ -438,15 +438,24 @@ void function(string msg, string file, size_t line) blowUpHandler;
             flushLog();
         }
         auto ex = excBuf.construct!AssertError(file, line, true, msg);
-        ex.toString((text){write(2, text.ptr, text.length);});
-        if (doAbort) {
-            abort();
-        }
-        else {
-            _exit(1);
+        version(unittest) {
+            recLock = false;
+            throw ex;
+        } else {
+            ex.toString((text){write(2, text.ptr, text.length);});
+            if (doAbort) {
+                abort();
+            }
+            else {
+                _exit(1);
+            }
         }
     });
     assert(false);
+}
+
+unittest {
+    assertThrows!AssertError( DIE("Test UT DIE behavior") );
 }
 
 void ABORT(string msg, string file = __FILE_FULL_PATH__, size_t line = __LINE__) nothrow @nogc {
@@ -571,7 +580,9 @@ unittest {
 }
 
 version(unittest) {
-    void assertThrows(T = Throwable, E, string file = __FILE_FULL_PATH__, string mod = __MODULE__, size_t line = __LINE__)(scope lazy E expr) {
+    void assertThrows(T = Throwable, E, string file = __FILE_FULL_PATH__, string mod = __MODULE__, size_t line = __LINE__)
+            (scope lazy E expr)
+    {
         try {
             expr();
         }
@@ -581,12 +592,30 @@ version(unittest) {
         }
         ASSERT!("Did not throw", file, mod, line)(false);
     }
+
+    unittest {
+        static bool thrower(T : Throwable)(string msg) {
+            throw new T(msg);
+        }
+
+        try {
+            assertThrows!AssertError( 12 );
+            assert(false, "assertThrows did not detect code did not throw");
+        } catch(AssertError ex) {
+        }
+
+        try {
+            assertThrows!AssertError( thrower!ErrnoException("Nothing wrong") );
+            assert(false, "assertThrows did not detect code threw the wrong exception");
+        } catch(AssertError ex) {
+        }
+    }
 }
 
 unittest {
     assertEQ(7, 7);
     assertNE(7, 17);
-    assertThrows(assertEQ(7, 17));
+    assertThrows!AssertError(assertEQ(7, 17));
 }
 
 int errnoCall(alias F, string file=__FILE_FULL_PATH__, size_t line=__LINE__)(Parameters!F args) @nogc if (is(ReturnType!F == int))

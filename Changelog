@@ -5,3 +5,4 @@
  * FiberLocal accepts an optional "id" template parameter to distinguish
    variables defined on the same line;
  * TimerHandle.isValid resilient to ABA races
+ * DIE throws AssertError in UTs (to allow assertThrows UTs)
