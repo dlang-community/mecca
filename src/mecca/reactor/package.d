@@ -1908,18 +1908,20 @@ version (unittest) {
         theReactor.setup(options);
         scope(success) theReactor.teardown();
 
-        bool succ = false;
+        bool delegateReturned = false;
 
         void wrapper() {
+            scope(failure) theReactor.stop();
+
             int ret = dg();
 
-            succ = true;
+            delegateReturned = true;
             theReactor.stop( ret );
         }
 
         theReactor.spawnFiber(&wrapper);
         int ret = theReactor.start();
-        assert (succ);
+        assert (delegateReturned, "testWithReactor called with a delegate that threw without returning");
 
         return ret;
     }
