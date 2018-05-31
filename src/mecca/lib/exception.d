@@ -5,7 +5,7 @@ module mecca.lib.exception;
 
 public import core.exception: AssertError, RangeError;
 public import std.exception: ErrnoException;
-import std.algorithm : min;
+import std.algorithm : min, copy;
 import std.traits;
 import core.exception: assertHandler;
 import core.runtime: Runtime, defaultTraceHandler;
@@ -250,7 +250,9 @@ struct ExcBuf {
             tobj.msg = cast(string)msgBuf[];
         }
         else {
-            msgBuf[0 .. msg2.length] = msg2[];
+            // msgBuf[0 .. msg2.length] = msg2[];
+            // The buffer we copy from and to are, occasionally, the same buffer. The above line is illegal in that case
+            copy(msg2, msgBuf[0..msg2.length]);
             tobj.msg = cast(string)msgBuf[0 .. msg2.length];
         }
     }
