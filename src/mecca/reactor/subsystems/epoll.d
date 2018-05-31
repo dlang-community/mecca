@@ -56,7 +56,7 @@ private: // Not that this does anything, as the struct itself is only visible to
 
 public:
 
-    void open() @safe @nogc {
+    void open() @safe {
         ASSERT!"Must call theReactor.setup before calling ReactorFD.openReactor"(theReactor.isOpen);
         int epollFdOs = epoll_create1(EPOLL_CLOEXEC);
         errnoEnforceNGC( epollFdOs>=0, "Failed to create epoll fd" );

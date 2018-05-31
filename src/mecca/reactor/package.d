@@ -495,6 +495,8 @@ private:
     ReactorFiber* mainFiber;
     ReactorFiber* idleFiber;
     FixedArray!(IdleCallbackDlg, MAX_IDLE_CALLBACKS) idleCallbacks;
+    // Point to idleCallbacks as a range, in case it gets full and we need to spill over to GC allocation
+    IdleCallbackDlg[] actualIdleCallbacks;
     __gshared OSSignal hangDetectorSig;
     posix_time.timer_t hangDetectorTimerId;
 
@@ -565,6 +567,7 @@ public:
         _thisFiber = null;
         criticalSectionNesting = 0;
         idleCallbacks.length = 0;
+        actualIdleCallbacks = null;
 
         foreach(i, ref fib; allFibers) {
             auto stack = fiberStacks[i * stackPerFib .. (i + 1) * stackPerFib];
@@ -646,6 +649,7 @@ public:
         mainFiber = null;
         idleFiber = null;
         idleCallbacks.length = 0;
+        actualIdleCallbacks = null;
 
         _isReactorThread = false;
         _open = false;
@@ -669,10 +673,20 @@ public:
       counted as idle time, or whether that's considered "work". This affects the results returned by the `idleCycles`
       field returned by the `reactorStats`.
      */
-    void registerIdleCallback(IdleCallbackDlg dg) nothrow @safe @nogc {
+    void registerIdleCallback(IdleCallbackDlg dg) nothrow @safe {
         // You will notice our deliberate lack of function to unregister
-        idleCallbacks ~= dg;
-        DEBUG!"%s idle callbacks registered"(idleCallbacks.length);
+        if( actualIdleCallbacks.length==idleCallbacks.capacity ) {
+            WARN!"Idle callbacks capacity reached - switching to GC allocated list"();
+        }
+
+        if( actualIdleCallbacks.length<idleCallbacks.capacity ) {
+            idleCallbacks ~= dg;
+            actualIdleCallbacks = idleCallbacks[];
+        } else {
+            actualIdleCallbacks ~= dg;
+        }
+
+        DEBUG!"%s idle callbacks registered"(actualIdleCallbacks.length);
     }
 
     /**
@@ -1534,11 +1548,11 @@ private:
                 // We only reach here if runTimedCallbacks did nothing, in which case "end" is recent enough
                 Duration sleepDuration = timeQueue.timeTillNextEntry(end);
                 bool countsAsIdle = true;
-                if( idleCallbacks.length==1 ) {
-                    countsAsIdle = idleCallbacks[0](sleepDuration) && countsAsIdle;
+                if( actualIdleCallbacks.length==1 ) {
+                    countsAsIdle = actualIdleCallbacks[0](sleepDuration) && countsAsIdle;
                     DBG_ASSERT!"Single idle callback must always count as idle"(countsAsIdle);
-                } else if ( idleCallbacks.length>1 ) {
-                    foreach(cb; idleCallbacks) {
+                } else if ( actualIdleCallbacks.length>1 ) {
+                    foreach(cb; actualIdleCallbacks) {
                         countsAsIdle = cb(ZERO_DURATION) && countsAsIdle;
                     }
                 } else {
