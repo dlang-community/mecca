@@ -3,11 +3,12 @@ module mecca.reactor.types;
 
 // Licensed under the Boost license. Full copyright information in the AUTHORS file
 
+import mecca.log: FMT;
 import mecca.lib.exception;
 import mecca.lib.typedid;
 
 /// Fibers' ID type
-alias FiberId = TypedIdentifier!("FiberId", ushort, ushort.max, ushort.max);
+alias FiberId = TypedIdentifier!("FiberId", ushort, ushort.max, ushort.max, FMT("0x{_value!%04X}"));
 
 /// Exception thrown when a fiber is suspended for too long.
 class TimeoutExpired : Exception {
