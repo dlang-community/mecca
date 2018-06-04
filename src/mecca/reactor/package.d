@@ -208,7 +208,7 @@ private:
 
             if( !skipBody ) {
                 params.logsSavedContext = LogsFiberSavedContext.init;
-                INFO!"wrapper on %s generation %s flags=0x%0x"(identity, incarnationCounter, _flags);
+                INFO!"Fiber %s started generation %s flags=0x%0x"(identity, incarnationCounter, _flags);
 
                 ASSERT!"Reactor's current fiber isn't the running fiber" (theReactor.thisFiber is &this);
                 ASSERT!"Fiber %s is in state %s instead of Running" (state == FiberState.Running, identity, state);
@@ -226,10 +226,12 @@ private:
             ASSERT!"Fiber still member of fiber group at termination" (params.fgChain.owner is null);
 
             params.joinWaiters.signal();
-            if( ex is null )
-                INFO!"wrapper finished on %s"(identity);
-            else
-                ERROR!"wrapper finished on %s with exception: %s"(identity, ex.msg);
+            if( ex is null ) {
+                INFO!"Fiber %s finished"(identity);
+            } else {
+                ERROR!"Fiber %s finished with exception: %s"(identity, ex.msg);
+                LOG_EXCEPTION(ex);
+            }
 
             params.fiberBody.clear();
             params.fiberName = null;
@@ -1925,12 +1927,20 @@ version (unittest) {
         bool delegateReturned = false;
 
         void wrapper() {
-            scope(failure) theReactor.stop();
+            try {
+                int ret = dg();
 
-            int ret = dg();
-
-            delegateReturned = true;
-            theReactor.stop( ret );
+                delegateReturned = true;
+                theReactor.stop( ret );
+            } catch(FiberInterrupt ex) {
+                LOG_EXCEPTION(ex);
+                theReactor.stop();
+            } catch(Throwable ex) {
+                // No need to stop the reactor - the exception thrown will teminate it
+                LOG_EXCEPTION(ex);
+                ERROR!"Test terminated abnormally"();
+                throw ex;
+            }
         }
 
         theReactor.spawnFiber(&wrapper);
