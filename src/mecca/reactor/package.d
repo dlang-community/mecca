@@ -334,6 +334,9 @@ package:
     }
 
     ReactorFiber* get() const nothrow @safe @nogc {
+        if (!theReactor.isRunning)
+            return null;
+
         if (!identity.isValid) {
             return null;
         }
@@ -1029,8 +1032,11 @@ public:
 
         /// Returns whether the handle describes a currently registered task
         @property bool isValid() const nothrow @safe @nogc {
-            DBG_ASSERT!"Handling TimerHandle with on a non-open reactor"(theReactor.isOpen);
-            return callback !is null && callback._owner !is null && generation == callback.generation;
+            return
+                    callback !is null &&
+                    theReactor.isOpen &&
+                    callback._owner !is null &&
+                    generation == callback.generation;
         }
 
         /// Revert the handle to init value, forgetting the timer it points to
@@ -1382,6 +1388,7 @@ private:
     }
 
     @notrace TimedCallback* allocTimedCallback() nothrow @safe @nogc {
+        DBG_ASSERT!"Registering timer on non-open reactor"(isOpen);
         auto ret = timedCallbacksPool.alloc();
         ret.generation = timedCallbackGeneration.getNext();
 
