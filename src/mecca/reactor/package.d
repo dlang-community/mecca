@@ -1174,7 +1174,10 @@ public:
         (`getFiberState` returns `Scheduled`), this will move it to the top of the queue.
      */
     @notrace void resumeFiber(FiberHandle handle, bool priority = false) nothrow @safe @nogc {
-        resumeFiber(handle.get(), priority);
+        auto fiber = handle.get();
+
+        if( fiber !is null )
+            resumeFiber(handle.get(), priority);
     }
 
     /**
@@ -1289,7 +1292,7 @@ public:
 
         fiberEx.set(ex);
         auto fib = fHandle.get();
-        resumeFiber(fib);
+        resumeFiber(fib, true);
         return true;
     }
 
@@ -1434,6 +1437,7 @@ private:
                     _thisFiber.identity, _thisFiber.state);
             thisFiber.state = FiberState.Running;
 
+            // DEBUG!"Switching %s => %s"(currentFiber.identity, thisFiber.identity);
             if (currentFiber !is thisFiber) {
                 // make the switch
                 currentFiber.switchTo(thisFiber);
