@@ -177,7 +177,7 @@ struct SockAddrIPv4 {
     this(string addr, ushort port = PORT_ANY) @trusted @nogc {
         int res = inet_pton(AF_INET, toStringzNGC(addr), &sa.sin_addr);
 
-        DBG_ASSERT!"Invalid call to inet_pton"(res>=0);
+        DBG_ASSERT!"Invalid call to inet_pton(%s)"(res>=0, addr);
         if( res!=1 ) {
             errno = EINVAL;
             throw mkEx!ErrnoException("Invalid IPv4 address to SockAddrIPv4 constructor");
@@ -190,7 +190,7 @@ struct SockAddrIPv4 {
     /// ditto
     this(const sockaddr* sa, socklen_t length) nothrow @trusted @nogc {
         ASSERT!"Wrong address family for IPv4. %s instead of %s"(sa.sa_family == AF_INET, sa.sa_family, AF_INET);
-        ASSERT!"IPv4 sockaddr too short. %s<%s"(length < sockaddr_in.sizeof, length, sockaddr_in.sizeof);
+        ASSERT!"IPv4 sockaddr too short. %s<%s"(length >= sockaddr_in.sizeof, length, sockaddr_in.sizeof);
         this.sa = *cast(sockaddr_in*)sa;
     }
 
@@ -635,7 +635,8 @@ struct SockAddr {
     }
 
     /// Perform a name resolution on the given string
-    static SockAddr resolve(string hostname, string service, ushort family = AF_INET, int sockType = 0) @trusted {
+    static SockAddr resolve(string hostname, string service = null, ushort family = AF_INET, int sockType = 0) @trusted
+    {
         ASSERT!"Invalid family %s"(family == AF_INET || family == AF_INET6, family);
 
         addrinfo* res = null;
@@ -643,7 +644,7 @@ struct SockAddr {
         hint.ai_family = family;
         hint.ai_socktype = sockType;
 
-        auto rc = getaddrinfo(hostname.toStringzNGC, service.toStringzNGC, &hint, &res);
+        auto rc = getaddrinfo(hostname.toStringzNGC, ToStringz!512(service), &hint, &res);
         if( rc!=0 ) {
             throw mkExFmt!Exception("Lookup failed for %s:%s: %s", hostname, service, to!string(gai_strerror(rc)));
         }
@@ -653,6 +654,13 @@ struct SockAddr {
         scope(exit) freeaddrinfo(res);
 
         return SockAddr(res.ai_addr, res.ai_addrlen);
+    }
+
+    unittest {
+        auto addr = SockAddr.resolve("localhost", "ssh");
+        assertEQ( addr.toString(), "127.0.0.1:22" );
+        addr = SockAddr.resolve("localhost");
+        assertEQ( addr.toString(), "127.0.0.1:*" );
     }
 
     /// Returns the length of the data in the struct
