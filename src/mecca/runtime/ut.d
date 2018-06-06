@@ -130,6 +130,7 @@ void runFixtureTestCases(FIXTURE, string mod = __MODULE__)() {
                 stderr.writefln("\t%s...", fullCaseName);
                 import std.typecons:scoped;
                 auto fixture = new FIXTURE();
+                scope(exit) destroy(fixture);
                 try {
                     __traits(getMember, fixture, testCaseName)();
                 } catch (Throwable t) {
