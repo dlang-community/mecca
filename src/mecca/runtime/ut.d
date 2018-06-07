@@ -120,25 +120,31 @@ struct mecca_ut {}
 void runFixtureTestCases(FIXTURE, string mod = __MODULE__)() {
     import std.stdio;
     import std.traits;
-    writeln();
+    static if( !LogToConsole )
+            writeln();
     foreach(testCaseName; __traits(derivedMembers, FIXTURE)) {
         static if ( __traits(compiles, __traits(getMember, FIXTURE, testCaseName) ) ) {
             static if (hasUDA!(__traits(getMember, FIXTURE, testCaseName), mecca_ut)) {
                 import std.string:format;
                 string fullCaseName = format("%s.%s", __traits(identifier, FIXTURE), testCaseName);
                 META!"Test Case: %s"(fullCaseName);
-                stderr.writefln("\t%s...", fullCaseName);
+                static if( !LogToConsole )
+                        stderr.writefln("\t%s...", fullCaseName);
                 import std.typecons:scoped;
                 auto fixture = new FIXTURE();
                 scope(exit) destroy(fixture);
                 try {
                     __traits(getMember, fixture, testCaseName)();
                 } catch (Throwable t) {
-                    stderr.writeln("\tERROR");
+                    ERROR!"Test %s failed with exception"(fullCaseName);
+                    LOG_EXCEPTION(t);
+                    static if( !LogToConsole )
+                            stderr.writeln("\tERROR");
                     throw t;
                 }
-                destroy(fixture);
-                stderr.flush();
+                flushLog();
+                static if( !LogToConsole )
+                    stderr.flush();
             }
         }
     }

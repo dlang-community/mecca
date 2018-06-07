@@ -1490,9 +1490,10 @@ private:
     }
 
     void resumeSpecialFiber(ReactorFiber* fib) nothrow @safe @nogc {
-        assert (fib.flag!"SPECIAL");
-        assert (fib.flag!"CALLBACK_SET");
-        assert (!fib.flag!"SCHEDULED" || scheduledFibers.head is fib);
+        DBG_ASSERT!"Asked to resume special fiber %s which isn't marked special" (fib.flag!"SPECIAL", fib.identity);
+        DBG_ASSERT!"Asked to resume special fiber %s with no body set" (fib.flag!"CALLBACK_SET", fib.identity);
+        DBG_ASSERT!"Special fiber %s scheduled not in head of list" (
+                !fib.flag!"SCHEDULED" || scheduledFibers.head is fib, fib.identity);
 
         if (!fib.flag!"SCHEDULED") {
             fib.flag!"SCHEDULED" = true;
@@ -1642,6 +1643,10 @@ private:
             return;
 
         fiberEx.set(ex);
+        if( !mainFiber.flag!"SPECIAL" ) {
+            ASSERT!"Main fiber not marked as special but reactor is not stopping"( _stopping );
+            mainFiber.flag!"SPECIAL" = true;
+        }
         resumeSpecialFiber(mainFiber);
         as!"nothrow"(&theReactor.switchToNext);
         assert(false, "switchToNext on dead system returned");
@@ -1986,8 +1991,16 @@ version (unittest) {
             }
 
             testWithReactor({
-                    runFixtureTestCases!(FIXTURE)();
-                    }, options);
+                    try {
+                        runFixtureTestCases!(FIXTURE)();
+                    } catch( Throwable ex ) {
+                        import mecca.log: LOG_EXCEPTION;
+                        import mecca.lib.exception: DIE;
+
+                        LOG_EXCEPTION(ex);
+                        DIE("UT failed due to exception");
+                    }
+                }, options);
         }
     }
 }
