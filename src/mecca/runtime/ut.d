@@ -120,6 +120,11 @@ struct mecca_ut {}
 void runFixtureTestCases(FIXTURE, string mod = __MODULE__)() {
     import std.stdio;
     import std.traits;
+    scope(exit) {
+        flushLog();
+        static if( !LogToConsole )
+                stderr.flush();
+    }
     static if( !LogToConsole )
             writeln();
     foreach(testCaseName; __traits(derivedMembers, FIXTURE)) {
@@ -127,6 +132,7 @@ void runFixtureTestCases(FIXTURE, string mod = __MODULE__)() {
             static if (hasUDA!(__traits(getMember, FIXTURE, testCaseName), mecca_ut)) {
                 import std.string:format;
                 string fullCaseName = format("%s.%s", __traits(identifier, FIXTURE), testCaseName);
+                META!"Test Fixture: %s"(__traits(identifier, FIXTURE));
                 META!"Test Case: %s"(fullCaseName);
                 static if( !LogToConsole )
                         stderr.writefln("\t%s...", fullCaseName);
@@ -142,9 +148,6 @@ void runFixtureTestCases(FIXTURE, string mod = __MODULE__)() {
                             stderr.writeln("\tERROR");
                     throw t;
                 }
-                flushLog();
-                static if( !LogToConsole )
-                    stderr.flush();
             }
         }
     }
@@ -157,6 +160,7 @@ void runFixtureTestCases(FIXTURE, string mod = __MODULE__)() {
  */
 mixin template TEST_FIXTURE(FIXTURE) {
     unittest {
+        import mecca.runtime.ut: runFixtureTestCases;
         runFixtureTestCases!(FIXTURE)();
     }
 }

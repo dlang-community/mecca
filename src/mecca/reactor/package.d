@@ -1502,7 +1502,7 @@ private:
     }
 
     void resumeFiber(ReactorFiber* fib, bool immediate = false) nothrow @safe @nogc {
-        assert (!fib.flag!"SPECIAL");
+        DBG_ASSERT!"Cannot resume a special fiber %s using the standard resumeFiber" (!fib.flag!"SPECIAL", fib.identity);
         ASSERT!"resumeFiber called on %s, which does not have a callback set"(fib.flag!"CALLBACK_SET", fib.identity);
 
         bool effectiveImmediate = immediate;

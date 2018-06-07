@@ -497,4 +497,4 @@ alias Locker = RAIILocker!(Lock);
 /// Locker wrapper for a SharedLock with a shared lock
 alias SharedLocker = RAIILocker!(SharedLock, "acquireShared", "releaseShared");
 /// Locker wrapper for a SharedLock with an exclusive lock
-alias ExclusiveLocker = RAIILocker!(SharedLock, "acquireShared", "releaseShared");
+alias ExclusiveLocker = RAIILocker!(SharedLock, "acquireExclusive", "releaseExclusive");
