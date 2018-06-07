@@ -195,7 +195,7 @@ private:
             // code duplication
             switchInto();
         } catch (FiberInterrupt ex2) {
-            INFO!"Fiber %s killed by FiberInterrupt exception %s"(identity, ex2.msg);
+            INFO!"Fiber %s killed by FiberInterrupt exception: %s"(identity, ex2.msg);
             skipBody = true;
         } catch(Throwable ex2) {
             ex = ex2;
@@ -824,6 +824,7 @@ public:
             return;
         }
 
+        INFO!"Stopping reactor with exit code %s"(reactorReturn);
         this.reactorReturn = reactorReturn;
 
         _stopping = true;

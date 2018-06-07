@@ -2,6 +2,9 @@ module mecca.reactor.impl.fibril;
 
 // Licensed under the Boost license. Full copyright information in the AUTHORS file
 
+import mecca.lib.exception;
+import mecca.log;
+
 // Disable tracing instrumentation for the whole file
 @("notrace") void traceDisableCompileTimeInstrumentation();
 
@@ -84,14 +87,11 @@ extern(C) private void _fibril_wrapper(void function(void*) fn /* RDI */, void* 
 
     try {
         fn(opaque);
-        writeErr("Fibril function must never return\n");
-        abort();
+        DIE("Fibril functio must never return", __FILE_FULL_PATH__, __LINE__, true);
     }
     catch (Throwable ex) {
-        writeErr("Fibril function must never throw\n");
-        try {ex.toString(&writeErr);} catch (Throwable) {}
-        writeErr("\n");
-        abort();
+        LOG_EXCEPTION(ex);
+        DIE("Fibril functio must never throw", __FILE_FULL_PATH__, __LINE__, true);
     }
     // we add an extra call to abort here, so the compiler would be forced to emit `call` instead of `jmp`
     // above, thus leaving this function on the call stack. it produces a more readable backtrace.
