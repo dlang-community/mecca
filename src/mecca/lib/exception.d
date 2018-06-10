@@ -163,7 +163,7 @@ struct ExcBuf {
             }
         }
 
-        setMsg(t.msg, t);
+        setMsg(t.msg);
         return tobj;
     }
 
