@@ -423,6 +423,17 @@ struct Reactor {
         /// Whether we have enabled deferToThread
         bool threadDeferralEnabled;
 
+        /**
+          Whether the reactor should register the default (fd processing) idle handler
+
+          If this value is set to `false`, the poller is still opened. It's idle function would not be automatically
+          called, however, so file operations might block indefinitely unless another mechanism (such as timer based)
+          is put in place to call it periodically.
+
+          The non-registered idle handler can be manually triggered by calling `epoller.poll`.
+         */
+        bool registerDefaultIdler = true;
+
         version(unittest) {
             /// Disable all GC collection during the reactor run time. Only available for UTs.
             bool utGcDisabled;
@@ -608,6 +619,11 @@ public:
 
         import mecca.reactor.io.fd;
         _openReactorEpoll();
+
+        if(options.registerDefaultIdler) {
+            import mecca.reactor.subsystems.epoll;
+            theReactor.registerIdleCallback(&epoller.reactorIdle);
+        }
 
         import mecca.reactor.io.signals;
         reactorSignal._open();

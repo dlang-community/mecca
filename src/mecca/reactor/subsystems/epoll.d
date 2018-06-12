@@ -63,8 +63,6 @@ public:
         epollFd = FD(epollFdOs);
 
         fdPool.open();
-
-        theReactor.registerIdleCallback(&reactorIdle);
     }
 
     void close() {
@@ -147,6 +145,14 @@ public:
                 ctx.type==FdContext.Type.Callback || ctx.type==FdContext.Type.CallbackOneShot, fd, ctx.type);
 
         ctx.type = FdContext.Type.None;
+    }
+
+    /// Export of the poller function
+    ///
+    /// A variation of this function is what's called by the reactor idle callback (unless `OpenOptions.registerDefaultIdler`
+    /// is set to `false`).
+    @notrace void poll() {
+        reactorIdle(Duration.zero);
     }
 
     @notrace bool reactorIdle(Duration timeout) {

@@ -832,55 +832,78 @@ void _closeReactorEpoll() {
     epoller.close();
 }
 
-unittest {
+version(unittest):
+private class UnitTest {
     import core.sys.posix.sys.types;
 
     import mecca.lib.consts;
     import mecca.reactor;
+    import mecca.runtime.ut;
 
-    theReactor.setup();
-    scope(success) theReactor.teardown();
+    void testBody() {
+        FD pipeReadFD, pipeWriteFD;
+        createPipe(pipeReadFD, pipeWriteFD);
+        ReactorFD pipeRead = ReactorFD(move(pipeReadFD));
+        ReactorFD pipeWrite = ReactorFD(move(pipeWriteFD));
 
-    FD pipeReadFD, pipeWriteFD;
-    createPipe(pipeReadFD, pipeWriteFD);
-    ReactorFD pipeRead = ReactorFD(move(pipeReadFD));
-    ReactorFD pipeWrite = ReactorFD(move(pipeWriteFD));
+        void reader() {
+            uint[1024] buffer;
+            enum BUFF_SIZE = typeof(buffer).sizeof;
+            uint lastNum = -1;
 
-    void reader() {
-        uint[1024] buffer;
-        enum BUFF_SIZE = typeof(buffer).sizeof;
-        uint lastNum = -1;
+            // Send 2MB over the pipe
+            ssize_t res;
+            while((res = pipeRead.read(buffer))>0) {
+                assert(res==BUFF_SIZE, "Short read from pipe");
+                assert(buffer[0] == ++lastNum, "Read incorrect value from buffer");
+            }
 
-        // Send 2MB over the pipe
-        ssize_t res;
-        while((res = pipeRead.read(buffer))>0) {
-            assert(res==BUFF_SIZE, "Short read from pipe");
-            assert(buffer[0] == ++lastNum, "Read incorrect value from buffer");
+            errnoEnforceNGC(res==0, "Read failed from pipe");
+            INFO!"Reader finished"();
+            theReactor.stop();
         }
 
-        errnoEnforceNGC(res==0, "Read failed from pipe");
-        INFO!"Reader finished"();
-        theReactor.stop();
-    }
+        void writer() {
+            uint[1024] buffer;
+            enum BUFF_SIZE = typeof(buffer).sizeof;
 
-    void writer() {
-        uint[1024] buffer;
-        enum BUFF_SIZE = typeof(buffer).sizeof;
+            // Send 2MB over the pipe
+            while(buffer[0] < (2*MB/BUFF_SIZE)) {
+                ssize_t res = pipeWrite.write(buffer);
+                errnoEnforceNGC( res>=0, "Write failed on pipe");
+                assert( res==BUFF_SIZE, "Short write to pipe" );
+                buffer[0]++;
+            }
 
-        // Send 2MB over the pipe
-        while(buffer[0] < (2*MB/BUFF_SIZE)) {
-            ssize_t res = pipeWrite.write(buffer);
-            errnoEnforceNGC( res>=0, "Write failed on pipe");
-            assert( res==BUFF_SIZE, "Short write to pipe" );
-            buffer[0]++;
+            INFO!"Writer finished - closing pipe"();
+            pipeWrite.close();
         }
 
-        INFO!"Writer finished - closing pipe"();
-        pipeWrite.close();
+        theReactor.spawnFiber(&reader);
+        theReactor.spawnFiber(&writer);
+
+        theReactor.start();
     }
 
-    theReactor.spawnFiber(&reader);
-    theReactor.spawnFiber(&writer);
+    @mecca_ut:
+    void normalPoller() {
+        theReactor.setup();
+        scope(success) theReactor.teardown();
 
-    theReactor.start();
+        testBody();
+    }
+
+    void timedPoller() {
+        Reactor.OpenOptions options;
+
+        options.registerDefaultIdler = false;
+        theReactor.setup(options);
+        scope(success) theReactor.teardown();
+
+        theReactor.registerRecurringTimer(1.msecs, &epoller.poll);
+
+        testBody();
+    }
+
+    mixin TEST_FIXTURE!UnitTest;
 }
