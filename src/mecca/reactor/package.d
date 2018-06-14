@@ -770,7 +770,7 @@ public:
     /// Returns a FiberHandle to the currently running fiber
     @property FiberHandle currentFiberHandle() nothrow @safe @nogc {
         // XXX This assert may be incorrect, but it is easier to remove an assert than to add one
-        assert(!isSpecialFiber, "Should not blindly get fiber handle of special fibers");
+        DBG_ASSERT!"Should not blindly get fiber handle of special fiber %s"(!isSpecialFiber, currentFiberId);
         return FiberHandle(thisFiber);
     }
     @property package ReactorFiber* currentFiberPtr() nothrow @safe @nogc {
@@ -1362,12 +1362,84 @@ public:
      * Arguments bear no specific meaning, but default to describing the function used to start the fiber.
      */
     @notrace void setFiberName(FiberHandle fh, string name, void *ptr) nothrow @safe @nogc {
+        DBG_ASSERT!"Trying to set fiber name of an invalid fiber"(fh.isValid);
         setFiberName(fh.get, name, ptr);
     }
 
     /// ditto
     @notrace void setFiberName(T)(FiberHandle fh, string name, scope T dlg) nothrow @safe @nogc if( isDelegate!T ) {
-        setFiberName(fh.get, name, dlg.ptr);
+        setFiberName(fh, name, dlg.ptr);
+    }
+
+    /**
+     * Temporarily change the fiber's name
+     *
+     * Meaning of arguments is as for `setFiberName`.
+     *
+     * returns:
+     * A voldemort type whose destructor returns the fiber name to the one it had before. It also has a `release`
+     * function for returning the name earlier.
+     */
+    auto pushFiberName(string name, void *ptr) nothrow @safe @nogc {
+        static struct PrevName {
+        private:
+            string name;
+            void* ptr;
+
+        public:
+            @disable this();
+            @disable this(this);
+
+            this(string name, void* ptr) nothrow @safe @nogc {
+                this.name = name;
+                this.ptr = ptr;
+            }
+
+            ~this() nothrow @safe @nogc {
+                if( name !is null || ptr !is null )
+                    release();
+            }
+
+            void release() nothrow @safe @nogc {
+                theReactor.setFiberName( theReactor.thisFiber, this.name, this.ptr );
+
+                name = null;
+                ptr = null;
+            }
+        }
+
+        auto prevName = PrevName(name, ptr);
+        setFiberName( theReactor.thisFiber, name, ptr );
+
+        import std.algorithm: move;
+        return move(prevName);
+    }
+
+    /// ditto
+    @notrace auto pushFiberName(T)(string name, scope T dlg) nothrow @safe @nogc if( isDelegate!T ) {
+        return pushFiberName(name, dlg.ptr);
+    }
+
+    /// Retrieve the fiber name set by `setFiberName`
+    @notrace string getFiberName(FiberHandle fh) nothrow @safe @nogc {
+        DBG_ASSERT!"Trying to get fiber name of an invalid fiber"(fh.isValid);
+        return fh.get.params.fiberName;
+    }
+
+    /// ditto
+    @notrace string getFiberName() nothrow @safe @nogc {
+        return thisFiber.params.fiberName;
+    }
+
+    /// Retrieve the fiber pointer set by `setFiberName`
+    @notrace void* getFiberPtr(FiberHandle fh) nothrow @safe @nogc {
+        DBG_ASSERT!"Trying to get fiber pointer of an invalid fiber"(fh.isValid);
+        return fh.get.params.fiberPtr;
+    }
+
+    /// ditto
+    @notrace void* getFiberPtr() nothrow @safe @nogc {
+        return thisFiber.params.fiberPtr;
     }
 
     /**
@@ -1584,7 +1656,9 @@ private:
                     DBG_ASSERT!"Single idle callback must always count as idle"(countsAsIdle);
                 } else if ( actualIdleCallbacks.length>1 ) {
                     foreach(cb; actualIdleCallbacks) {
-                        countsAsIdle = cb(ZERO_DURATION) && countsAsIdle;
+                        with( pushFiberName("Idle callback", cb) ) {
+                            countsAsIdle = cb(ZERO_DURATION) && countsAsIdle;
+                        }
                     }
                 } else {
                     DEBUG!"Idle fiber called with no callbacks, sleeping %sus"(sleepDuration.total!"usecs");
