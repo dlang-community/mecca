@@ -1653,7 +1653,6 @@ private:
                 bool countsAsIdle = true;
                 if( actualIdleCallbacks.length==1 ) {
                     countsAsIdle = actualIdleCallbacks[0](sleepDuration) && countsAsIdle;
-                    DBG_ASSERT!"Single idle callback must always count as idle"(countsAsIdle);
                 } else if ( actualIdleCallbacks.length>1 ) {
                     foreach(cb; actualIdleCallbacks) {
                         with( pushFiberName("Idle callback", cb) ) {
