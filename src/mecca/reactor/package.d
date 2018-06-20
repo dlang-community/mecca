@@ -33,7 +33,6 @@ import mecca.platform.linux;
 import mecca.reactor.fiber_group;
 import mecca.reactor.fls;
 import mecca.reactor.impl.fibril: Fibril;
-import mecca.reactor.subsystems.gc_tracker;
 import mecca.reactor.subsystems.threading;
 import mecca.reactor.sync.event: Signal;
 public import mecca.reactor.types;
