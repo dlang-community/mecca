@@ -464,7 +464,7 @@ void ABORT(string msg, string file = __FILE_FULL_PATH__, size_t line = __LINE__)
     DIE(msg, file, line, true);
 }
 
-void ASSERT
+@notrace void ASSERT
     (string fmt, string file = __FILE_FULL_PATH__, string mod = __MODULE__, size_t line = __LINE__, T...)
     (bool cond, scope lazy T args)
     pure nothrow @trusted @nogc
@@ -478,7 +478,7 @@ void ASSERT
     }
 
     scope f = () {
-        META!("ASSERT at %s:%s")(file, line);
+        META!("ASSERT " ~ fmt ~ " at %s:%s")(args, file, line);
         static if( !LogToConsole ) {
             // Also log to stderr, as the logger doesn't do that for us.
             import std.stdio: stderr;
@@ -493,9 +493,9 @@ void ASSERT
         });
     }
     else {
-        as!"@nogc pure nothrow"({
-            import std.string: format;
-            DIE(format( "Assertion failure: " ~ fmt, args), file, line);
+        as!"pure"({
+            dumpStackTrace();
+            DIE("Assertion failed", file, line);
         });
     }
 }
@@ -559,7 +559,18 @@ unittest {
 
     auto lhsVal = lhs;
     auto rhsVal = rhs;
-    ASSERT!("%s %s %s %s", file, mod, line)(mixin("lhsVal " ~ op ~ " rhsVal"), lhs, inverseOp, rhs, msg);
+
+    if( mixin("lhsVal " ~ op ~ " rhsVal") )
+        return;
+
+    void safefify() pure @nogc @trusted {
+        as!"@nogc pure nothrow"({
+            import std.format;
+            DIE(format("Assert: %s %s %s %s", lhs, inverseOp, rhs, msg), file, line);
+        });
+    }
+
+    safefify();
 }
 
 @notrace void assertEQ(L, R, string file = __FILE_FULL_PATH__, string mod = __MODULE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow {
