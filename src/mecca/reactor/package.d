@@ -2038,6 +2038,8 @@ version (unittest) {
 
                 delegateReturned = true;
                 theReactor.stop( ret );
+            } catch(ReactorExit ex) {
+                // Do nothing. It's just stop being called
             } catch(FiberInterrupt ex) {
                 LOG_EXCEPTION(ex);
                 theReactor.stop();
