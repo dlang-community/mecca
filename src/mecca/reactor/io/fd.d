@@ -70,7 +70,22 @@ struct DatagramSocket {
      * This allows the socket to send datagrams to broadcast addresses.
      */
     void enableBroadcast(bool enabled = true) @trusted @nogc {
-        sock.setSockOpt(SOL_SOCKET, SO_BROADCAST, enabled);
+        int flag = enabled ? 1 : 0;
+        sock.setSockOpt(SOL_SOCKET, SO_BROADCAST, flag);
+    }
+
+    unittest {
+        import mecca.reactor;
+
+        testWithReactor({
+                auto sock = DatagramSocket.create( SockAddr(SockAddrIPv4.any) );
+                INFO!"#UT testing successful send to broadcast"();
+                sock.enableBroadcast(true);
+                sock.sendTo("Weka.IO", 0, SockAddr(SockAddrIPv4.broadcast(31337)) );
+                INFO!"#UT testing unsuccessful send to broadcast"();
+                sock.enableBroadcast(false);
+                assertThrows!ErrnoException( sock.sendTo("Weka.IO", 0, SockAddrIPv4.broadcast(31337) ) );
+            });
     }
 }
 
@@ -328,7 +343,7 @@ struct ConnectedSocket {
 
 private void connectHelper(ref Socket sock, SockAddr sa, Timeout timeout) @trusted @nogc {
     int result = sock.osCall!(.connect)(&sa.base, SockAddr.sizeof);
-    ASSERT!"connect returned unexpected value %s errno %s"(result==0 || errno == EINPROGRESS, result, errno);
+    errnoEnforceNGC(result==0 || errno == EINPROGRESS, "Connect failed");
 
     // Wait for connect to finish
     epoller.waitForEvent(sock.ctx, sock.get.fileNo, timeout);
@@ -376,11 +391,21 @@ struct Socket {
 
     /**
      * send data over an unconnected socket
+     *
+     * The second form allows passing SockAddr* types directly
      */
-    ssize_t sendTo(const void[] data, int flags, ref const(SockAddr) destAddr, Timeout timeout = Timeout.infinite)
+    ssize_t sendTo(const void[] data, int flags, SockAddr destAddr, Timeout timeout = Timeout.infinite)
             @trusted @nogc
     {
         return fd.blockingCall!(.sendto)(data.ptr, data.length, flags, &destAddr.base, SockAddr.sizeof, timeout); 
+    }
+
+    /// ditto
+    ssize_t sendTo(SA)(const void[] data, int flags, auto ref SA destAddr, Timeout timeout = Timeout.infinite)
+            @trusted @nogc
+            if( !is( SA==SockAddr ) && is( typeof(SockAddr(destAddr)) == SockAddr ) )
+    {
+        return sendTo( data, flags, SockAddr(destAddr), timeout );
     }
 
     /**
