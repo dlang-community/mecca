@@ -165,7 +165,6 @@ public:
         epoll_event[NUM_BATCH_EVENTS] events;
         if( timeout > Duration.zero && intTimeout == 0 )
             intTimeout = 1;
-        DEBUG!"Calling epoll_wait with a timeout of %sms"(intTimeout);
         int res = epollFd.osCall!epoll_wait(events.ptr, NUM_BATCH_EVENTS, intTimeout);
 
         if( res<0 &&  errno==EINTR ) {

@@ -1660,7 +1660,7 @@ private:
                         }
                     }
                 } else {
-                    DEBUG!"Idle fiber called with no callbacks, sleeping %sus"(sleepDuration.total!"usecs");
+                    //DEBUG!"Idle fiber called with no callbacks, sleeping %sus"(sleepDuration.total!"usecs");
                     import core.thread; Thread.sleep(sleepDuration);
                 }
 
