@@ -19,8 +19,8 @@ private:
 
        Once we're at the top of the queue, we register our fiber handle as primaryWaiter.
      +/
-    size_t _capacity;
-    size_t available;
+    size_t _capacity, pendingCapacity;
+    long available;     // May be negative due to capacity change
     size_t requestsPending;
     FiberQueue waiters;
     FiberHandle primaryWaiter;
@@ -29,24 +29,30 @@ private:
 public:
     @disable this(this);
 
-    this(size_t capacity, size_t used = 0) nothrow @safe @nogc {
+    /**
+     * Construct a semaphore with given capacity.
+     */
+    this(size_t capacity, size_t used = 0) pure nothrow @safe @nogc {
         open(capacity, used);
     }
 
     /**
      * Call this function before using the semaphore.
      *
+     * You can skip calling `open` if the semaphore is constructed explicitly
+     *
      * Params:
      *  capacity = maximal value the semaphore can grow to.
      *  used = initial number of obtained locks. Default of zero means that the semaphore is currently unused.
      */
-    void open(size_t capacity, size_t used = 0) nothrow @safe @nogc {
+    void open(size_t capacity, size_t used = 0) pure nothrow @safe @nogc {
         ASSERT!"Semaphore.open called on already open semaphore"(_capacity==0);
         ASSERT!"Semaphore.open called with capacity 0"(capacity>0);
         ASSERT!"Semaphore.open called with initial used count %s greater than capacity %s"(used<=capacity, used, capacity);
 
         _capacity = capacity;
         available = _capacity - used;
+        pendingCapacity = 0;
         requestsPending = 0;
         ASSERT!"open called with waiters in queue"( waiters.empty );
     }
@@ -56,7 +62,7 @@ public:
      *
      * This function is mostly useful for unittests, where the same semaphore instance might be used multiple times.
      */
-    void close() nothrow @safe @nogc {
+    void close() pure nothrow @safe @nogc {
         ASSERT!"Semaphore.close called on a non-open semaphore"(_capacity > 0);
         ASSERT!"Semaphore.close called while fibers are waiting on semaphore"(waiters.empty);
         _capacity = 0;
@@ -65,6 +71,78 @@ public:
     /// Report the capacity of the semaphore
     @property size_t capacity() const pure nothrow @safe @nogc {
         return _capacity;
+    }
+
+    /** Change the capacity of the semaphore
+     *
+     * If `immediate` is set to `false` and the current `level` is higher than the requested capacity, `setCapacity`
+     * will sleep until the capacity can be cleared.
+     *
+     * If `immediate` is `false` then `setCapacity` may return before the new capacity is actually set. This will
+     * $(I only) happen if there is an older `setCapacity` call that has not yet finished.
+     *
+     * Params:
+     * newCapacity = The new capacity
+     * immediate = whether the new capacity takes effect immediately.
+     *
+     * Warnings:
+     * Setting the capacity to lower than the number of resources a waiting fiber is currently requesting is undefined.
+     *
+     * If `immediate` is set to `true`, it is possible for `level` to report a higher acquired count than `capacity`.
+     *
+     * If there is a chance that multiple calls to `setCapacity` are active at once, the `immeditate` flag must be set
+     * the same way on all of them. In other words, it is illegal to call `setCapacity` with `immediate` set to `false`,
+     * and then call `setCapacity` with `immediate` set to true before the first call returns.
+     */
+    void setCapacity(size_t newCapacity, bool immediate = false) @safe @nogc {
+        DBG_ASSERT!"setCapacity called with immediate set and a previous call still pending"(
+                !immediate || pendingCapacity == 0 );
+
+        if( (newCapacity>=_capacity && pendingCapacity==0) || immediate ) {
+            // Fast path
+            available += newCapacity - _capacity;
+            _capacity = newCapacity;
+
+            // It is possible that a fiber that previously was blocked can now move forward
+            resumeOne(false);
+
+            return;
+        }
+
+        // We cannot complete the capacity change immediately
+        if( pendingCapacity!=0 ) {
+            // Just piggyback the pending capacity change
+            pendingCapacity = newCapacity;
+            return;
+        }
+
+        // We need to wait ourselves for the change to be possible
+        pendingCapacity = newCapacity;
+        scope(exit) pendingCapacity = 0;
+
+        while( pendingCapacity!=this.capacity ) {
+            assertEQ( newCapacity, pendingCapacity );
+
+            // If we ask to reduce the capacity, and then reduce it again, we might need to run this loop more than once
+            assertLT( pendingCapacity, this.capacity, "pendingCapacity not <= level" );
+            size_t numAcquired = this.capacity - pendingCapacity;
+            acquire(numAcquired);
+            // It is never released as such. We instead manipulate the state accordingly
+
+            // Calculate the capacity closest to the one we want we can saftly reach right now
+            newCapacity = max(newCapacity, pendingCapacity);
+
+            _capacity = newCapacity;
+            if( newCapacity>this.capacity ) {
+                // We need to increase the capcity.
+                release(numAcquired);
+                // This also releases any further clients waiting
+            } else {
+                // available was already substracted by the acquire. Nothing more to do here
+            }
+
+            newCapacity = pendingCapacity;
+        }
     }
 
     /**
@@ -247,3 +325,94 @@ unittest {
             assert(counter==10);
         });
 }
+
+version(unittest):
+import mecca.reactor.sync.barrier;
+import mecca.reactor.sync.event;
+
+class SetCapacityTests {
+    Semaphore sem;
+    uint counter;
+    Barrier barrier;
+
+    void open(uint capacity, uint used = 0) {
+        assertEQ(barrier.numWaiters, 0, "Barrier not clear on open");
+        sem.open(capacity, used);
+        counter = 0;
+    }
+
+    void reset() {
+        sem.close();
+    }
+
+    void fib(uint howMuch, Event* clearToExit) {
+        scope(exit) barrier.markDone();
+
+        sem.acquire(howMuch);
+        scope(exit) sem.release(howMuch);
+
+        counter++;
+        clearToExit.wait();
+    }
+
+    FiberHandle spawn(uint howMuch, Event* clearToExit) {
+        auto fh = theReactor.spawnFiber(&fib, howMuch, clearToExit);
+        barrier.addWaiter();
+
+        return fh;
+    }
+
+    @mecca_ut void releaseOnCapacityIncrease() {
+        open(1);
+        scope(success) reset();
+
+        Event clearToExit;
+
+        spawn(1, &clearToExit);
+        spawn(1, &clearToExit);
+
+        theReactor.yield();
+        theReactor.yield();
+        assertEQ(counter, 1, "Acquire succeeded, should have failed");
+
+        sem.setCapacity(2);
+        theReactor.yield();
+        assertEQ(counter, 2, "Acquire failed, should have succeeded");
+
+        clearToExit.set();
+        barrier.waitAll();
+        assertEQ(counter, 2);
+    }
+
+    @mecca_ut void reduceCapacity() {
+        open(4);
+        scope(success) reset();
+
+        Event blocker;
+
+        spawn(2, &blocker);
+        spawn(2, &blocker);
+        spawn(2, &blocker);
+
+        theReactor.yield();
+        theReactor.yield();
+        assertEQ(counter, 2);
+
+        blocker.set();
+        sem.setCapacity(2);
+        assertEQ(counter, 3);
+
+        blocker.reset();
+
+        spawn(2, &blocker);
+        spawn(2, &blocker);
+        theReactor.yield();
+        assertEQ(counter, 4);
+
+        blocker.set();
+        barrier.waitAll();
+        assertEQ(counter, 5);
+    }
+}
+
+mixin TEST_FIXTURE_REACTOR!SetCapacityTests;
