@@ -528,7 +528,9 @@ version(assert) {
     alias DBG_ASSERT = ASSERT;
 }
 else {
-    void DBG_ASSERT(string fmt, string file = __FILE_FULL_PATH__, size_t line = __LINE__, T...)(scope lazy bool cond, scope lazy T args) @nogc {
+    void DBG_ASSERT(string fmt, string file = __FILE_FULL_PATH__, string mod = __MODULE__, size_t line = __LINE__, T...)
+            (scope lazy bool cond, scope lazy T args) @nogc
+    {
         pragma(inline, true);
     }
 }
