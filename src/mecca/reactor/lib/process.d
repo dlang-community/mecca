@@ -217,7 +217,7 @@ private:
 
     /// RAII wrapper for a process
     static struct ProcessPtr {
-        private Process* ptr;
+        Process* ptr;
 
         @disable this(this);
 
