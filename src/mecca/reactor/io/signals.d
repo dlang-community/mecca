@@ -243,7 +243,7 @@ unittest {
     theReactor.start();
 
     INFO!"500µs timer triggered %s time during 3ms sleep"(sigcount);
-    ASSERT!"sigcount has incorrect value: %s"(sigcount>=6, sigcount); // Will probably be higher
+    assertGE(sigcount, 5, "Signal count incorrect"); // Will probably be higher
 }
 
 
