@@ -57,7 +57,7 @@ enum FiberState : ubyte {
 }
 
 struct ReactorFiber {
-    struct OnStackParams {
+    static struct OnStackParams {
         Closure                 fiberBody;
         GCStackDescriptor       stackDescriptor;
         FiberGroup.Chain        fgChain;
