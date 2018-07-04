@@ -564,7 +564,6 @@ public:
         assert (!isOpen, "reactor.setup called twice");
         _open = true;
         assert (thread_isMainThread);
-        _isReactorThread = true;
         assert (options.numFibers > NUM_SPECIAL_FIBERS);
         reactorReturn = 0;
         optionsInEffect = options;
@@ -671,7 +670,6 @@ public:
         idleCallbacks.length = 0;
         actualIdleCallbacks = null;
 
-        _isReactorThread = false;
         _open = false;
     }
 
@@ -814,6 +812,9 @@ public:
       The return value from `start` is the value passed to the `stop` function.
      */
     int start() {
+        _isReactorThread = true;
+        scope(exit) _isReactorThread = false;
+
         META!"Reactor started"();
         assert( idleFiber !is null, "Reactor started without calling \"setup\" first" );
         mainloop();

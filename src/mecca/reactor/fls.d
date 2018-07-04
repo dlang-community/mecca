@@ -124,7 +124,8 @@ template FiberLocal(
     alias offset = FLSOffset!(T, initVal, id, file, mod, line);
 
     @property ref T FiberLocal() @trusted {
-        assert (FLSArea.thisFls !is null && offset >= 0);
+        ASSERT!"Calling uninitialized FLS area initialized %s offset %s FLS %s:%s(%s)"(
+                FLSArea.thisFls !is null && offset >= 0, FLSArea.thisFls !is null, offset, file, line, id);
         return *cast(T*)(FLSArea.thisFls.data.ptr + offset);
     }
 }
