@@ -435,7 +435,7 @@ static int32_t libdivide__count_trailing_zeros64(uint64_t val) pure nothrow @saf
     assert (val != 0);
     uint32_t lo = val & 0xFFFFFFFF;
     if (lo != 0) return libdivide__count_trailing_zeros32(lo);
-    return 32 + libdivide__count_trailing_zeros32(val >> 32);
+    return 32 + libdivide__count_trailing_zeros32(cast(uint32_t) (val >> 32));
 }
 
 static int64_t libdivide__mullhi_s64(int64_t x, int64_t y) pure nothrow @safe @nogc {
