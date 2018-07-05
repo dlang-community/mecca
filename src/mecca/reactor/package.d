@@ -368,9 +368,21 @@ struct Reactor {
           How often does the GC's collection run.
 
           The reactor uses unconditional periodic collection, rather than lazy evaluation one employed by the default GC
-          settings. This setting sets how often the collection cycle should run.
+          settings. This setting sets how often the collection cycle should run. See `gcRunThreshold` for how to not
+          run the GC collection when not needed.
          */
         Duration gcInterval = 30.seconds;
+
+        /**
+         * Allocation threshold to trigger a GC run
+         *
+         * If the amount of memory allocated since the previous GC run is less than this amount of bytes, the GC scan
+         * will be skipped.
+         *
+         * Setting this value to 0 forces a run every `gcInterval`, regardless of how much was allocated.
+         */
+        size_t gcRunThreshold = 16*MB;
+
         /**
           Base granularity of the reactor's timer.
 
@@ -494,12 +506,14 @@ private:
     bool _running;
     bool _stopping;
     bool _gcCollectionNeeded;
+    bool _gcCollectionForce;
     ubyte maxNumFibersBits;     // Number of bits sufficient to represent the maximal number of fibers
     FiberIdx.UnderlyingType maxNumFibersMask;
     int reactorReturn;
     int criticalSectionNesting;
     OpenOptions optionsInEffect;
     Stats stats;
+    GC.Stats lastGCStats;
 
     MmapBuffer fiberStacks;
     MmapArray!ReactorFiber allFibers;
@@ -1347,6 +1361,7 @@ public:
             return;
 
         _gcCollectionNeeded = true;
+        _gcCollectionForce = true;
         if( theReactor.currentFiberId != MainFiberId ) {
             theReactor.resumeSpecialFiber(theReactor.mainFiber);
 
@@ -1875,6 +1890,8 @@ private:
         GC.disable();
         scope(exit) GC.enable();
 
+        lastGCStats = GC.stats();
+
         if( optionsInEffect.utGcDisabled ) {
             // GC is disabled during the reactor run. Run it before we start
             GC.collect();
@@ -1899,14 +1916,8 @@ private:
             while (!_stopping) {
                 DBG_ASSERT!"Switched to mainloop with wrong thisFiber %s"(thisFiber is mainFiber, thisFiber.identity);
                 runTimedCallbacks();
-                if( _gcCollectionNeeded ) {
-                    _gcCollectionNeeded = false;
-                    TscTimePoint.hardNow(); // Update the hard now value
-                    INFO!"#GC collection cycle started"();
-                    GC.collect();
-                    TscTimePoint.hardNow(); // Update the hard now value
-                    INFO!"#GC collection cycle ended"();
-                }
+                if( _gcCollectionNeeded )
+                    gcCollect();
 
                 if( !_stopping )
                     switchToNext();
@@ -1916,6 +1927,26 @@ private:
         }
 
         performStopReactor();
+    }
+
+    void gcCollect() {
+        _gcCollectionNeeded = false;
+        auto statsBefore = GC.stats();
+
+        if(
+            _gcCollectionForce ||
+            optionsInEffect.gcRunThreshold==0 ||
+            statsBefore.usedSize > lastGCStats.usedSize+optionsInEffect.gcRunThreshold )
+        {
+            _gcCollectionForce = false;
+
+            TscTimePoint.hardNow(); // Update the hard now value
+            DEBUG!"#GC collection cycle started"();
+            GC.collect();
+            TscTimePoint.hardNow(); // Update the hard now value
+            lastGCStats = GC.stats();
+            DEBUG!"#GC collection cycle ended, freed %s bytes"(statsBefore.usedSize - lastGCStats.usedSize);
+        }
     }
 
     void performStopReactor() @nogc {
