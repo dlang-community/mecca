@@ -1,3 +1,4 @@
+Version 0.0.5
  * Start a change log
  * Fix incorrect condition in OnDemandWorker (resolves WEKAPP-65189)
  * Exceptions thrown by deferred thread don't change when rethrown in the
@@ -6,3 +7,11 @@
    variables defined on the same line;
  * TimerHandle.isValid resilient to ABA races
  * DIE throws AssertError in UTs (to allow assertThrows UTs)
+ * Allow as many idle handlers as you want (switch to GC allocation if too
+   many)
+ * Increase tolerance of time-sensitive UTs.
+ * Test fixtures: Make sure the destructor is run within the test
+ * Make the default idle handler (epoll) optional
+ * isReactorThread returns true only if reactor is running
+ * Compiles under DMD 2.081
+ * Lots and lots and lots of bug fixes
