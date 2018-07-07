@@ -392,12 +392,22 @@ unittest {
                 } else static if (is(Typ == enum)) {
                     auto tmp = enumToStr(val);
                     if (tmp is null) {
-                        advance(nogcFormat!"%s(%d)"(p, Typ.stringof, val));
+                        advance(p.nogcFormat!"%s(%d)"(Typ.stringof, val));
                     } else {
                         write(tmp);
                     }
+                } else static if (is(Typ == U[N], U, size_t N) || is(Typ == U[], U)) {
+                    write("[");
+                    foreach(i, x; val) {
+                        if(i > 0) {
+                            advance(p.nogcFormat!", %s"(x));
+                        } else {
+                            advance(p.nogcFormat!"%s"(x));
+                        }
+                    }
+                    write("]");
                 } else static if (isTypedIdentifier!Typ) {
-                    advance(nogcFormat!(Typ.name ~ "<%s>")(p, val.value));
+                    advance(p.nogcFormat!(Typ.name ~ "<%s>")(val.value));
                 } else static if (isPointer!Typ) {
                     advance(formatPtr(p, val));
                 } else static if (is(Typ : ulong)) {
@@ -413,7 +423,7 @@ unittest {
                         enum Prefix = (i == 0 ? "" : ", ") ~ Name ~ " = ";
                         write(Prefix);
                         // TODO: Extract entire FMT.STR hangling to nogcToString and use that:
-                        advance(nogcFormat!"%s"(p, field));
+                        advance(p.nogcFormat!"%s"(field));
                     }
                     write(")");
                 } else {
@@ -461,7 +471,7 @@ unittest {
 
 unittest {
     char[100] buf;
-    assert (nogcFormat!"hello %s %% world %d %x %p"(buf, "moshe", -567, 7, 7) == "hello moshe % world -567 0x7 0000000000000007");
+    assert (nogcFormat!"hello %s %s %% world %d %x %p"(buf, [1, 2, 3], "moshe", -567, 7, 7) == "hello [1, 2, 3] moshe % world -567 0x7 0000000000000007");
 }
 
 unittest {
