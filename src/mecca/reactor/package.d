@@ -1137,6 +1137,9 @@ public:
     }
 
     private TimedCallback* _registerRecurringTimer(Duration interval) nothrow @safe @nogc {
+        if( interval<optionsInEffect.timerGranularity )
+            interval = optionsInEffect.timerGranularity;
+
         TimedCallback* callback = allocTimedCallback();
         callback.intervalCycles = TscTimePoint.toCycles(interval);
         rescheduleRecurringTimer(callback);
