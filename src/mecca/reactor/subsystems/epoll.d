@@ -37,8 +37,9 @@ private extern(C) {
 
 struct Epoll {
     struct FdContext {
-        enum Type { None, FiberHandle, Callback, CallbackOneShot }
+        enum Type { None, FiberHandle, Callback, CallbackOneShot, NoiseReduction }
         Type type = Type.None;
+        int fdNum;
         union {
             FiberHandle fibHandle;
             void delegate(void* opaq) callback;
@@ -73,11 +74,12 @@ public:
         return epollFd.isValid;
     }
 
-    FdContext* registerFD(ref FD fd, bool alreadyNonBlocking = false) @trusted @nogc {
+    FdContext* registerFD(ref FD fd, bool alreadyNonBlocking = false) @safe @nogc {
         ASSERT!"registerFD called outside of an open reactor"( theReactor.isOpen );
         ASSERT!"registerFD called without first calling ReactorFD.openReactor"( epollFd.isValid );
         FdContext* ctx = fdPool.alloc();
         ctx.type = FdContext.Type.None;
+        ctx.fdNum = fd.fileNo;
         scope(failure) fdPool.release(ctx);
 
         if( !alreadyNonBlocking ) {
@@ -85,20 +87,14 @@ public:
             errnoEnforceNGC( res>=0, "Failed to set fd to non-blocking mode" );
         }
 
-        epoll_event event = void;
-        event.events = EPOLLIN | EPOLLOUT | EPOLLRDHUP | EPOLLET; // Register with Edge Trigger behavior
-        event.data.ptr = ctx;
-        int res = epollFd.osCall!epoll_ctl(EPOLL_CTL_ADD, fd.fileNo, &event);
-        errnoEnforceNGC( res>=0, "Adding fd to epoll failed" );
+        internalRegisterFD(fd.fileNo, ctx);
 
         return ctx;
     }
 
-    void deregisterFd(ref FD fd, FdContext* ctx) nothrow @trusted @nogc {
-        int res = epollFd.osCall!epoll_ctl(EPOLL_CTL_DEL, fd.fileNo, null);
-
-        // There is no reason for a registered FD to fail removal, so we assert instead of throwing
-        ASSERT!"Removing fd from epoll failed with errno %s"( res>=0, errno );
+    void deregisterFd(ref FD fd, FdContext* ctx) nothrow @safe @nogc {
+        if( ctx.type!=FdContext.Type.NoiseReduction )
+            internalDeregisterFD(fd.fileNo, ctx);
 
         fdPool.release(ctx);
     }
@@ -118,6 +114,11 @@ public:
         case Callback:
         case CallbackOneShot:
             ASSERT!"Cannot wait on FD %s already waiting on a callback"(false, fd);
+            break;
+        case NoiseReduction:
+            // FD was deregistered from the epoll because it was noisy. Reregister it.
+            internalRegisterFD(fd, ctx);
+            ctx.type = None;
             break;
         }
         ctx.type = FdContext.Type.FiberHandle;
@@ -179,7 +180,9 @@ public:
 
             with(FdContext.Type) final switch(ctx.type) {
             case None:
-                WARN!"epoll returned handle %s which is no longer valid"(ctx);
+                WARN!"epoll returned handle %s which is no longer valid: Disabling"(ctx);
+                internalDeregisterFD(ctx.fdNum, ctx);
+                ctx.type = NoiseReduction;
                 break;
             case FiberHandle:
                 theReactor.resumeFiber(ctx.fibHandle);
@@ -191,10 +194,29 @@ public:
                 ctx.type = None;
                 ctx.callback(ctx.opaq);
                 break;
+            case NoiseReduction:
+                ASSERT!"FD %s triggered epoll despite being disabled on ctx %s"(false, ctx.fdNum, ctx);
+                break;
             }
         }
 
         return true;
+    }
+
+private:
+    void internalRegisterFD(int fd, FdContext* ctx) @trusted @nogc {
+        epoll_event event = void;
+        event.events = EPOLLIN | EPOLLOUT | EPOLLRDHUP | EPOLLET; // Register with Edge Trigger behavior
+        event.data.ptr = ctx;
+        int res = epollFd.osCall!epoll_ctl(EPOLL_CTL_ADD, fd, &event);
+        errnoEnforceNGC( res>=0, "Adding fd to epoll failed" );
+    }
+
+    void internalDeregisterFD(int fd, FdContext* ctx) nothrow @trusted @nogc {
+        int res = epollFd.osCall!epoll_ctl(EPOLL_CTL_DEL, fd, null);
+
+        // There is no reason for a registered FD to fail removal, so we assert instead of throwing
+        ASSERT!"Removing fd from epoll failed with errno %s"( res>=0, errno );
     }
 }
 
