@@ -1,8 +1,11 @@
 language: d
 
 d:
-  # - ldc-1.8.0 # this has to be the first, because apparently we can't generated docs with other compilers
+  # LDC has to be the first, because apparently we can't generate docs with other compilers (?)
+  - ldc-beta
   - ldc
+  - ldc-1.8.0  # Weka's current compiler is based on this compiler
+  - dmd-beta
   - dmd
   - gdc
 
@@ -10,8 +13,17 @@ matrix:
   allow_failures:
     - d: gdc
 
+# Enable warnings and error on warnings and deprecations; we want the cleanest of code.
+env: DFLAGS="-w -de"
+
 script:
+  # Build and run the unittests:
   - dub run --config=mecca-ut
+  # Make sure the examples build without errors:
+  - dub build --config=lordcmd
+  - dub build --config=sleeper
+  - dub build --config=echo-server
+  
 
 # notifications:
     # email:
