@@ -20,7 +20,7 @@ script:
   # Build and run the unittests:
   - dub run --config=mecca-ut
   # Make sure the examples build without errors:
-  - dub build --config=lordcmd
+  - dub build --config=lordcmdr
   - dub build --config=sleeper
   - dub build --config=echo-server
   
