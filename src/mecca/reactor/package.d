@@ -1363,13 +1363,20 @@ public:
         if( theReactor._stopping )
             return;
 
+        DEBUG!"Requesting explicit GC collection"();
+        requestGCCollectionInternal(true);
+
+        if( waitForCollection ) {
+            DBG_ASSERT!"Special fiber must request synchronous GC collection"( !isSpecialFiber );
+            yield();
+        }
+    }
+
+    private void requestGCCollectionInternal(bool force) nothrow @safe @nogc {
         _gcCollectionNeeded = true;
-        _gcCollectionForce = true;
+        _gcCollectionForce = force;
         if( theReactor.currentFiberId != MainFiberId ) {
             theReactor.resumeSpecialFiber(theReactor.mainFiber);
-
-            if( waitForCollection )
-                yield();
         }
     }
 
@@ -1913,7 +1920,7 @@ private:
         scope(exit) _thisFiber = null;
 
         if( !optionsInEffect.utGcDisabled )
-            TimerHandle gcTimer = registerRecurringTimer!requestGCCollection(optionsInEffect.gcInterval, false);
+            TimerHandle gcTimer = registerRecurringTimer!requestGCCollectionInternal(optionsInEffect.gcInterval, false);
 
         try {
             while (!_stopping) {
@@ -1941,14 +1948,15 @@ private:
             optionsInEffect.gcRunThreshold==0 ||
             statsBefore.usedSize > lastGCStats.usedSize+optionsInEffect.gcRunThreshold )
         {
-            _gcCollectionForce = false;
-
             TscTimePoint.hardNow(); // Update the hard now value
-            DEBUG!"#GC collection cycle started"();
+            DEBUG!"#GC collection cycle started, %s bytes allocated since last run (forced %s)"(statsBefore.usedSize - lastGCStats.usedSize, _gcCollectionForce);
+
             GC.collect();
             TscTimePoint.hardNow(); // Update the hard now value
             lastGCStats = GC.stats();
             DEBUG!"#GC collection cycle ended, freed %s bytes"(statsBefore.usedSize - lastGCStats.usedSize);
+
+            _gcCollectionForce = false;
         }
     }
 
