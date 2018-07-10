@@ -5,6 +5,7 @@ module mecca.lib.net;
 
 import core.stdc.errno : errno, EINVAL;
 import core.sys.posix.sys.socket;
+public import core.sys.posix.sys.socket: AF_INET, AF_UNIX, AF_INET6, AF_UNSPEC;
 import core.sys.posix.netinet.in_;
 import core.sys.posix.sys.un;
 import core.sys.posix.netdb;
