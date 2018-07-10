@@ -201,6 +201,12 @@ private:
 __gshared ReactorSignal reactorSignal;
 
 unittest {
+    import std.process : environment;
+    if( environment.get("DETERMINSTIC_HINT", "0")=="1" ) {
+        META!"Skipping signals test due to environment request"();
+        return;
+    }
+
     Reactor.OpenOptions options;
 
     // Timing sensitive tests should not suffer GC collection in their middle
