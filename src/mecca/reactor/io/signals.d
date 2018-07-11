@@ -203,7 +203,11 @@ __gshared ReactorSignal reactorSignal;
 unittest {
     import std.process : environment;
     if( environment.get("DETERMINSTIC_HINT", "0")=="1" ) {
-        META!"Skipping signals test due to environment request"();
+        WARN!"Skipping signals test due to environment request"();
+        static if( !LogToConsole ) {
+            import std.stdio: stderr;
+            stderr.writeln( "Skipping signals test due to environment request" );
+        }
         return;
     }
 
