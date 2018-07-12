@@ -76,7 +76,6 @@ struct ReactorFiber {
         SLEEPING       = 0x08,  /// Fiber is sleeping on a sync object
         HAS_EXCEPTION  = 0x10,  /// Fiber has pending exception to be thrown in it
         EXCEPTION_BT   = 0x20,  /// Fiber exception needs to have fiber's backtrace
-        GC_ENABLED     = 0x40,  /// Fiber is allowed to perform GC without warning
         PRIORITY       = 0x80,  /// Fiber is a high priority one
     }
 
@@ -250,13 +249,23 @@ private:
     }
 
     void switchInto() @safe @nogc {
-        switchCurrExcBuf( &params.currExcBuf );
-        if (!flag!"SPECIAL") {
-            params.flsBlock.switchTo();
-        } else {
-            FLSArea.switchToNone();
-        }
-        logSwitchInto();
+        // We might have a cross fiber hook. If we do, we need to repeat this part several times
+        bool switched = false;
+        do {
+            switchCurrExcBuf( &params.currExcBuf );
+            if (!flag!"SPECIAL") {
+                params.flsBlock.switchTo();
+            } else {
+                FLSArea.switchToNone();
+            }
+            logSwitchInto();
+
+            if( theReactor.crossFiberHook !is null ) {
+                theReactor.performCrossFiberHook();
+            } else {
+                switched = true;
+            }
+        } while(!switched);
 
         if (flag!"HAS_EXCEPTION") {
             Throwable ex = params.currExcBuf.get();
@@ -530,6 +539,8 @@ private:
     posix_time.timer_t hangDetectorTimerId;
 
     SignalHandlerValue!TscTimePoint fiberRunStartTime;
+    void delegate() nothrow @nogc @safe crossFiberHook;
+    FiberHandle crossFiberHookCaller;   // FiberHandle to return to after performing the hook
 
     alias TimedCallbackGeneration = TypedIdentifier!("TimedCallbackGeneration", ulong, ulong.max, ulong.max);
     struct TimedCallback {
@@ -1541,43 +1552,47 @@ private:
 
             assert (!scheduledFibers.empty, "scheduledList is empty");
 
-            auto currentFiber = thisFiber;
-            if( currentFiber.state==FiberState.Running )
-                currentFiber.state = FiberState.Sleeping;
+            if( thisFiber.state==FiberState.Running )
+                thisFiber.state = FiberState.Sleeping;
             else {
-                assertEQ( currentFiber.state, FiberState.Done, "Fiber is in incorrect state" );
-                currentFiber.state = FiberState.None;
+                assertEQ( thisFiber.state, FiberState.Done, "Fiber is in incorrect state" );
+                thisFiber.state = FiberState.None;
             }
 
-            _thisFiber = scheduledFibers.popHead();
+            auto nextFiber = scheduledFibers.popHead();
 
-            assert (thisFiber.flag!"SCHEDULED");
-            thisFiber.flag!"SCHEDULED" = false;
+            ASSERT!"Next fiber %s is not marked scheduled" (nextFiber.flag!"SCHEDULED", nextFiber.identity);
+            nextFiber.flag!"SCHEDULED" = false;
             DBG_ASSERT!"%s is in state %s, should be Sleeping or Starting"(
-                    _thisFiber.state==FiberState.Sleeping || _thisFiber.state==FiberState.Starting,
-                    _thisFiber.identity, _thisFiber.state);
-            thisFiber.state = FiberState.Running;
+                    nextFiber.state==FiberState.Sleeping || nextFiber.state==FiberState.Starting,
+                    nextFiber.identity, nextFiber.state);
+            nextFiber.state = FiberState.Running;
 
-            // DEBUG!"Switching %s => %s"(currentFiber.identity, thisFiber.identity);
-            if (currentFiber !is thisFiber) {
+            // DEBUG!"Switching %s => %s"(thisFiber.identity, nextFiber.identity);
+            if (thisFiber !is nextFiber) {
                 // make the switch
-                currentFiber.switchTo(thisFiber);
+                switchTo(nextFiber);
             }
         }
+    }
 
-        // in destination fiber
-        {
-            /+
-               Important note:
-               Any code you place here *must* be replicated at the beginning of ReactorFiber.wrapper. Fibers launched
-               for the first time do not return from `switchTo` above.
-             +/
+    void switchTo(ReactorFiber* nextFiber) @safe @nogc {
+        auto currentFiber = thisFiber;
+        _thisFiber = nextFiber;
 
-            // DEBUG!"SWITCH into %s"(thisFiber.identity);
+        currentFiber.switchTo(nextFiber);
 
-            // This might throw, so it needs to be the last thing we do
-            thisFiber.switchInto();
-        }
+        // After returning
+        /+
+          Important note:
+          Any code you place here *must* be replicated at the beginning of ReactorFiber.wrapper. Fibers launched
+          for the first time do not return from `switchTo` above.
+         +/
+
+        // DEBUG!"SWITCH into %s"(thisFiber.identity);
+
+        // This might throw, so it needs to be the last thing we do
+        thisFiber.switchInto();
     }
 
     bool fiberTerminated() nothrow {
@@ -1866,7 +1881,7 @@ private:
             break;
         }
 
-        ERROR!"#OSSIGNAL %s"(faultName);
+        META!"#OSSIGNAL %s"(faultName);
         dumpStackTrace();
         flushLog(); // There is a certain chance the following lines themselves fault. Flush the logs now so that we have something
 
@@ -1989,6 +2004,55 @@ private:
         fib.params.fiberPtr = dlg.ptr;
     }
 
+    void performCrossFiberHook() @safe @nogc {
+        ReactorFiber* callingFiber;
+
+        // Perform the hook under critical section
+        with(criticalSection()) {
+            scope(failure) ASSERT!"Cross fiber hook threw"(false);
+            crossFiberHook();
+
+            callingFiber = crossFiberHookCaller.get();
+            ASSERT!"Fiber invoking hook %s invalidated by hook"(callingFiber !is null, crossFiberHookCaller.identity);
+
+            // Clear the hooks so they don't get called when returning to the hooker fiber
+            crossFiberHook = null;
+            crossFiberHookCaller.reset();
+        }
+
+        switchTo(callingFiber);
+    }
+
+    void callInFiber(FiberHandle fh, scope void delegate() nothrow @safe @nogc callback) @trusted @nogc {
+        ASSERT!"Cannot set hook when one is already set"( crossFiberHook is null && !crossFiberHookCaller.isSet );
+        ReactorFiber* fib = fh.get();
+        if( fib is null )
+            // Fiber isn't valid - don't do anything
+            return;
+
+        if( fib is thisFiber ) {
+            // We were asked to switch to ourselves. Just run the callback
+            auto critSect = criticalSection();
+            callback();
+
+            return;
+        }
+
+        with(FiberState) {
+            ASSERT!"Trying to dump stack trace of %s which is in invalid state %s"(
+                fib.state==Starting || fib.state==Sleeping, fib.identity, fib.state );
+        }
+
+        // We are storing a scoped delegate inside a long living pointer, but we make sure to finish using it before exiting.
+        crossFiberHook = callback;
+        crossFiberHookCaller = currentFiberHandle;
+
+        switchTo(fib);
+
+        DBG_ASSERT!"crossFiberHookCaller not cleared after call"( !crossFiberHookCaller.isSet );
+        DBG_ASSERT!"crossFiberHook not cleared after call"( crossFiberHook is null );
+    }
+
     import std.string : format;
     enum string decl_log_as(string logLevel) = q{
         @notrace public void %1$s_AS(
@@ -2013,6 +2077,19 @@ private:
     mixin(decl_log_as!"WARN");
     mixin(decl_log_as!"ERROR");
     mixin(decl_log_as!"META");
+
+    /**
+     * Log the stack trace of a given fiber.
+     *
+     * The fiber should be in a valid state. This is the equivalent to the fiber itself running `dumpStackTrace`.
+     */
+    @notrace LOG_TRACEBACK_AS(FiberHandle fh, string text, string file = __FILE_FULL_PATH__, size_t line = __LINE__)
+            @safe @nogc
+    {
+        callInFiber(fh, {
+                dumpStackTrace(text, file, line);
+            });
+    }
 }
 
 // Expose the conversion to/from ReactorFiber only to the reactor package
@@ -2504,5 +2581,23 @@ unittest {
             DEBUG!"Sleeping for 1ms"();
             theReactor.sleep(1.msecs);
             DEBUG!"Woke up from sleep"();
+        });
+}
+
+unittest {
+    testWithReactor({
+            static void fiber() {
+                theReactor.sleep(1.seconds);
+            }
+
+            auto fh = theReactor.spawnFiber!fiber();
+
+            DEBUG!"Starting test"();
+            foreach(i; 0..4) {
+                theReactor.LOG_TRACEBACK_AS(fh, "test");
+                DEBUG!"Back in fiber"();
+                theReactor.yield();
+            }
+            DEBUG!"Test ended"();
         });
 }
