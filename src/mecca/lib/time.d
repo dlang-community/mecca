@@ -289,7 +289,7 @@ struct Timeout {
     /**
      * Report how much time until the timeout expires
      */
-    @notrace @property Duration remaining(TscTimePoint now = TscTimePoint.now) const @safe nothrow {
+    @notrace @property Duration remaining(TscTimePoint now = TscTimePoint.now) const @safe @nogc nothrow {
         if (expiry == TscTimePoint.max) {
             return Duration.max;
         }
