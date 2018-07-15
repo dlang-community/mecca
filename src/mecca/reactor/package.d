@@ -2083,8 +2083,8 @@ private:
      *
      * The fiber should be in a valid state. This is the equivalent to the fiber itself running `dumpStackTrace`.
      */
-    @notrace LOG_TRACEBACK_AS(FiberHandle fh, string text, string file = __FILE_FULL_PATH__, size_t line = __LINE__)
-            @safe @nogc
+    @notrace public void LOG_TRACEBACK_AS(
+            FiberHandle fh, string text, string file = __FILE_FULL_PATH__, size_t line = __LINE__) @safe @nogc
     {
         callInFiber(fh, {
                 dumpStackTrace(text, file, line);
