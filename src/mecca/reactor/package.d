@@ -312,12 +312,19 @@ public:
         return get() !is null;
     }
 
-    /// returns the FiberId described by the handle. If the handle is no longer valid, will return FiberId.invalid
+    /// the `FiberId` described by the handle. If the handle is no longer valid, will return FiberId.invalid
+    ///
+    /// Use `getFiberId` if you want the `FiberId` of a no-longer valid handle.
     @property FiberId fiberId() const nothrow @safe @nogc {
         if( isValid )
             return identity;
 
         return FiberId.invalid;
+    }
+
+    /// returns the original `FiberId` set for the handle, whether still valid or not
+    FiberId getFiberId() const nothrow @safe @nogc pure {
+        return identity;
     }
 
     /// Reset the handle to uninitialized state
@@ -516,6 +523,7 @@ private:
     bool _stopping;
     bool _gcCollectionNeeded;
     bool _gcCollectionForce;
+    bool _hangDetectorEnabled;
     ubyte maxNumFibersBits;     // Number of bits sufficient to represent the maximal number of fibers
     FiberIdx.UnderlyingType maxNumFibersMask;
     int reactorReturn;
@@ -1391,6 +1399,20 @@ public:
         }
     }
 
+    /// Property for disabling/enabling the hang detector.
+    ///
+    /// The hang detector must be configured during `setup` by setting `OpenOptions.hangDetectorTimeout`.
+    @property bool hangDetectorEnabled() pure const nothrow @safe @nogc {
+        return _hangDetectorEnabled;
+    }
+
+    /// ditto
+    @property void hangDetectorEnabled(bool enabled) pure nothrow @safe @nogc {
+        ASSERT!"Cannot enable an unconfigured hang detector"(
+                !enabled || optionsInEffect.hangDetectorTimeout !is Duration.zero);
+        _hangDetectorEnabled = enabled;
+    }
+
     /**
      * Set a fiber name
      *
@@ -1831,6 +1853,9 @@ private:
     }
 
     extern(C) static void hangDetectorHandler(int signum, siginfo_t* info, void *ctx) nothrow @trusted @nogc {
+        if( !theReactor._hangDetectorEnabled )
+            return;
+
         auto now = TscTimePoint.hardNow();
         auto delay = now - theReactor.fiberRunStartTime;
 
@@ -1923,12 +1948,18 @@ private:
         }
 
         // Don't register the hang detector until after we've finished running the GC
-        if( optionsInEffect.hangDetectorTimeout !is Duration.zero )
+        if( optionsInEffect.hangDetectorTimeout !is Duration.zero ) {
             registerHangDetector();
+            _hangDetectorEnabled = true;
+        } else {
+            _hangDetectorEnabled = false;
+        }
 
         scope(exit) {
             if( optionsInEffect.hangDetectorTimeout !is Duration.zero )
                 deregisterHangDetector();
+
+            _hangDetectorEnabled = false;
         }
 
         _thisFiber = mainFiber;
