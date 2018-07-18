@@ -183,6 +183,17 @@ align(1):
         _state = newState;
     }
 
+    @property bool isAlive() const pure nothrow @safe @nogc {
+        with(FiberState) switch( state ) {
+        case None:
+            return false;
+        case Done:
+            assert(false, "Fiber is in an invalid state Done");
+        default:
+            return true;
+        }
+    }
+
 private:
     @notrace void wrapper() nothrow {
         bool skipBody;
@@ -2011,7 +2022,7 @@ private:
 
         Throwable reactorExit = mkEx!ReactorExit("Reactor is quitting");
         foreach(ref fiber; allFibers[1..$]) { // All fibers but main
-            if( fiber.state == FiberState.Sleeping ) {
+            if( fiber.isAlive ) {
                 fiber.flag!"SPECIAL" = false;
                 throwInFiber(FiberHandle(&fiber), reactorExit);
             }
@@ -2183,13 +2194,14 @@ version (unittest) {
         bool delegateReturned = false;
 
         void wrapper() {
+            int ret;
             try {
-                int ret = dg();
+                ret = dg();
 
                 delegateReturned = true;
-                theReactor.stop( ret );
             } catch(ReactorExit ex) {
-                // Do nothing. It's just stop being called
+                LOG_EXCEPTION(ex);
+                assert(false, "testWithReactor's body called theReactor.stop explicitly");
             } catch(FiberInterrupt ex) {
                 LOG_EXCEPTION(ex);
                 theReactor.stop();
@@ -2199,6 +2211,8 @@ version (unittest) {
                 ERROR!"Test terminated abnormally"();
                 throw ex;
             }
+
+            theReactor.stop( ret );
         }
 
         theReactor.spawnFiber(&wrapper);
