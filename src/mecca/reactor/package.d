@@ -2054,7 +2054,7 @@ private:
         switchTo(callingFiber);
     }
 
-    void callInFiber(FiberHandle fh, scope void delegate() nothrow @safe @nogc callback) @trusted @nogc {
+    @notrace void callInFiber(FiberHandle fh, scope void delegate() nothrow @safe @nogc callback) @trusted @nogc {
         ASSERT!"Cannot set hook when one is already set"( crossFiberHook is null && !crossFiberHookCaller.isSet );
         ReactorFiber* fib = fh.get();
         if( fib is null )
@@ -2076,7 +2076,7 @@ private:
 
         // We are storing a scoped delegate inside a long living pointer, but we make sure to finish using it before exiting.
         crossFiberHook = callback;
-        crossFiberHookCaller = currentFiberHandle;
+        crossFiberHookCaller = FiberHandle(thisFiber); // Don't call currentFiber, as we might be a special fiber
 
         switchTo(fib);
 
