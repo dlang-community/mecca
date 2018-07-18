@@ -16,6 +16,11 @@ import mecca.reactor.sync.event: Signal;
 /// A fiber spawning delegate must be of this type
 alias SpawnFiberDlg = FiberHandle delegate(void delegate() dlg) nothrow @safe @nogc;
 
+/// Exception thrown to abort a cancelled worker
+class WorkerCancelled : FiberInterrupt {
+    mixin ExceptionBody!"OnDemandWorker task cancelled";
+}
+
 /**
 Run a job in a fiber, making sure never to run two simultaneously.
 
@@ -27,9 +32,6 @@ launched to carry out the job. If the job is already running, it will trigger ag
 */
 struct OnDemandWorkerFunc(alias F) {
 private:
-    static class JobCancelled : FiberInterrupt {
-        mixin ExceptionBody!"OnDemandWorker task cancelled";
-    }
 
     SpawnFiberDlg spawnFiber;
     Signal done;
@@ -142,7 +144,7 @@ public:
         if( !currentOnly )
             cancelAll = true;
 
-        theReactor.throwInFiber!JobCancelled(fiberHandle);
+        theReactor.throwInFiber!WorkerCancelled(fiberHandle);
     }
 
     /** Disable the worker from receiving new jobs.
