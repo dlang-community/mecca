@@ -6,6 +6,7 @@
     "description" : "Mecca - Weka's reactor and infrastructure library",
     "copyright": "Copyright © 2017-2018, Weka.IO Ltd.",
     "license": "Boost",
+    "versions-osx": ["Darwin"],
     "dependencies" : {},
     "configurations": [
         {
