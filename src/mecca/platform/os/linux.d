@@ -551,3 +551,5 @@ mixin template hookSyscall(alias F, Syscall nr, alias traceFunc, SyscallTracePoi
         assert (hitPreFunc);
     }
 }+/
+
+public import core.sys.linux.sys.mman : MAP_POPULATE;

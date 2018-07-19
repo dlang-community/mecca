@@ -4,5 +4,7 @@ module mecca.platform.os;
 
 version (linux)
     public import mecca.platform.os.linux;
+else version (Darwin)
+    public import mecca.platform.os.darwin;
 else
     static assert("platform not supported");
