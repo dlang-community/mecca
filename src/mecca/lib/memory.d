@@ -13,7 +13,7 @@ import core.stdc.errno;
 import core.sys.posix.fcntl;
 import core.sys.posix.sys.mman;
 import core.sys.posix.unistd;
-import core.sys.linux.sys.mman: MAP_ANONYMOUS, MAP_POPULATE, mremap, MREMAP_MAYMOVE;
+import core.sys.linux.sys.mman: MAP_ANON, MAP_POPULATE, mremap, MREMAP_MAYMOVE;
 
 import mecca.lib.exception;
 import mecca.lib.reflection: setToInit, abiSignatureOf, as;
@@ -134,7 +134,7 @@ private:
 
         // initial allocation - mmap
         if (closed) {
-            ptr = mmap(null, newCapacity, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE, -1, 0);
+            ptr = mmap(null, newCapacity, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON | MAP_POPULATE, -1, 0);
             enforceFmt!ErrnoException(ptr != MAP_FAILED, "mmap(%s bytes) failed", newCapacity);
         }
 
