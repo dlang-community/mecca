@@ -7,7 +7,7 @@ import core.thread;
 import core.sys.posix.signal;
 import std.exception;
 
-import mecca.platform.linux: gettid, OSSignal;
+import mecca.platform.os: gettid, OSSignal;
 import mecca.lib.reflection;
 import mecca.lib.exception;
 import mecca.lib.time;
