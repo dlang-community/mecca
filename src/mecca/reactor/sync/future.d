@@ -96,27 +96,27 @@ public:
         // DDOXBUG this documentation will not be picked due to the static if
 
         /// Sets the future with no value
-        @notrace void set() {
-            enforce(!isSet, "Future already set");
-            assert(_exBuf.get is null, "ex is set");
+        @notrace void set() @nogc @safe nothrow {
+            ASSERT!"Future already set"(!isSet);
+            DBG_ASSERT!"Future exception already set"(_exBuf.get is null);
             isSet = true;
             suspender.signal();
         }
     }
     else {
         /// Sets the future with value
-        @notrace void set(const ref T value) {
-            enforce(!isSet, "Future already set");
-            assert(_exBuf.get is null, "ex is set");
+        @notrace void set(const ref T value) @nogc @safe nothrow {
+            ASSERT!"Future already set"(!isSet);
+            DBG_ASSERT!"Future exception already set"(_exBuf.get is null);
             isSet = true;
             _value = value;
             suspender.signal();
         }
 
         /// ditto
-        @notrace void set(T value) {
-            enforce(!isSet, "Future already set");
-            assert(_exBuf.get() is null, "ex is set");
+        @notrace void set(T value) @nogc @safe nothrow {
+            ASSERT!"Future already set"(!isSet);
+            DBG_ASSERT!"Future exception already set"(_exBuf.get is null);
             isSet = true;
             _value = value;
             suspender.signal();

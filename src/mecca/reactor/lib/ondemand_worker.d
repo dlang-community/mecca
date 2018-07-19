@@ -218,12 +218,12 @@ struct OnDemandWorkerDelegate {
     OnDemandWorkerFunc!wrapper onDemandWorkerFunc;
 
     /// Construct a worker
-    this(void delegate() dg, SpawnFiberDlg spawnFiberDlg = null) {
+    this(void delegate() dg, SpawnFiberDlg spawnFiberDlg = null) @nogc @safe nothrow {
         import mecca.lib.exception: DBG_ASSERT;
         onDemandWorkerFunc = OnDemandWorkerFunc!wrapper(dg, spawnFiberDlg);
     }
 
-    this(void delegate() dg, FiberGroup* group) {
+    this(void delegate() dg, FiberGroup* group) @nogc @safe nothrow {
         ASSERT!"The fiber group must not be null"(group !is null);
         this(dg, &group.spawnFiber);
     }
