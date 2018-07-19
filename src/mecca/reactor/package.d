@@ -44,7 +44,7 @@ alias TimerHandle = Reactor.TimerHandle;
 alias FiberIncarnation = ushort;
 
 // The slot number in the stacks for the fiber
-private alias FiberIdx = TypedIdentifier!("FiberIdx", ushort, ushort.max, ushort.max);
+private alias FiberIdx = AlgebraicTypedIdentifier!("FiberIdx", ushort, ushort.max, ushort.max);
 
 /// Track the fiber's state
 enum FiberState : ubyte {
@@ -388,7 +388,7 @@ struct Reactor {
     /// The options control aspects of the reactor's operation
     struct OpenOptions {
         /// Maximum number of fibers.
-        uint     numFibers = 256;
+        ushort   numFibers = 256;
         /// Stack size of each fiber (except the main fiber). The reactor will allocate numFiber*fiberStackSize during startup
         size_t   fiberStackSize = 32*KB;
         /**
@@ -1422,6 +1422,55 @@ public:
         ASSERT!"Cannot enable an unconfigured hang detector"(
                 !enabled || optionsInEffect.hangDetectorTimeout !is Duration.zero);
         _hangDetectorEnabled = enabled;
+    }
+
+    /// Iterate all fibers
+    auto iterateFibers() const nothrow @safe @nogc {
+        static struct FibersIterator {
+        private:
+            uint numLivingFibers;
+            FiberIdx idx = NUM_SPECIAL_FIBERS;
+            ReturnType!(Reactor.criticalSection) criticalSection;
+
+            this(uint numFibers) {
+                numLivingFibers = numFibers;
+                this.criticalSection = theReactor.criticalSection();
+
+                if( numLivingFibers>0 ) {
+                    findNextFiber();
+                }
+            }
+
+            void findNextFiber() @safe @nogc nothrow {
+                while( ! to!(ReactorFiber*)(idx).isAlive ) {
+                    idx++;
+                    DBG_ASSERT!"Asked for next living fiber but none was found"(
+                            idx<theReactor.optionsInEffect.numFibers);
+                }
+            }
+        public:
+            @property bool empty() const pure @safe @nogc nothrow {
+                return numLivingFibers==0;
+            }
+
+            void popFront() @safe @nogc nothrow {
+                ASSERT!"Popping fiber from empty list"(!empty);
+                numLivingFibers--;
+                idx++;
+
+                if( !empty )
+                    findNextFiber;
+            }
+
+            @property FiberHandle front() @safe @nogc nothrow {
+                auto fib = &theReactor.allFibers[idx.value];
+                DBG_ASSERT!"Scanned fiber %s is not alive"(fib.isAlive, idx);
+
+                return FiberHandle(fib);
+            }
+        }
+
+        return FibersIterator(cast(uint) reactorStats.numUsedFibers);
     }
 
     /**
