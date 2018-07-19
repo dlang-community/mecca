@@ -29,7 +29,7 @@ import mecca.lib.time_queue;
 import mecca.lib.typedid;
 import mecca.log;
 import mecca.log.impl;
-import mecca.platform.linux;
+import mecca.platform.os;
 import mecca.reactor.fiber_group;
 import mecca.reactor.fls;
 import mecca.reactor.impl.fibril: Fibril;

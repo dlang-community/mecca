@@ -1,5 +1,5 @@
 /// Linux platform specific functions
-module mecca.platform.linux;
+module mecca.platform.os.linux;
 
 // Licensed under the Boost license. Full copyright information in the AUTHORS file
 
@@ -488,7 +488,7 @@ extern(C) nothrow /*@nogc*/ {
  *
  *     return ret;
  * }
- * 
+ *
  * mixin InterceptCall!socket;
  * ---
  */
