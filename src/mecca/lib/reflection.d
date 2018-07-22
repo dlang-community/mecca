@@ -325,27 +325,27 @@ unittest {
     static assert( !__traits(compiles, c.set(&func, var)) );
 }
 
-void setToInit(T)(ref T val) nothrow @trusted @nogc if (!isPointer!T) {
+void setToInit(bool allowDestructors = false, T)(ref T val) nothrow @trusted @nogc if (!isPointer!T) {
     auto initBuf = cast(ubyte[])typeid(T).initializer();
     if (initBuf.ptr is null) {
-        val.asBytes[] = 0;
+        val.asBytes!allowDestructors[] = 0;
     }
     else {
         // duplicate static arrays to work around https://issues.dlang.org/show_bug.cgi?id=16394
         static if (isStaticArray!T) {
             foreach(ref e; val) {
-                e.asBytes[] = initBuf;
+                e.asBytes!allowDestructors[] = initBuf;
             }
         }
         else {
-            val.asBytes[] = initBuf;
+            val.asBytes!allowDestructors[] = initBuf;
         }
     }
 }
 
-void setToInit(T)(T* val) nothrow @nogc if (!isPointer!T) {
+void setToInit(bool allowDestructors = false, T)(T* val) nothrow @nogc if (!isPointer!T) {
     pragma(inline, true);
-    setToInit(*val);
+    setToInit!allowDestructors(*val);
 }
 
 void copyTo(T)(const ref T src, ref T dst) nothrow @nogc {
@@ -414,9 +414,10 @@ unittest {
     }
 }
 
-ubyte[] asBytes(T)(const ref T val) nothrow @nogc if (!isPointer!T) {
+ubyte[] asBytes(bool disableDestructorsAssert = false, T)(const ref T val) nothrow @nogc if (!isPointer!T) {
     pragma(inline, true);
-    static assert( !hasElaborateDestructor!T, "Cannot convert to bytes a type with destructor" );
+    static assert( disableDestructorsAssert || !hasElaborateDestructor!T,
+            "Cannot convert to bytes a type with destructor" );
     return (cast(ubyte*)&val)[0 .. T.sizeof];
 }
 
