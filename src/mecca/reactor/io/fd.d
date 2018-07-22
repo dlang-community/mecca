@@ -724,7 +724,7 @@ public:
     /// Cleanly closes an FD
     void close() nothrow @safe @nogc {
         if( fd.isValid ) {
-            assert(ctx !is null);
+            DBG_ASSERT!"%s Asked to close fd %s with null context"(ctx !is null, &this, fd.fileNo);
 
             epoller.deregisterFd( fd, ctx );
 

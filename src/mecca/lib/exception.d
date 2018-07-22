@@ -339,16 +339,23 @@ Throwable setEx(Throwable ex, bool setTraceback = false) nothrow @safe @nogc {
     return _currExcBuf.set(ex, setTraceback);
 }
 
-RangeError rangeError(K, string file=__FILE_FULL_PATH__, size_t line=__LINE__)(K key, string msg = "Index/key not found") {
+class RangeErrorWithReason : Error {
+    mixin ExceptionBody;
+}
+
+RangeErrorWithReason rangeError(K, string file=__FILE_FULL_PATH__, string mod=__MODULE__, size_t line=__LINE__)
+    (K key, string msg = "Index/key not found")
+{
     version(LDC)
             // Must inline because of __FILE_FULL_PATH__ as template parameter. https://github.com/ldc-developers/ldc/issues/1703
             pragma(inline, true);
 
-    static if ( __traits(compiles, sformat(null, "%s", key))) {
-        return mkExFmt!("%s: %s", RangeError, file, line)(msg, key);
+    import std.format : format;
+    static if ( __traits(compiles, format("%s", key))) {
+        return mkExFmt!("%s: %s", RangeErrorWithReason, file, line)(msg, key);
     }
     else {
-        return mkExFmt!("%s: %s", RangeError, file, line)(msg, K.stringof);
+        return mkExFmt!("%s: %s", RangeErrorWithReason, file, line)(msg, K.stringof);
     }
 }
 
@@ -478,7 +485,7 @@ void ABORT(string msg, string file = __FILE_FULL_PATH__, size_t line = __LINE__)
     }
 
     scope f = () {
-        META!("ASSERT " ~ fmt ~ " at %s:%s")(args, file, line);
+        META!("ASSERT: " ~ fmt, file, mod, line)(args);
         static if( !LogToConsole ) {
             // Also log to stderr, as the logger doesn't do that for us.
             import std.stdio: stderr;
