@@ -38,7 +38,7 @@ private extern(C) {
 
 struct Epoll {
     static struct FdContext {
-        enum Type { None, FiberHandle, Callback, CallbackOneShot, NoiseReduction }
+        enum Type { None, FiberHandle, Callback, CallbackOneShot }
 
         static struct State {
             Type type = Type.None;
@@ -100,12 +100,7 @@ public:
     }
 
     void deregisterFd(ref FD fd, FdContext* ctx) nothrow @safe @nogc {
-        with(FdContext) if(
-                ctx.states[Direction.Read].type!=Type.NoiseReduction &&
-                ctx.states[Direction.Write].type!=Type.NoiseReduction )
-        {
-            internalDeregisterFD(fd.fileNo, ctx);
-        }
+        internalDeregisterFD(fd.fileNo, ctx);
 
         fdPool.release(ctx);
     }
@@ -126,11 +121,6 @@ public:
         case Callback:
         case CallbackOneShot:
             ASSERT!"Cannot wait on FD %s direction %s already waiting on a callback"(false, fd, dir);
-            break;
-        case NoiseReduction:
-            // FD was deregistered from the epoll because it was noisy. Reregister it.
-            internalRegisterFD(fd, ctx, dir);
-            ctxState.type = None;
             break;
         }
         ctxState.type = FdContext.Type.FiberHandle;
@@ -214,8 +204,6 @@ public:
                 with(FdContext.Type) final switch(state.type) {
                 case None:
                     WARN!"epoll returned handle %s which is no longer valid: Disabling"(ctx);
-                    internalDeregisterFD(ctx.fdNum, ctx);
-                    state.type = NoiseReduction;
                     break;
                 case FiberHandle:
                     theReactor.resumeFiber(state.fibHandle);
@@ -226,9 +214,6 @@ public:
                 case CallbackOneShot:
                     state.type = None;
                     state.callback(state.opaq);
-                    break;
-                case NoiseReduction:
-                    ASSERT!"FD %s triggered epoll despite being disabled on ctx %s"(false, ctx.fdNum, ctx);
                     break;
                 }
             }
