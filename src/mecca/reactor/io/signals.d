@@ -10,13 +10,13 @@ public import core.sys.linux.sys.signalfd : signalfd_siginfo;
 
 import mecca.lib.exception;
 import mecca.lib.reflection;
-import mecca.lib.time;
+import mecca.lib.time : Timeout;
 import mecca.log;
 public import mecca.platform.linux : OSSignal;
 import mecca.platform.linux;
 import mecca.reactor.io.fd;
 import mecca.reactor;
-import mecca.reactor.subsystems.epoll;
+import mecca.reactor.subsystems.poller;
 
 // Definitions missing from the phobos headers or lacking nothrow @nogc
 extern(C) private nothrow @trusted @nogc {
@@ -77,7 +77,7 @@ public:
      * Must be called after the reactor is open, and also after ReactorFS.openReactor has already been called.
      */
     void _open() @safe @nogc {
-        ASSERT!"ReactorSignal.open called without first calling ReactorFD.openReactor"(epoller.isOpen);
+        ASSERT!"ReactorSignal.open called without first calling ReactorFD.openReactor"(poller.isOpen);
         sigemptyset(signals);
         handlers[] = null;
         int fd = signalfd(-1, signals, SignalFdFlags);
@@ -166,7 +166,8 @@ private:
             while(true) {
                 // XXX Consider placing the array in the struct, so it's not on the stack
                 signalfd_siginfo[BATCH_SIZE] info;
-                ssize_t readSize = signalFd.blockingCall!(read)(&info, typeof(info).sizeof, Timeout.infinite);
+                ssize_t readSize = signalFd.blockingCall!(read)(
+                        Direction.Read, &info, typeof(info).sizeof, Timeout.infinite);
                 ASSERT!"read from signalfd returned misaligned size %s, expected a multiple of %s"(
                         (readSize%signalfd_siginfo.sizeof) == 0, readSize, signalfd_siginfo.sizeof);
 

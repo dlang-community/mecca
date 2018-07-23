@@ -18,9 +18,9 @@ import mecca.lib.exception;
 import mecca.lib.io;
 public import mecca.lib.net;
 import mecca.lib.string;
-import mecca.lib.time;
+import mecca.lib.time : Timeout, msecs;
 import mecca.log;
-import mecca.reactor.subsystems.epoll;
+import mecca.reactor.subsystems.poller;
 
 enum LISTEN_BACKLOG = 10;
 
@@ -187,7 +187,7 @@ struct ConnectedDatagramSocket {
      */
     @notrace ConnectedDatagramSocket accept(out SockAddr clientAddr, Timeout timeout = Timeout.infinite) @trusted @nogc {
         socklen_t len = SockAddr.sizeof;
-        int clientFd = sock.blockingCall!(.accept)(&clientAddr.base, &len, timeout);
+        int clientFd = sock.blockingCall!(.accept)(Direction.Read, &clientAddr.base, &len, timeout);
 
         auto clientSock = ConnectedDatagramSocket( Socket( ReactorFD( clientFd ) ) );
 
@@ -318,7 +318,7 @@ struct ConnectedSocket {
             @trusted @nogc
     {
         socklen_t len = SockAddr.sizeof;
-        int clientFd = sock.blockingCall!(.accept)(&clientAddr.base, &len, timeout);
+        int clientFd = sock.blockingCall!(.accept)(Direction.Read, &clientAddr.base, &len, timeout);
 
         auto clientSock = ConnectedSocket( Socket( ReactorFD( clientFd ) ) );
         if( nodelay && (clientAddr.family == AF_INET || clientAddr.family == AF_INET6) )
@@ -346,7 +346,7 @@ private void connectHelper(ref Socket sock, SockAddr sa, Timeout timeout) @trust
     errnoEnforceNGC(result==0 || errno == EINPROGRESS, "Connect failed");
 
     // Wait for connect to finish
-    epoller.waitForEvent(sock.ctx, sock.get.fileNo, timeout);
+    poller.waitForEvent(sock.ctx, sock.get.fileNo, Direction.Write, timeout);
 
     socklen_t reslen = result.sizeof;
     sock.osCallErrno!(.getsockopt)( SOL_SOCKET, SO_ERROR, &result, &reslen);
@@ -369,7 +369,7 @@ struct Socket {
      * send data over a connected socket
      */
     @notrace ssize_t send(const void[] data, int flags=0, Timeout timeout = Timeout.infinite) @trusted @nogc {
-        return fd.blockingCall!(.send)(data.ptr, data.length, flags, timeout);
+        return fd.blockingCall!(.send)(Direction.Write, data.ptr, data.length, flags, timeout);
     }
 
     /// ditto
@@ -397,7 +397,8 @@ struct Socket {
     ssize_t sendTo(const void[] data, int flags, SockAddr destAddr, Timeout timeout = Timeout.infinite)
             @trusted @nogc
     {
-        return fd.blockingCall!(.sendto)(data.ptr, data.length, flags, &destAddr.base, SockAddr.sizeof, timeout); 
+        return fd.blockingCall!(.sendto)(
+                Direction.Write, data.ptr, data.length, flags, &destAddr.base, SockAddr.sizeof, timeout); 
     }
 
     /// ditto
@@ -427,7 +428,7 @@ struct Socket {
      * Implementation of sendmsg.
      */
     ssize_t sendmsg(const ref msghdr msg, int flags, Timeout timeout = Timeout.infinite) @trusted @nogc {
-        return fd.blockingCall!(.sendmsg)(&msg, flags, timeout);
+        return fd.blockingCall!(.sendmsg)(Direction.Write, &msg, flags, timeout);
     }
 
     /**
@@ -449,7 +450,7 @@ struct Socket {
      * Will throw TimeoutExpired if the timeout expired
      */
     @notrace ssize_t recv(void[] buffer, int flags, Timeout timeout = Timeout.infinite) @trusted @nogc {
-        return fd.blockingCall!(.recv)(buffer.ptr, buffer.length, flags, timeout);
+        return fd.blockingCall!(.recv)(Direction.Read, buffer.ptr, buffer.length, flags, timeout);
     }
 
     /**
@@ -485,7 +486,7 @@ struct Socket {
     ssize_t recvFrom(void[] buffer, int flags, out SockAddr srcAddr, Timeout timeout = Timeout.infinite) @trusted @nogc
     {
         socklen_t addrLen = SockAddr.sizeof;
-        return fd.blockingCall!(.recvfrom)(buffer.ptr, buffer.length, flags, &srcAddr.base, &addrLen, timeout);
+        return fd.blockingCall!(.recvfrom)(Direction.Read, buffer.ptr, buffer.length, flags, &srcAddr.base, &addrLen, timeout);
     }
 
     /// ditto
@@ -496,7 +497,7 @@ struct Socket {
 
     /// Implement the recvmsg system call in a reactor friendly way.
     ssize_t recvmsg(ref msghdr msg, int flags, Timeout timeout = Timeout.infinite ) @trusted @nogc {
-        return fd.blockingCall!(.recvmsg)(&msg, flags, timeout);
+        return fd.blockingCall!(.recvmsg)(Direction.Read, &msg, flags, timeout);
     }
 
     /**
@@ -679,7 +680,7 @@ struct File {
 struct ReactorFD {
 private:
     FD fd;
-    Epoll.FdContext* ctx;
+    Poller.FdContext* ctx;
 
 public:
     @disable this(this);
@@ -706,7 +707,7 @@ public:
      */
     this(FD fd, bool alreadyNonBlocking = false) @safe @nogc {
         move( fd, this.fd );
-        ctx = epoller.registerFD(this.fd, alreadyNonBlocking);
+        ctx = poller.registerFD(this.fd, alreadyNonBlocking);
     }
 
     ~this() nothrow @safe @nogc {
@@ -726,7 +727,7 @@ public:
         if( fd.isValid ) {
             DBG_ASSERT!"%s Asked to close fd %s with null context"(ctx !is null, &this, fd.fileNo);
 
-            epoller.deregisterFd( fd, ctx );
+            poller.deregisterFd( fd, ctx );
 
             fd.close();
             ctx = null;
@@ -745,7 +746,7 @@ public:
 
     /// Perform reactor aware @safe read
     @notrace ssize_t read(void[] buffer, Timeout timeout = Timeout.infinite) @trusted @nogc {
-        return blockingCall!(unistd.read)( buffer.ptr, buffer.length, timeout );
+        return blockingCall!(unistd.read)( Direction.Read, buffer.ptr, buffer.length, timeout );
     }
 
     /// ditto
@@ -755,7 +756,7 @@ public:
 
     /// Perform reactor aware @safe write
     @notrace ssize_t write(const void[] buffer, Timeout timeout = Timeout.infinite) @trusted @nogc {
-        return blockingCall!(unistd.write)( buffer.ptr, buffer.length, timeout );
+        return blockingCall!(unistd.write)( Direction.Write, buffer.ptr, buffer.length, timeout );
     }
 
     /// ditto
@@ -777,7 +778,7 @@ public:
         if( !fd.isValid )
             return FD();
 
-        epoller.deregisterFd( fd, ctx );
+        poller.deregisterFd( fd, ctx );
         ctx = null;
 
         return move(fd);
@@ -798,20 +799,21 @@ public:
      * Use `unregisterCallback` to unregister the callback.
      *
      * Params:
+     * dir = direction (`Read`/`Write`) to register. The `Direction.Both` is illegal here.
      * dlg = the delegate to be called
      * opaq = a value that will be passed, as is, to the delegate.
      * oneShot = if set to `true`, the callback will automatically be deregistered after being called once.
      */
-    void registerCallback(void delegate(void*) dlg, void* opaq, bool oneShot = true) nothrow @safe @nogc {
-        epoller.registerFdCallback(ctx, fd.fileNo, dlg, opaq, oneShot);
+    void registerCallback(Direction dir, void delegate(void*) dlg, void* opaq, bool oneShot = true) nothrow @safe @nogc {
+        poller.registerFdCallback(ctx, dir, dlg, opaq, oneShot);
     }
 
-    void unregisterCallback() nothrow @safe @nogc {
-        epoller.unregisterFdCallback(ctx, fd.fileNo);
+    void unregisterCallback(Direction dir) nothrow @safe @nogc {
+        poller.unregisterFdCallback(ctx, dir);
     }
 
 package:
-    auto blockingCall(alias F)(Parameters!F[1 .. $] args, Timeout timeout) @system @nogc {
+    auto blockingCall(alias F)(Direction dir, Parameters!F[1 .. $] args, Timeout timeout) @system @nogc {
         static assert (is(Parameters!F[0] == int));
         static assert (isSigned!(ReturnType!F));
 
@@ -819,7 +821,7 @@ package:
             auto ret = fd.osCall!F(args);
             if (ret < 0) {
                 if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                    epoller.waitForEvent(ctx, fd.fileNo, timeout);
+                    poller.waitForEvent(ctx, fd.fileNo, dir, timeout);
                 }
                 else {
                     throw mkExFmt!ErrnoException("%s(%s)", __traits(identifier, F), fd.fileNo);
@@ -850,11 +852,11 @@ package:
 }
 
 void _openReactorEpoll() {
-    epoller.open();
+    poller.open();
 }
 
 void _closeReactorEpoll() {
-    epoller.close();
+    poller.close();
 }
 
 version(unittest):
@@ -925,7 +927,7 @@ private class UnitTest {
         theReactor.setup(options);
         scope(success) theReactor.teardown();
 
-        theReactor.registerRecurringTimer(1.msecs, &epoller.poll);
+        theReactor.registerRecurringTimer(1.msecs, &poller.poll);
 
         testBody();
     }
