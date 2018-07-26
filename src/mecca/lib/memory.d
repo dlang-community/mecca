@@ -254,25 +254,25 @@ struct GCStats {
     size_t pageBlocks;      // number of blocks marked PAGE
 }
 
-struct GCStackDescriptor {
+struct DRuntimeStackDescriptor {
     private import core.sync.mutex: Mutex;
 
-    void*              bstack; /// Stack bottom
-    void*              tstack; /// Stack top
-    void*              ehContext;
-    GCStackDescriptor* within;
-    GCStackDescriptor* next;
-    GCStackDescriptor* prev;
+    void*                       bstack; /// Stack bottom
+    void*                       tstack; /// Stack top
+    void*                       ehContext;
+    DRuntimeStackDescriptor*    within;
+    DRuntimeStackDescriptor*    next;
+    DRuntimeStackDescriptor*    prev;
 
     static assert (__traits(classInstanceSize, Mutex) == 72); // This size is part of the mangle
     pragma(mangle, "_D4core6thread6Thread6_locksG2G72v") extern __gshared static
             void[__traits(classInstanceSize, Mutex)][2] _locks;
     static if (__VERSION__ < 2077) {
         pragma(mangle, "_D4core6thread6Thread7sm_cbegPS4core6thread6Thread7Context") extern __gshared static
-                GCStackDescriptor* sm_cbeg;
+                DRuntimeStackDescriptor* sm_cbeg;
     } else {
         pragma(mangle, "_D4core6thread6Thread7sm_cbegPSQBdQBbQx7Context") extern __gshared static
-                GCStackDescriptor* sm_cbeg;
+                DRuntimeStackDescriptor* sm_cbeg;
     }
 
     @notrace void add() nothrow @nogc {

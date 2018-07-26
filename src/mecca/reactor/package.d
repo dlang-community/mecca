@@ -56,10 +56,15 @@ enum FiberState : ubyte {
     Done,       /// Fiber has finished running
 }
 
+private {
+    extern(C) void* _d_eh_swapContext(void* newContext) nothrow @nogc;
+    extern(C) void* _d_eh_swapContextDwarf(void* newContext) nothrow @nogc;
+}
+
 struct ReactorFiber {
     static struct OnStackParams {
         Closure                 fiberBody;
-        GCStackDescriptor       stackDescriptor;
+        DRuntimeStackDescriptor stackDescriptor;
         FiberGroup.Chain        fgChain;
         FLSArea                 flsBlock;
         ExcBuf                  currExcBuf;
@@ -88,6 +93,11 @@ align(1):
     FiberIncarnation                            incarnationCounter;
     ubyte                                       _flags;
     FiberState                                  _state;
+    version(DigitalMars) {
+        static extern(C) void* function(void*) @nogc nothrow _swapEhContext = &swapEhContextChooser;
+    } else {
+        alias _swapEhContext = _d_eh_swapContext;
+    }
 
     // We define this struct align(1) for the sole purpose of making the following static assert verify what it's supposed to
     static assert (this.sizeof == 32);  // keep it small and cache-line friendly
@@ -142,8 +152,9 @@ align(1):
         params = null;
     }
 
-    @notrace void switchTo(ReactorFiber* next) nothrow @safe @nogc {
+    @notrace void switchTo(ReactorFiber* next) nothrow @trusted @nogc {
         pragma(inline, true);
+        params.stackDescriptor.ehContext = _swapEhContext(next.params.stackDescriptor.ehContext);
         fibril.switchTo(next.fibril, &params.stackDescriptor.tstack);
     }
 
@@ -292,6 +303,26 @@ private:
 
     void logSwitchInto() nothrow @safe @nogc{
         logSwitchFiber(&params.logsSavedContext, cast( Parameters!logSwitchFiber[1] )identity.value);
+    }
+
+private:
+    version(DigitalMars) {
+        static extern(C) void* swapEhContextChooser(void * newContext) @nogc nothrow {
+            DBG_ASSERT!"Context is not null on first invocation"(newContext is null);
+            void* std = _d_eh_swapContext(newContext);
+            void* dwarf = _d_eh_swapContextDwarf(newContext);
+
+            if( std !is null ) {
+                _swapEhContext = &_d_eh_swapContext;
+                return std;
+            } else if( dwarf !is null ) {
+                _swapEhContext = &_d_eh_swapContextDwarf;
+                return dwarf;
+            }
+
+            // Cannot tell which is correct yet
+            return null;
+        }
     }
 }
 
