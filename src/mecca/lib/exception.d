@@ -17,6 +17,16 @@ import mecca.lib.string : nogcFormat, nogcRtFormat;
 // Disable tracing instrumentation for the whole file
 @("notrace") void traceDisableCompileTimeInstrumentation();
 
+/// Returns `true` if an assert was thrown
+///
+/// Will not be set to `true` under unittest builds, where an `AssertError` is thrown instead of fairly immediately
+/// quitting
+@property bool assertRaised() nothrow @safe @nogc {
+    return _assertInProgress;
+}
+
+private bool _assertInProgress;
+
 private extern(C) nothrow @nogc {
     int backtrace(void** buffer, int size);
 
@@ -451,6 +461,7 @@ void function(string msg, string file, size_t line) blowUpHandler;
             recLock = false;
             throw ex;
         } else {
+            _assertInProgress = true;
             ex.toString((text){write(2, text.ptr, text.length);});
             if (doAbort) {
                 abort();
@@ -501,6 +512,7 @@ void ABORT(string msg, string file = __FILE_FULL_PATH__, size_t line = __LINE__)
     }
     else {
         as!"pure"({
+            _assertInProgress = true;
             dumpStackTrace();
             DIE("Assertion failed", file, line);
         });
