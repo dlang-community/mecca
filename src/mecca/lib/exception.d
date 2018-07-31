@@ -559,58 +559,83 @@ unittest {
 }
 
 
-//
-// useful assert variants
-//
+/** Assert on a generic operation
+ *
+ * This is a generic assert based on an operation between two arguments. This function's advantage over merely asserting
+ * with the operation is that, in case of assert failure, both values compared are printed in addition to the assert
+ * message.
+ *
+ * If asserts are disabled, this function compiles away to nothing.
+ */
 @notrace void assertOp(string op, L, R, string file = __FILE_FULL_PATH__, string mod = __MODULE__, size_t line = __LINE__)
-    (L lhs, R rhs, string msg="") nothrow
+    (L lhs, R rhs, scope lazy string msg="") nothrow
 {
-    version(LDC)
-            // Must inline because of __FILE_FULL_PATH__ as template parameter. https://github.com/ldc-developers/ldc/issues/1703
-            pragma(inline, true);
+    version(assert) {
+        version(LDC)
+                // Must inline because of __FILE_FULL_PATH__ as template parameter. https://github.com/ldc-developers/ldc/issues/1703
+                pragma(inline, true);
 
-    static assert(
-             !is(Unqual!LHS == enum) || is(Unqual!LHS == Unqual!RHS),
-            "comparing different enums is unsafe: " ~ LHS.stringof ~ " != " ~ RHS.stringof);
+        static assert(
+                !is(Unqual!LHS == enum) || is(Unqual!LHS == Unqual!RHS),
+                "comparing different enums is unsafe: " ~ LHS.stringof ~ " != " ~ RHS.stringof);
 
-    import std.meta: staticIndexOf;
-    enum idx = staticIndexOf!(op, "==", "!=", ">", "<", ">=", "<=", "in", "!in", "is", "!is");
-    static assert (idx >= 0, "assertOp called with operation \"" ~ op ~ "\" which is not supported");
-    enum inverseOp = ["!=", "==", "<=", ">=", "<", ">", "!in", "in", "!is", "is"][idx];
+        import std.meta: staticIndexOf;
+        enum idx = staticIndexOf!(op, "==", "!=", ">", "<", ">=", "<=", "in", "!in", "is", "!is");
+        static assert (idx >= 0, "assertOp called with operation \"" ~ op ~ "\" which is not supported");
+        enum inverseOp = ["!=", "==", "<=", ">=", "<", ">", "!in", "in", "!is", "is"][idx];
 
-    auto lhsVal = lhs;
-    auto rhsVal = rhs;
+        auto lhsVal = lhs;
+        auto rhsVal = rhs;
 
-    if( mixin("lhsVal " ~ op ~ " rhsVal") )
-        return;
+        if( mixin("lhsVal " ~ op ~ " rhsVal") )
+            return;
 
-    void safefify() pure @nogc @trusted {
-        as!"@nogc pure nothrow"({
-            import std.format;
-            DIE(format("Assert: %s %s %s %s", lhs, inverseOp, rhs, msg), file, line);
-        });
+        void safefify() pure @nogc @trusted {
+            as!"@nogc pure nothrow"({
+                import std.format;
+                DIE(format("Assert: %s %s %s %s", lhs, inverseOp, rhs, msg), file, line);
+            });
+        }
+
+        safefify();
     }
-
-    safefify();
 }
 
-@notrace void assertEQ(L, R, string file = __FILE_FULL_PATH__, string mod = __MODULE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow {
-    assertOp!("==", L, R, file, mod, line)(lhs, rhs, msg);
+/// Assert that two values are equal.
+@notrace void assertEQ(L, R, string file = __FILE_FULL_PATH__, string mod = __MODULE__, size_t line = __LINE__)(
+        L lhs, R rhs, scope lazy string msg="") nothrow @trusted
+{
+    assertOp!("==", L, R, file, mod, line)(lhs, rhs, as!"@nogc nothrow"( {return msg;} ));
 }
-@notrace void assertNE(L, R, string file = __FILE_FULL_PATH__, string mod = __MODULE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow {
-    assertOp!("!=", L, R, file, mod, line)(lhs, rhs, msg);
+/// Assert that two values are not equal.
+@notrace void assertNE(L, R, string file = __FILE_FULL_PATH__, string mod = __MODULE__, size_t line = __LINE__)(
+        L lhs, R rhs, scope lazy string msg="") nothrow @trusted
+{
+    assertOp!("!=", L, R, file, mod, line)(lhs, rhs, as!"@nogc nothrow"( {return msg;} ));
 }
-@notrace void assertGT(L, R, string file = __FILE_FULL_PATH__, string mod = __MODULE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow {
-    assertOp!(">", L, R, file, mod, line)(lhs, rhs, msg);
+/// Assert that `lhs` is greater than `rhs`.
+@notrace void assertGT(L, R, string file = __FILE_FULL_PATH__, string mod = __MODULE__, size_t line = __LINE__)(
+        L lhs, R rhs, scope lazy string msg="") nothrow @trusted
+{
+    assertOp!(">", L, R, file, mod, line)(lhs, rhs, as!"@nogc nothrow"( {return msg;} ));
 }
-@notrace void assertGE(L, R, string file = __FILE_FULL_PATH__, string mod = __MODULE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow {
-    assertOp!(">=", L, R, file, mod, line)(lhs, rhs, msg);
+/// Assert that `lhs` is greater or equals to `rhs`.
+@notrace void assertGE(L, R, string file = __FILE_FULL_PATH__, string mod = __MODULE__, size_t line = __LINE__)(
+        L lhs, R rhs, scope lazy string msg="") nothrow @trusted
+{
+    assertOp!(">=", L, R, file, mod, line)(lhs, rhs, as!"@nogc nothrow"( {return msg;} ));
 }
-@notrace void assertLT(L, R, string file = __FILE_FULL_PATH__, string mod = __MODULE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow {
-    assertOp!("<", L, R, file, mod, line)(lhs, rhs, msg);
+/// Assert that `lhs` is lesser than `rhs`.
+@notrace void assertLT(L, R, string file = __FILE_FULL_PATH__, string mod = __MODULE__, size_t line = __LINE__)(
+        L lhs, R rhs, scope lazy string msg="") nothrow @trusted
+{
+    assertOp!("<", L, R, file, mod, line)(lhs, rhs, as!"@nogc nothrow"( {return msg;} ));
 }
-@notrace void assertLE(L, R, string file = __FILE_FULL_PATH__, string mod = __MODULE__, size_t line = __LINE__)(L lhs, R rhs, string msg="") nothrow {
-    assertOp!("<=", L, R, file, mod, line)(lhs, rhs, msg);
+/// Assert that `lhs` is lesser or equal to `rhs`.
+@notrace void assertLE(L, R, string file = __FILE_FULL_PATH__, string mod = __MODULE__, size_t line = __LINE__)(
+        L lhs, R rhs, scope lazy string msg="") nothrow @trusted
+{
+    assertOp!("<=", L, R, file, mod, line)(lhs, rhs, as!"@nogc nothrow"( {return msg;} ));
 }
 
 version(unittest) {
