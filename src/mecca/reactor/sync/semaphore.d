@@ -158,10 +158,10 @@ public:
     }
 
     /**
-     * acquire a resource from the semaphore.
+     * acquire resources from the semaphore.
      *
-     * Acquire one or more "resources" from the semaphore. Sleep if not enough are available. The semaphore guarantees a strict FIFO.
-     * A new request, even if satifiable, will not be granted until all older requests are granted.
+     * Acquire one or more "resources" from the semaphore. Sleep if not enough are available. The semaphore guarantees a
+     * strict FIFO. A new request, even if satifiable, will not be granted until all older requests are granted.
      *
      * Params:
      *  amount = the amount of resources to request.
@@ -186,24 +186,47 @@ public:
 
         while( available<amount ) {
             if( slept ) {
-                DEBUG!"Spurious wakeup waiting to acquire %s from semaphore. Available %s, capacity %s"(amount, available, capacity);
+                DEBUG!"Spurious wakeup waiting to acquire %s from semaphore. Available %s, capacity %s"(
+                        amount, available, capacity);
             }
 
             slept = true;
             suspendPrimary(timeout);
         }
 
-        DBG_ASSERT!"Semaphore has %s requests pending including us, but we're requesting %s"(requestsPending >= amount, requestsPending,
-                amount);
+        DBG_ASSERT!"Semaphore has %s requests pending including us, but we're requesting %s"(
+                requestsPending >= amount, requestsPending, amount);
 
         available -= amount;
         // requestsPending -= amount; Will be done by scope(exit) above. We're not sleeping until the end of the function
 
         if( requestsPending>amount && available>0 ) {
-            // If there are other pendings, we've slept. The same release that woke us up should have woken the next in line too, except it
-            // didn't know it released enough to wake more than one.
+            // If there are other pendings, we've slept. The same release that woke us up should have woken the next in
+            // line too, except it didn't know it released enough to wake more than one.
             resumeOne(true);
         }
+    }
+
+    /**
+     * Try to acquire resources from the semaphore.
+     *
+     * Try to acquire one or more "resources" from the semaphore. To maintain strict FIFO, the acquire will fail if
+     * another request is currently pending, even if there are enough resources to satisfy both requests.
+     *
+     * returns:
+     * Returns `true` if the request was granted.
+     */
+    bool tryAcquire(size_t amount = 1) nothrow @safe @nogc {
+        if( requestsPending>0 )
+            // There are other waiters. Won't satisfy immediately
+            return false;
+
+        if( available<amount ) {
+            return false;
+        }
+
+        available-=amount;
+        return true;
     }
 
     /**
@@ -324,6 +347,43 @@ unittest {
 
             assert(counter==10);
         });
+}
+
+unittest {
+    auto sem = Semaphore(2);
+    bool gotIt;
+
+    void fiberFunc() {
+        sem.acquire();
+        scope(exit) sem.release();
+
+        gotIt = true;
+
+        theReactor.yield();
+    }
+
+    void mainFunc() {
+        assert(sem.tryAcquire(2), "tryAcquire failed on empty semaphore");
+
+        auto fib = theReactor.spawnFiber(&fiberFunc);
+        theReactor.yield();
+        assert(!gotIt, "semaphore acquired despite no available resources");
+
+        sem.release(2);
+        assert(!gotIt, "release shouldn't yield");
+
+        assert(!sem.tryAcquire(), "tryAcquire succeeded despite pending fibers");
+        theReactor.yield();
+        assert(gotIt, "Fiber didn't acquire despite release");
+        assert(fib.isValid, "Fiber quite too soon");
+        assertEQ(sem.level, 1, "Semaphore level is incorrect");
+        assert(sem.tryAcquire(), "tryAcquire failed despite available resources");
+
+        theReactor.joinFiber(fib);
+        assertEQ(sem.level, 1, "Semaphore level is incorrect");
+    }
+
+    testWithReactor(&mainFunc);
 }
 
 version(unittest):
