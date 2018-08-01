@@ -203,7 +203,7 @@ public:
                 auto state = &ctx.states[dir];
                 with(FdContext.Type) final switch(state.type) {
                 case None:
-                    WARN!"epoll returned handle %s which is no longer valid: Disabling"(ctx);
+                    WARN!"epoll for returned fd %s which is not listening for %s"(ctx.fdNum, cast(Direction)dir);
                     break;
                 case FiberHandle:
                     theReactor.resumeFiber(state.fibHandle);
