@@ -181,7 +181,7 @@ private:
                 if( !fd.isValid )
                     continue;
 
-                fd.checkedCall!(dup2, "Failed to redirect IO")(ioNum);
+                fd.checkedCall!dup2(ioNum, "Failed to redirect IO");
             }
 
             process.execvp(args[0], args);

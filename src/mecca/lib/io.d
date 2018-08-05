@@ -92,6 +92,8 @@ public:
      * Whatever the original OS function returns.
      */
     auto osCall(alias F, T...)(T args) nothrow @nogc if( is( Parameters!F[0]==int ) ) {
+        // We're using T... rather than Parameters!F because the later does not handle variadic functions very well.
+        // XXX Consider having two versions of this function
         import mecca.lib.reflection : as;
 
         static assert( fullyQualifiedName!F != fullyQualifiedName!(.close),
@@ -104,12 +106,12 @@ public:
 
     /// @safe read
     auto read(void[] buffer) @trusted @nogc {
-        return checkedCall!(core.sys.posix.unistd.read, "read failed")(buffer.ptr, buffer.length);
+        return checkedCall!(core.sys.posix.unistd.read)(buffer.ptr, buffer.length, "read failed");
     }
 
     /// @safe write
     auto write(const void[] buffer) @trusted @nogc {
-        return checkedCall!(core.sys.posix.unistd.write, "write failed")(buffer.ptr, buffer.length);
+        return checkedCall!(core.sys.posix.unistd.write)(buffer.ptr, buffer.length, "write failed");
     }
 
     /**
@@ -117,7 +119,7 @@ public:
      *
      * This function behave the same as `osCall`, except if the return is -1, it will throw an ErrnoException
      */
-    auto checkedCall(alias F, string errorMessage, T...)(T args) @system @nogc
+    auto checkedCall(alias F, T...)(T args, string errorMessage) @system @nogc
             if( is( Parameters!F[0]==int ) )
     {
         auto ret = osCall!F(args);

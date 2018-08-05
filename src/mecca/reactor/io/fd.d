@@ -540,14 +540,14 @@ struct Socket {
      *
      * Throws ErrnoException on failure
      */
-    void setSockOpt(int level, int optname, const(void)[] optval) @nogc {
-        fd.osCallErrno!(.setsockopt)( level, optname, optval.ptr, cast(socklen_t)optval.length );
+    void setSockOpt(int level, int optname, const(void)[] optval, string msg="setsockopt failed") @nogc {
+        fd.osCallErrnoMsg!(.setsockopt)( level, optname, optval.ptr, cast(socklen_t)optval.length, msg );
     }
 
     /// ditto
-    void setSockOpt(T)(int level, int optname, auto ref const(T) optval) @nogc {
+    void setSockOpt(T)(int level, int optname, auto ref const(T) optval, string msg="setsockopt failed") @nogc {
         const(T)[] optvalRange = (&optval)[0..1];
-        setSockOpt(level, optname, optvalRange);
+        setSockOpt(level, optname, optvalRange, msg);
     }
 
     /**
@@ -844,8 +844,14 @@ package:
         enum FuncName = FuncFullName[ lastIndexOf(FuncFullName, '.')+1 .. $ ];
 
         enum ErrorMessage = "Running " ~ FuncName ~ " failed";
+        return osCallErrnoMsg!F(args, ErrorMessage);
+    }
+
+    auto osCallErrnoMsg(alias F)(Parameters!F[1..$] args, string msg) @system @nogc
+            if(isSigned!(ReturnType!F) && isIntegral!(ReturnType!F))
+    {
         alias RetType = ReturnType!F;
-        RetType ret = fd.checkedCall!(F, ErrorMessage)(args);
+        RetType ret = fd.checkedCall!F(args, msg);
 
         return ret;
     }
