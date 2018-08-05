@@ -1122,10 +1122,18 @@ public:
             this.generation = callback.generation;
         }
 
+        /// Returns whether the handle was used
+        ///
+        /// returns:
+        /// `true` if the handle was set. `false` if it is still in its init value.
+        @property bool isSet() const pure nothrow @safe @nogc {
+            return callback !is null;
+        }
+
         /// Returns whether the handle describes a currently registered task
         @property bool isValid() const nothrow @safe @nogc {
             return
-                    callback !is null &&
+                    isSet() &&
                     theReactor.isOpen &&
                     callback._owner !is null &&
                     generation == callback.generation;
