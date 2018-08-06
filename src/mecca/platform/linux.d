@@ -6,8 +6,57 @@ module mecca.platform.linux;
 import mecca.log: notrace;
 
 version(linux):
-version(X86_64):
 
+version(X86_64) { /+ Manually-entered constants below. +/ }
+else {
+    // Workaround for __traits(allMembers, module) not including public imports.
+    version (X86) import asm_unistd = mir.linux.arch.x86.uapi._asm.unistd;
+    else version (X86_64) import asm_unistd = mir.linux.arch.x86_64.uapi._asm.unistd;
+    else version (ARM) import asm_unistd = mir.linux.arch.arm.uapi._asm.unistd;
+    else version (AArch64) import asm_unistd = mir.linux.arch.asm_generic.unistd;
+    else version (SPARC) import asm_unistd = mir.linux.arch.sparc.uapi._asm.unistd;
+    else version (SPARC64) import asm_unistd = mir.linux.arch.sparc64.uapi._asm.unistd;
+    else version (Alpha) import asm_unistd = mir.linux.arch.alpha.uapi._asm.unistd;
+    else version (IA64) import asm_unistd = mir.linux.arch.ia64.uapi._asm.unistd;
+    else version (PPC) import asm_unistd = mir.linux.arch.ppc.uapi._asm.unistd;
+    else version (PPC64) import asm_unistd = mir.linux.arch.ppc64.uapi._asm.unistd;
+    else version (SH) import asm_unistd = mir.linux.arch.sh.uapi._asm.unistd;
+    else version (S390) import asm_unistd = mir.linux.arch.s390.uapi._asm.unistd;
+    else version (SystemZ) import asm_unistd = mir.linux.arch.systemz.uapi._asm.unistd;
+    else version (HPPA) import asm_unistd = mir.linux.arch.hppa.uapi._asm.unistd;
+    else version (HPPA64) import asm_unistd = mir.linux.arch.hppa64.uapi._asm.unistd;
+    else version (MIPS_O32) import asm_unistd = mir.linux.arch.mips_o32.uapi._asm.unistd;
+    else version (MIPS_N32) import asm_unistd = mir.linux.arch.mips_n32.uapi._asm.unistd;
+    else version (MIPS64) import asm_unistd = mir.linux.arch.mips64.uapi._asm.unistd;
+    else static assert(0, "Linux syscall constants not known for target architecture!");
+
+    mixin((){
+        import std.array : Appender;
+        Appender!string sb;
+        sb.reserve(1024 * 14); // On x86_64 it is 13173 characters.
+        sb.put("enum Syscall: int {\n");
+        foreach(symbol; __traits(derivedMembers, asm_unistd))
+            if (symbol.length >= 3 && symbol[0..3] == "NR_")
+            {
+                sb.put(symbol);
+                sb.put(" = asm_unistd.");
+                sb.put(symbol);
+                sb.put(",\n");
+            }
+        sb.put("}");
+        return sb.data;
+    }());
+
+    version(X86_64)
+    static assert(Syscall.NR_gettid == 186 && Syscall.NR_tgkill == 234,
+        "Syscall constants are incorrect!");
+
+    version(X86)
+    static assert(Syscall.NR_gettid == 224 && Syscall.NR_tgkill == 270,
+        "Syscall constants are incorrect!");
+}
+
+version(X86_64)
 enum Syscall: int {
     NR_read = 0,
     NR_write = 1,
@@ -354,6 +403,8 @@ unittest {
     assert (thread_isMainThread());
     assert (gettid() == getpid());
 }
+
+version(X86_64):
 
 enum OSSignal: uint {
     SIGNONE        = 0,       /// Invalid signal

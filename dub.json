@@ -6,6 +6,9 @@
     "copyright": "Copyright © 2017-2018, Weka.IO Ltd.",
     "license": "Boost",
     "dependencies" : {},
+    "dependencies-linux": {
+        "mir-linux-kernel": "~>1.0.0"
+    },
     "configurations": [
         {
             "name": "mecca-lib",
