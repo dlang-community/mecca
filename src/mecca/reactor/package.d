@@ -291,6 +291,7 @@ private:
 
         if (flag!"HAS_EXCEPTION") {
             Throwable ex = params.currExcBuf.get();
+            ASSERT!"Fiber has exception, but exception is null"(ex !is null);
             if (flag!"EXCEPTION_BT") {
                 params.currExcBuf.setTraceback(ex);
                 flag!"EXCEPTION_BT" = false;
