@@ -446,7 +446,7 @@ unittest {
     // Make sure an exception thrown from a thread is forwarded as is
     import mecca.reactor;
 
-    class SomeException : Exception {
+    static class SomeException : Exception {
         mixin ExceptionBody!"Just some exception";
     }
 

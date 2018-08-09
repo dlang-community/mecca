@@ -322,7 +322,8 @@ T mkEx(T: Throwable, string file = __FILE_FULL_PATH__, size_t line = __LINE__, A
     return mkExLine!T(file, line, args);
 }
 
-T mkExLine(T: Throwable, A...)(string file, size_t line, auto ref A args) @safe @nogc {
+T mkExLine(T: Throwable, A...)(string file, size_t line, auto ref A args) @trusted @nogc {
+    static assert(!isNested!T, "Cannot use mkEx to create exception of type " ~ T.stringof ~ " that needs a context pointer");
     return _currExcBuf.construct!T(file, line, true, args);
 }
 
@@ -408,8 +409,8 @@ mixin template ExceptionBody() {
 
 unittest {
     import std.stdio;
-    class MyException: Exception {mixin ExceptionBody;}
-    class YourException: Exception {mixin ExceptionBody;}
+    static class MyException: Exception {mixin ExceptionBody;}
+    static class YourException: Exception {mixin ExceptionBody;}
 
     bool thrown1 = false;
     try {
