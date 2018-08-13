@@ -64,7 +64,10 @@ private {
 struct ReactorFiber {
     static struct OnStackParams {
         Closure                 fiberBody;
-        DRuntimeStackDescriptor stackDescriptor;
+        union {
+            DRuntimeStackDescriptor  _stackDescriptor;
+            DRuntimeStackDescriptor* stackDescriptorPtr;
+        }
         FiberGroup.Chain        fgChain;
         FLSArea                 flsBlock;
         ExcBuf                  currExcBuf;
@@ -77,10 +80,11 @@ struct ReactorFiber {
         // XXX Do we need CALLBACK_SET?
         CALLBACK_SET   = 0x01,  /// Has callback set
         SPECIAL        = 0x02,  /// Special fiber. Not a normal user fiber
-        SCHEDULED      = 0x04,  /// Fiber currently scheduled to be run
-        SLEEPING       = 0x08,  /// Fiber is sleeping on a sync object
-        HAS_EXCEPTION  = 0x10,  /// Fiber has pending exception to be thrown in it
-        EXCEPTION_BT   = 0x20,  /// Fiber exception needs to have fiber's backtrace
+        MAIN           = 0x04,  /// This is the main fiber (i.e. - the "not a fiber")
+        SCHEDULED      = 0x08,  /// Fiber currently scheduled to be run
+        SLEEPING       = 0x10,  /// Fiber is sleeping on a sync object
+        HAS_EXCEPTION  = 0x20,  /// Fiber has pending exception to be thrown in it
+        EXCEPTION_BT   = 0x40,  /// Fiber exception needs to have fiber's backtrace
         PRIORITY       = 0x80,  /// Fiber is a high priority one
     }
 
@@ -128,34 +132,61 @@ align(1):
     }
 
     @notrace void setup(void[] stackArea, bool main) nothrow @nogc {
+        _flags = 0;
+
         if( !main )
             fibril.set(stackArea[0 .. $ - OnStackParams.sizeof], &wrapper);
+        else
+            flag!"MAIN" = true;
+
         params = cast(OnStackParams*)&stackArea[$ - OnStackParams.sizeof];
         setToInit(params);
 
         if( !main ) {
-            params.stackDescriptor.bstack = stackArea.ptr + stackArea.length; // Include params, as FLS is stored there
-            params.stackDescriptor.tstack = fibril.rsp;
-            params.stackDescriptor.add();
+            params._stackDescriptor.bstack = stackArea.ptr + stackArea.length; // Include params, as FLS is stored there
+            params._stackDescriptor.tstack = fibril.rsp;
+            params._stackDescriptor.add();
+        } else {
+            import core.thread: Thread;
+            params.stackDescriptorPtr = cast(DRuntimeStackDescriptor*)accessMember!("m_curr")(Thread.getThis());
+            DBG_ASSERT!"MAIN not set on main fiber"( flag!"MAIN" );
         }
 
         _next = null;
         incarnationCounter = 0;
-        _flags = 0;
     }
 
-    @notrace void teardown(bool main) nothrow @nogc {
+    @notrace void teardown() nothrow @nogc {
         fibril.reset();
-        if (!main) {
-            params.stackDescriptor.remove();
+        if (!flag!"MAIN") {
+            params._stackDescriptor.remove();
         }
         params = null;
     }
 
     @notrace void switchTo(ReactorFiber* next) nothrow @trusted @nogc {
         pragma(inline, true);
-        params.stackDescriptor.ehContext = _swapEhContext(next.params.stackDescriptor.ehContext);
-        fibril.switchTo(next.fibril, &params.stackDescriptor.tstack);
+        import core.thread: Thread;
+
+        DRuntimeStackDescriptor* currentSD = stackDescriptor;
+        DRuntimeStackDescriptor* nextSD = next.stackDescriptor;
+
+        currentSD.ehContext = _swapEhContext(nextSD.ehContext);
+
+        // Since druntime does not expose the interfaces needed for switching fibers, we need to hack around the
+        // protection system to access Thread.m_curr, which is private.
+        DRuntimeStackDescriptor** threadCurrentSD = cast(DRuntimeStackDescriptor**)&accessMember!("m_curr")(Thread.getThis());
+        *threadCurrentSD = nextSD;
+
+        fibril.switchTo(next.fibril, &currentSD.tstack);
+    }
+
+    @notrace @property private DRuntimeStackDescriptor* stackDescriptor() @trusted @nogc nothrow {
+        if( !flag!"MAIN" ) {
+            return &params._stackDescriptor;
+        } else {
+            return params.stackDescriptorPtr;
+        }
     }
 
     @property FiberId identity() const nothrow @safe @nogc {
@@ -720,7 +751,7 @@ public:
         _closeReactorEpoll();
 
         foreach(i, ref fib; allFibers) {
-            fib.teardown(i==0);
+            fib.teardown();
         }
 
         if( optionsInEffect.threadDeferralEnabled )
@@ -2014,12 +2045,12 @@ private:
         auto pc = contextPtr ? contextPtr.uc_mcontext.gregs[posix_ucontext.REG_RIP] : 0;
 
         if( isReactorThread ) {
-            auto onStackParams = theReactor.getCurrentFiberPtr(true).params;
+            auto currentSD = theReactor.getCurrentFiberPtr(true).stackDescriptor;
             ERROR!"%s on %s address 0x%x, PC 0x%x stack params at 0x%x"(
-                    faultName, theReactor.currentFiberId, info.si_addr, pc, onStackParams);
-            ERROR!"Stack is at [%s .. %s]"( onStackParams.stackDescriptor.bstack, onStackParams.stackDescriptor.tstack );
-            auto guardAddrStart = onStackParams.stackDescriptor.bstack - GUARD_ZONE_SIZE;
-            if( info.si_addr < onStackParams.stackDescriptor.bstack && info.si_addr >= guardAddrStart ) {
+                    faultName, theReactor.currentFiberId, info.si_addr, pc, theReactor.getCurrentFiberPtr(true).params);
+            ERROR!"Stack is at [%s .. %s]"( currentSD.bstack, currentSD.tstack );
+            auto guardAddrStart = currentSD.bstack - GUARD_ZONE_SIZE;
+            if( info.si_addr < currentSD.bstack && info.si_addr >= guardAddrStart ) {
                 ERROR!"Hit stack guard area"();
             }
         } else {

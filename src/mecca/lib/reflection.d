@@ -1030,3 +1030,27 @@ unittest {
 
     static assert( isRefInputRange!S );
 }
+
+// Returns a reference to a (maybe private) member of a class or a struct
+@("notrace") auto ref accessMember(string NAME, T, bool recurse=true)(auto ref T obj) if (is(T == class) || is(T == struct)) {
+    static assert (__traits(hasMember, obj, NAME), "accessMember " ~ NAME ~ " on " ~ T.stringof ~ " which has no such member");
+    enum aliasThis = __traits(getAliasThis, T);
+
+    static if (recurse && aliasThis.length > 0) {
+        enum aliasThisName = aliasThis[0];
+        static if (!is(typeof(accessMember!(NAME, T, false)(obj)) == void)) {
+            return accessMember!(NAME, T, false)(obj);
+        }
+        else {
+            return accessMember!NAME(accessMember!(aliasThisName, T, false)(obj));
+        }
+    }
+    else {
+        foreach(i, _; typeof(T.tupleof)) {
+            static if (__traits(identifier, T.tupleof[i]) == NAME) {
+                return obj.tupleof[i];
+            }
+        }
+        assert (false);
+    }
+}
