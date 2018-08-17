@@ -343,7 +343,7 @@ private:
         char[OUTPUT_BUFF_SIZE] buffer;
         ssize_t numRead;
         do {
-            numRead = child.stdIO[Process.StdIO.StdOut].read(buffer);
+            numRead = child.stdIO[Process.StdIO.StdOut].read(buffer, Timeout(20.msecs));
             // Call with what we got. This will be the empty range the last time we call
             outputProcessor( child, buffer[0..numRead] );
         } while( numRead>0 );
@@ -354,7 +354,7 @@ private:
     }
 }
 
-ref ProcessManager theProcessManager() nothrow @trusted @nogc {
+@notrace ref ProcessManager theProcessManager() nothrow @trusted @nogc {
     return _theProcessManager;
 }
 
@@ -379,7 +379,7 @@ unittest {
                 enum readChunk = 128;
                 size_t oldLen = buffer.length;
                 buffer.length = oldLen + readChunk;
-                res = child.stdIO[Process.StdIO.StdOut].read(buffer[oldLen..oldLen+readChunk]);
+                res = child.stdIO[Process.StdIO.StdOut].read(buffer[oldLen..oldLen+readChunk], Timeout(20.msecs));
                 buffer.length = oldLen + res;
             } while( res>0 );
 

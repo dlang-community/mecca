@@ -189,7 +189,7 @@ public:
             with(Direction) foreach(dir; Read..(Write+1)) {
                 final switch(dir) {
                 case Read:
-                    if( (event.events & EPOLLIN)==0 )
+                    if( (event.events & (EPOLLIN | EPOLLHUP))==0 )
                         continue;
                     break;
                 case Write:
