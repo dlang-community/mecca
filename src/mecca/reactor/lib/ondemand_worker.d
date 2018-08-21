@@ -177,7 +177,7 @@ public:
         cancelAll = false;
     }
 private:
-    void fib() {
+    void fib() @notrace {
         scope (exit) {
             fiberHandle.reset();
             cancelAll = false;

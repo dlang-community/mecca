@@ -137,7 +137,7 @@ template getFiberFlsLvalue(alias FLS) {
         alias T = ReturnType!FLS;
         alias offset = FLSOffset!(TemplateArgsOf!FLS);
 
-        T* getFiberFlsLvalue(FiberHandle fib) nothrow @nogc {
+        T* getFiberFlsLvalue(FiberHandle fib) nothrow @nogc @notrace {
             ReactorFiber* reactorFiber = fib.get();
             if( reactorFiber is null )
                 return null;

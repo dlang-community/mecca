@@ -203,7 +203,13 @@ public:
                 auto state = &ctx.states[dir];
                 with(FdContext.Type) final switch(state.type) {
                 case None:
-                    WARN!"epoll for returned fd %s which is not listening for %s"(ctx.fdNum, cast(Direction)dir);
+                    if( cast(Direction)dir==Read || (event.events & (EPOLLIN | EPOLLHUP))==0 ) {
+                        // Since most FDs are available for write most of the time, almost any wakeup would trigger
+                        // this warning. As such, we log only if one of two conditions are met:
+                        // Either we got this condition on a read, or we got this condition on a write, but the FD is
+                        // not read ready.
+                        WARN!"epoll for returned fd %s which is not listening for %s"(ctx.fdNum, cast(Direction)dir);
+                    }
                     break;
                 case FiberHandle:
                     theReactor.resumeFiber(state.fibHandle);

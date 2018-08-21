@@ -334,7 +334,7 @@ private:
     }
 
 private:
-    static extern(C) void* swapEhContextChooser(void * newContext) @nogc nothrow {
+    static extern(C) void* swapEhContextChooser(void * newContext) @nogc nothrow @notrace {
         DBG_ASSERT!"Context is not null on first invocation"(newContext is null);
         void* std = _d_eh_swapContext(newContext);
         void* dwarf = _d_eh_swapContextDwarf(newContext);
@@ -1742,7 +1742,7 @@ private:
         thisFiber.switchInto();
     }
 
-    bool fiberTerminated() nothrow {
+    bool fiberTerminated() nothrow @notrace {
         ASSERT!"special fibers must never terminate" (!thisFiber.flag!"SPECIAL");
 
         freeFibers.prepend(thisFiber);
