@@ -343,7 +343,7 @@ private:
         char[OUTPUT_BUFF_SIZE] buffer;
         ssize_t numRead;
         do {
-            numRead = child.stdIO[Process.StdIO.StdOut].read(buffer, Timeout(20.msecs));
+            numRead = child.stdIO[Process.StdIO.StdOut].read(buffer);
             // Call with what we got. This will be the empty range the last time we call
             outputProcessor( child, buffer[0..numRead] );
         } while( numRead>0 );
@@ -362,6 +362,7 @@ private __gshared ProcessManager _theProcessManager;
 
 unittest {
     import mecca.reactor;
+    enum GRACE_UT_TIMEOUT = 10.seconds;
 
     testWithReactor({
             theProcessManager.open(24);
@@ -379,7 +380,7 @@ unittest {
                 enum readChunk = 128;
                 size_t oldLen = buffer.length;
                 buffer.length = oldLen + readChunk;
-                res = child.stdIO[Process.StdIO.StdOut].read(buffer[oldLen..oldLen+readChunk], Timeout(20.msecs));
+                res = child.stdIO[Process.StdIO.StdOut].read(buffer[oldLen..oldLen+readChunk], Timeout(GRACE_UT_TIMEOUT));
                 buffer.length = oldLen + res;
             } while( res>0 );
 
