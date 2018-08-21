@@ -2062,6 +2062,8 @@ private:
         assert (_thisFiber is null);
 
         _running = true;
+        scope(exit) _running = false;
+
         GC.disable();
         scope(exit) GC.enable();
 
@@ -2146,7 +2148,6 @@ private:
         yield();
 
         META!"Stopping reactor"();
-        _running = false;
         _stopping = false;
     }
 
