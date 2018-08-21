@@ -208,7 +208,8 @@ public:
                         // this warning. As such, we log only if one of two conditions are met:
                         // Either we got this condition on a read, or we got this condition on a write, but the FD is
                         // not read ready.
-                        WARN!"epoll for returned fd %s which is not listening for %s"(ctx.fdNum, cast(Direction)dir);
+                        WARN!"epoll for returned fd %s events %x which is not listening for %s"(
+                                ctx.fdNum, event.events, cast(Direction)dir);
                     }
                     break;
                 case FiberHandle:

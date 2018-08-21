@@ -962,13 +962,13 @@ public:
 
       Also see `criticalSection` below.
      */
-    void enterCriticalSection() pure nothrow @safe @nogc {
+    void enterCriticalSection() nothrow @safe @nogc {
         pragma(inline, true);
         criticalSectionNesting++;
     }
 
     /// leave the innermost critical section.
-    void leaveCriticalSection() pure nothrow @safe @nogc {
+    void leaveCriticalSection() nothrow @safe @nogc {
         pragma(inline, true);
         assert (criticalSectionNesting > 0);
         criticalSectionNesting--;
