@@ -233,6 +233,8 @@ private:
             if( ptr is null )
                 return;
 
+            theProcessManager.processes.remove(ptr.pid);
+
             theProcessManager.processPool.release(ptr);
         }
 
@@ -377,6 +379,12 @@ unittest {
             theProcessManager.open(24);
             scope(exit) theProcessManager.close();
 
+            {
+                // Test detached child handling
+                auto child2 = theProcessManager.alloc();
+                child2.run("true");
+            }
+
             auto child = theProcessManager.alloc();
             child.redirectIO(Process.StdIO.StdOut);
             child.redirectErrToOut();
@@ -395,6 +403,8 @@ unittest {
 
             DEBUG!"Child stdout: %s"(buffer);
             child.wait(Timeout(dur!"msecs"(100)));
+
+            theReactor.sleep(4.msecs); // Allow time for child2 to actually exit
 
             ASSERT!"Child closed stdout but is still running"(!child.isRunning);
             ASSERT!"Child output is \"%s\", not as expected"( buffer == "Hello\r world\n", buffer );
