@@ -108,6 +108,10 @@ public:
      * while( isEventValid && !event.unreliableWait ) {}
      * ----
      *
+     * It should be pointed out that spurious wakeups only happen when another fiber sets the event. This might still be
+     * a spurious because another fiber might reset the event before the waiting fiber gets a chance to run. If this
+     * is a desired behavior, you might wish to check whether `Signal` fits your needs better.
+     *
      * Params:
      * timeout = sets a timeout for the wait.
      *
