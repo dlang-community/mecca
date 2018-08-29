@@ -116,6 +116,11 @@ public:
     /** Run the child with the given arguments.
      *
      * This function returns immediately. Use `wait` if you want to wait for the child to finish execution.
+     *
+     * Errors:
+     * On failure to create a child process, this function will throw an `ErrnoException`.
+     * If the exec itself fails (e.g.: trying to run a command that doesn't exist), this function will report success,
+     * but calling `wait` will return a child exit status of 255.
      */
     void run(string[] args...) @trusted @nogc {
         verifyManagerInitialized();
@@ -130,7 +135,7 @@ public:
            So we are @nogc.
          */
         ASSERT!"run must be called with at least one argument"(args.length>0);
-        _pid = fork();
+        _pid = vfork();
 
         if( _pid==0 ) {
             as!"@nogc"({ runChildHelper(args); });
@@ -150,6 +155,9 @@ public:
      *
      * Params:
      * signal = Signal to send. SIGTERM by default
+     *
+     * Throws:
+     * Throws `ErrnoException` if sending the signal failed
      */
     void kill(OSSignal signal = OSSignal.SIGTERM) @trusted @nogc {
         ASSERT!"Cannot kill process before it was started"(pid!=0);
@@ -260,8 +268,9 @@ public:
      *
      * This is the way to allocate a new child process handler.
      *
-     * Returns:
      * Returns a smart object referencing the Process struct. Struct is destructed when the referenece is destructed.
+     * If the reference is destructed, this is effectively the same as detaching from the running process. The process
+     * remains running, but we will no longer be notified when it exits.
      */
     ProcessPtr alloc() nothrow @safe @nogc {
         Process* ptr = processPool.alloc();
