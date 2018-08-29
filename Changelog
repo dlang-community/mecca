@@ -1,3 +1,14 @@
+Version 0.0.7 (Aug 29 2018)
+ * Process: allow child to detach
+ * Bug fixes
+
+Version 0.0.6 (Aug 21 2018)
+ * Add tryAcquire to Semaphore
+ * Add isSet to TimerHandle
+ * Better implementation of internal druntime fibers support
+ * Allow two fibers to wait on same FD for read/write
+ * Add fiber iteration
+ * Run GC only if memory was allocated
  * Add array support to nogcFormat
  * FDs that wake up the epoll despite the ET are deregistered
  * Bug fixes
