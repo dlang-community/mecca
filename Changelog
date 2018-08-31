@@ -1,3 +1,6 @@
+ * connect succeeding immediately not working properly
+ * SIGCHLD merging would skip notifications
+
 Version 0.0.7 (Aug 29 2018)
  * Process: allow child to detach
  * Bug fixes

@@ -343,13 +343,15 @@ struct ConnectedSocket {
 
 private void connectHelper(ref Socket sock, SockAddr sa, Timeout timeout) @trusted @nogc {
     int result = sock.osCall!(.connect)(&sa.base, SockAddr.sizeof);
-    errnoEnforceNGC(result==0 || errno == EINPROGRESS, "Connect failed");
 
-    // Wait for connect to finish
-    poller.waitForEvent(sock.ctx, sock.get.fileNo, Direction.Write, timeout);
+    while(result!=0 && errno==EINPROGRESS) {
+        // Wait for connect to finish
+        poller.waitForEvent(sock.ctx, sock.get.fileNo, Direction.Write, timeout);
 
-    socklen_t reslen = result.sizeof;
-    sock.osCallErrno!(.getsockopt)( SOL_SOCKET, SO_ERROR, &result, &reslen);
+        socklen_t reslen = result.sizeof;
+
+        sock.osCallErrnoMsg!(.getsockopt)( SOL_SOCKET, SO_ERROR, &result, &reslen, "Fetching connect error status failed");
+    }
 
     if( result!=0 ) {
         errno = result;

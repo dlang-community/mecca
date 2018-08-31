@@ -230,7 +230,7 @@ public:
     }
 
 private:
-    void internalRegisterFD(int fd, FdContext* ctx, Direction dir) @trusted @nogc {
+    @notrace void internalRegisterFD(int fd, FdContext* ctx, Direction dir) @trusted @nogc {
         epoll_event event = void;
         event.events = EPOLLIN | EPOLLOUT | EPOLLRDHUP | EPOLLET; // Register with Edge Trigger behavior
         event.data.ptr = ctx;
@@ -238,7 +238,7 @@ private:
         errnoEnforceNGC( res>=0, "Adding fd to epoll failed" );
     }
 
-    void internalDeregisterFD(int fd, FdContext* ctx) nothrow @trusted @nogc {
+    @notrace void internalDeregisterFD(int fd, FdContext* ctx) nothrow @trusted @nogc {
         int res = epollFd.osCall!epoll_ctl(EPOLL_CTL_DEL, fd, null);
 
         // There is no reason for a registered FD to fail removal, so we assert instead of throwing
