@@ -317,25 +317,34 @@ public:
 
 private:
     void sigChildHandler(const ref signalfd_siginfo siginfo) @system {
-        Process** child = siginfo.ssi_pid in processes;
+        // Ignore the siginfo, as SIGCHLD notifications might be merged
 
+        bool handled;
         int status;
-        if( waitpid( siginfo.ssi_pid, &status, WNOHANG )<0 ) {
-            ERROR!"SIGCHLD reported for %s with status 0x%x, but wait failed with errno %s"(
-                    siginfo.ssi_pid, siginfo.ssi_status, errno );
+        pid_t childPid;
+        while( (childPid = waitpid(-1, &status, WNOHANG))>0 ) {
+            handled = true;
 
-            return;
+            Process** child = childPid in processes;
+
+            if( (WIFEXITED(status) || WIFSIGNALED(status)) && child !is null ) {
+                INFO!"Received child exit notification from %s: 0x%x"(childPid, status);
+                (*child).handleExit(status);
+            } else {
+                if( customHandler !is null ) {
+                    customHandler( childPid, status );
+                } else {
+                    // This is probably because we abandoned the child PID
+                    INFO!"Received child exit notification from abandoned child %s status 0x%x"( childPid, status );
+                }
+            }
         }
 
-        if( (WIFEXITED(siginfo.ssi_status) || WIFSIGNALED(siginfo.ssi_status)) && child !is null ) {
-            INFO!"Received child exit notification from %s: 0x%x"(siginfo.ssi_pid, status);
-            (*child).handleExit(siginfo.ssi_status);
-        } else {
-            if( customHandler !is null ) {
-                customHandler( siginfo.ssi_pid, siginfo.ssi_status );
-            } else {
-                ERROR!"Received child exit notification from unknown child %s status 0x%x"( siginfo.ssi_pid, status );
-            }
+        if( !handled ) {
+            // This isn't as serious a condition as the code might suggest. We might have handled that PID in a previous
+            // invocation.
+            DEBUG!"SIGCHLD reported for %s with status 0x%x, but wait failed with errno %s"(
+                    siginfo.ssi_pid, siginfo.ssi_status, errno );
         }
     }
 
@@ -402,7 +411,7 @@ unittest {
             } while( res>0 );
 
             DEBUG!"Child stdout: %s"(buffer);
-            child.wait(Timeout(dur!"msecs"(100)));
+            child.wait(Timeout(10.seconds));
 
             theReactor.sleep(4.msecs); // Allow time for child2 to actually exit
 
