@@ -41,7 +41,7 @@ public:
      * Anything injected through a call to Reactor.throwInFiber
      */
     void acquire(Timeout timeout = Timeout.infinite) @safe @nogc {
-        DBG_ASSERT!"Cannot acquire a lock while in a critical section"(!theReactor.isInCriticalSection);
+        theReactor.assertMayContextSwitch("Lock acquire");
         DBG_ASSERT!"DEADLOCK: trying to acquire a lock by the same fiber already holding it"(
                 owner!=theReactor.currentFiberHandle);
 
@@ -154,7 +154,7 @@ public:
      * Acquire an exclusive access lock
      */
     @notrace void acquireExclusive(Timeout timeout = Timeout.infinite) @safe @nogc {
-        DBG_ASSERT!"Cannot acquire a lock while in a critical section"(!theReactor.isInCriticalSection);
+        theReactor.assertMayContextSwitch("Lock acquire");
 
         acquireLock.acquire(timeout);
         scope(failure) acquireLock.release();
@@ -165,7 +165,7 @@ public:
      * Acquire a shared access lock
      */
     @notrace void acquireShared(Timeout timeout = Timeout.infinite) @safe @nogc {
-        DBG_ASSERT!"Cannot acquire a lock while in a critical section"(!theReactor.isInCriticalSection);
+        theReactor.assertMayContextSwitch("Lock acquire");
 
         acquireLock.acquire(timeout);
         scope(exit) acquireLock.release();
@@ -225,7 +225,7 @@ public:
      * Acquire an exclusive access lock
      */
     @notrace void acquireExclusive(Timeout timeout = Timeout.infinite) @safe @nogc {
-        DBG_ASSERT!"Cannot acquire a lock while in a critical section"(!theReactor.isInCriticalSection);
+        theReactor.assertMayContextSwitch("Lock acquire");
 
         lock.acquire(1, timeout);
         DBG_ASSERT!"Exclusivly locked but have shared lockers"(numSharedLockers==0);
@@ -235,7 +235,7 @@ public:
      * Acquire a shared access lock
      */
     @notrace void acquireShared(Timeout timeout = Timeout.infinite) @safe @nogc {
-        DBG_ASSERT!"Cannot acquire a lock while in a critical section"(!theReactor.isInCriticalSection);
+        theReactor.assertMayContextSwitch("Lock acquire");
 
         if( numSharedLockers==0 ) {
             lock.acquire(1, timeout);

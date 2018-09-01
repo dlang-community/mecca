@@ -979,6 +979,17 @@ public:
         return criticalSectionNesting > 0;
     }
 
+    /** Make sure we are allowed to context switch from this point.
+     *
+     * This will be called automatically if an actual context switch is attempted. You might wish to call this function
+     * explicitly, however, from contexts that $(I might) context switch, so that they fail even if they don't actually
+     * attempt it, in accordance with the "fail early" doctrine.
+     */
+    void assertMayContextSwitch(string message) nothrow @safe @nogc {
+        pragma(inline, true);
+        ASSERT!"Context switch while inside a critical section: %s"(!isInCriticalSection, message);
+    }
+
     /**
      * Return a RAII object handling a critical section
      *
@@ -1330,7 +1341,7 @@ public:
         if (timeout == Timeout.infinite)
             return suspendCurrentFiber();
 
-        ASSERT!"suspendCurrentFiber called while inside a critical section"(!isInCriticalSection);
+        assertMayContextSwitch("suspendCurrentFiber");
 
         TimerHandle timeoutHandle;
         scope(exit) timeoutHandle.cancelTimer();
@@ -1696,7 +1707,7 @@ private:
 
     void switchToNext() @safe @nogc {
         //DEBUG!"SWITCH out of %s"(thisFiber.identity);
-        ASSERT!"Context switch while inside a critical section"(!isInCriticalSection);
+        assertMayContextSwitch("Context switch");
 
         stats.numContextSwitches++;
 
