@@ -257,6 +257,19 @@ public:
         _length++;
     }
 
+    int opApply(scope int delegate(T t, uint level, uint bin) @nogc dg) @nogc {
+        foreach(uint level; 0..numLevels) {
+            foreach(uint bin; 0..numBins) {
+                foreach(ref T event; bins[level][bin].range()) {
+                    if( dg(event, level, bin) )
+                        return 1;
+                }
+            }
+        }
+
+        return 0;
+    }
+
 private:
     @notrace ulong binsTillNextEntry() nothrow @safe @nogc {
         calcNextEntryHint();
@@ -476,7 +489,6 @@ unittest {
     META!"UT test time queue's levels test 1"();
     static struct Entry {
         TscTimePoint timePoint;
-        string name;
         Entry* _next;
         Entry* _prev;
     }
@@ -510,6 +522,10 @@ unittest {
 
     foreach( ref entry; entries ) {
         ctq.insert( &entry );
+    }
+
+    foreach( Entry* entry, uint level, uint bin; ctq ) {
+        DEBUG!"Entry %s level %s bin %s"(*entry, level, bin);
     }
 
     assertEQ(entries.length, ctq.length);
