@@ -1,3 +1,4 @@
+ * Add BufferedIO.reset
  * connect succeeding immediately not working properly
  * SIGCHLD merging would skip notifications
 

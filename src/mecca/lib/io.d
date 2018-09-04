@@ -319,10 +319,18 @@ public:
      *
      * This flushes all outstanding writes, closes the underlying FD and releases the buffers.
      */
-    void close() {
+    void close() @notrace {
         flush();
         closeNoFlush();
         fd.close();
+    }
+
+    /** Forget all pending writes
+     *
+     * This causes the `BufferedIO` to discard all unflushed write data. Cached read data is unaffected.
+     */
+    void reset() @safe @nogc nothrow pure {
+        writeBuffer = null;
     }
 
     /// Perform @safe buffered read
