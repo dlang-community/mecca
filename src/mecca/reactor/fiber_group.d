@@ -31,6 +31,13 @@ private:
     State state;
 
 public:
+
+    @disable this(this);
+
+    ~this() @safe @nogc nothrow {
+        ASSERT!"FiberGroup destructed but is not fully closed"(closed);
+    }
+
     /// 3state execution results type
     struct ExecutionResult(T) {
         /// Whether execution finished successfully
@@ -44,13 +51,21 @@ public:
     /// Initialize a new fiber group
     void open() nothrow @safe @nogc {
         ASSERT!"New FiberGroup has fibers registered"(fibersList.empty);
-        ASSERT!"Cannot open fiber group that is not closed: Current state %s"(
-                state==State.None || state==State.Closing, state);
+        // The following line has a side effect!! "closed" will set the state to None if it is Closing and all fibers
+        // have quit. Since this is an ASSERT (i.e. - does not get compiled away), and since we're overriding the state
+        // at the very next statement, this is not a problem.
+        ASSERT!"Cannot open fiber group that is not closed: Current state %s"(closed, state);
         state = State.Active;
     }
 
     /// report whether a fiber group is closed
-    @property closed() const pure nothrow @safe @nogc {
+    ///
+    /// This call will return `false` for half-closed groups.
+    @property closed() pure nothrow @safe @nogc {
+        // If we closed without waiting, we might still be in Closing state.
+        if( state==State.Closing && fibersList.empty )
+            state=State.None;
+
         return state == State.None;
     }
 
@@ -72,7 +87,6 @@ public:
 
         auto cs = theReactor.criticalSection();
         state = State.Closing;
-        scope(exit) if(state == State.Closing) state = State.Active;
 
         bool suicide;
 
@@ -86,7 +100,7 @@ public:
 
             // WARN_AS!"Fiber killed by group"(fiber.identity);
             WARN!"Killing fiber %s"(fiber.identity);
-            theReactor.throwInFiber(FiberHandle(fiber), killerException);
+            theReactor.throwInFiber!FiberGroupExtinction(FiberHandle(fiber));
         }
 
         if( !waitForExit ) {
@@ -102,13 +116,7 @@ public:
         if( suicide )
             removeThisFiber();
 
-        // Wait for all fibers to die an agonizing death
-        theReactor.yield();
-
-        while( !fibersList.empty ) {
-            WARN!"Some fibers in group not yet dead. Sleeping for 1ms"();
-            theReactor.sleep(dur!"msecs"(1));
-        }
+        waitEmpty();
         DEBUG!"All group fibers are now dead. May they rest in pieces"();
 
         state = State.None;
@@ -118,6 +126,16 @@ public:
             addThisFiber(true);
             WARN!"Fiber commiting suicid as part of group"();
             throw killerException;
+        }
+    }
+
+    /// Wait for all fibers in a group to exit.
+    ///
+    /// This function does not initiate termination. Use `close` to actually terminate the fibers.
+    void waitEmpty(Timeout timeout = Timeout.infinite) @safe @nogc {
+        // Wait for all fibers to die an agonizing death
+        while( !fibersList.empty ) {
+            theReactor.joinFiber( FiberHandle(fibersList.head), timeout );
         }
     }
 
@@ -381,6 +399,8 @@ unittest {
             assert(false, "Nested call caught the fiber bomb!");
         });
         assert(res2.completed == false, "res2 marked as completed when shouldn't have");
+
+        foo.close();
     });
 }
 
@@ -449,5 +469,45 @@ unittest {
             theReactor.yield();
             assertEQ(counter, 2);
         }
+
+        tracker.close();
+    });
+}
+
+unittest {
+    META!"Make sure that close(false) works properly"();
+
+    int counter;
+
+    void fiberBody() {
+        scope(exit) counter++;
+
+        theReactor.sleep(10.days);
+    }
+
+    testWithReactor({
+        FiberGroup group;
+
+        group.open();
+
+        group.spawnFiber(&fiberBody);
+        group.spawnFiber(&fiberBody);
+
+        assertEQ(counter, 0);
+        theReactor.yield();
+
+        assertEQ(counter, 0);
+        assert(!group.closed);
+
+        group.close(false);
+
+        assert(!group.closed);
+        assertThrows!AssertError(group.open());
+
+        theReactor.yield();
+        assert(group.closed);
+
+        group.open();
+        group.close();
     });
 }
