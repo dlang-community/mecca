@@ -1538,6 +1538,26 @@ public:
         return FibersIterator(cast(uint) reactorStats.numUsedFibers);
     }
 
+    auto iterateScheduledFibers() nothrow @safe @nogc {
+        @notrace static struct Range {
+            private typeof(scheduledFibers.range()) fibersRange;
+
+            @property FiberHandle front() nothrow @nogc {
+                return FiberHandle(fibersRange.front);
+            }
+
+            @property bool empty() const pure nothrow @nogc {
+                return fibersRange.empty;
+            }
+
+            @notrace void popFront() nothrow {
+                fibersRange.popFront();
+            }
+        }
+
+        return Range(scheduledFibers.range());
+    }
+
     /**
      * Set a fiber name
      *
