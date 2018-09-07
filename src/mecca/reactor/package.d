@@ -1118,8 +1118,10 @@ public:
             return;
         }
 
+        DEBUG!"Setting fiber %s priority to %s"(fiber.identity, priority);
         ASSERT!"Cannot ask to prioritize non-user fiber %s"(!fiber.flag!"SPECIAL", fiber.identity);
         if( fiber.flag!"SCHEDULED" ) {
+            ASSERT!"Fiber %s has PRIORITY set while scheduled"(!fiber.flag!"PRIORITY", fiber.identity);
             if( priority ) {
                 resumeFiber( fiber, true );
             }
@@ -1131,6 +1133,7 @@ public:
     /// ditto
     void boostFiberPriority(bool priority = true) nothrow @safe @nogc {
         ASSERT!"Cannot ask to prioritize a non-user fiber"(!isSpecialFiber);
+        DEBUG!"Setting fiber priority to %s"(priority);
         thisFiber.flag!"PRIORITY" = priority;
     }
 
