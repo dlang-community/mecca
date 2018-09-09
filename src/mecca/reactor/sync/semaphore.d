@@ -182,6 +182,7 @@ public:
             // There are others waiting before us
             suspendSecondary(timeout);
             slept = true;
+            // XXX Should we set the priority back so that all sleeps are the same priority?
         }
 
         while( available<amount ) {
@@ -193,6 +194,8 @@ public:
             slept = true;
             suspendPrimary(timeout);
         }
+        // In case we didn't sleep
+        theReactor.dontYield();
 
         DBG_ASSERT!"Semaphore has %s requests pending including us, but we're requesting %s"(
                 requestsPending >= amount, requestsPending, amount);
@@ -236,8 +239,8 @@ public:
         ASSERT!"Semaphore.release called to release 0 coins"(amount>0);
 
         available += amount;
-        ASSERT!"Semaphore.release(%s) called results in %s available coins but only %s capacity"( available<=capacity, amount, available,
-               capacity );
+        ASSERT!"Semaphore.release(%s) called results in %s available coins but only %s capacity"(
+                available<=capacity, amount, available, capacity );
 
         if( requestsPending>0 )
             resumeOne(false);

@@ -1148,6 +1148,24 @@ public:
         thisFiber.flag!"PRIORITY" = priority;
     }
 
+    /** Don't yield
+     *
+     * This function should called by functions that might yield but, in this case, don't. For example, `Lock.acquire`
+     * calls this function if the lock is available and no sleep is necessary.
+     *
+     * This function checks certain condition that have to happen in case a yield happens (such as that we're not inside
+     * a critical section). Under the "fail early" doctrine, we want those asserts to fail despite the fact we do not,
+     * actually, yield in this case.
+     *
+     * This function also resets certain flags that are meant to take effect only until the next context switch, such
+     * as calls to `boostFiberPriority`.
+     */
+    void dontYield() nothrow @safe @nogc {
+        assertMayContextSwitch("Simulated context switch");
+
+        thisFiber.flag!"PRIORITY" = false;
+    }
+
     /// Handle used to manage registered timers
     struct TimerHandle {
     private:
@@ -1665,8 +1683,10 @@ public:
     @notrace void joinFiber(FiberHandle fh, Timeout timeout = Timeout.infinite) @safe @nogc {
         ReactorFiber* fiber = fh.get();
 
-        if( fiber is null )
+        if( fiber is null ) {
+            dontYield();
             return;
+        }
 
         fiber.params.joinWaiters.wait(timeout);
         DBG_ASSERT!"Fiber handle %s is valid after signalling done"(!fh.isValid, fh);

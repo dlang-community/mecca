@@ -8,6 +8,7 @@ module mecca.reactor.sync.event;
 import mecca.lib.exception;
 import mecca.lib.time;
 import mecca.log;
+import mecca.reactor;
 import mecca.reactor.sync.fiber_queue;
 import mecca.reactor.sync.verbose;
 
@@ -90,6 +91,9 @@ public:
         if( reported ) {
             report(SyncVerbosityEventType.Wakeup);
         }
+
+        // We might have gone through without sleeping
+        theReactor.dontYield();
     }
 
     /**
@@ -124,8 +128,10 @@ public:
      * Any other exception injected to this fiber using `Reactor.throwInFiber`
      */
     bool unreliableWait(Timeout timeout = Timeout.infinite) @safe @nogc {
-        if( isSet )
+        if( isSet ) {
+            theReactor.dontYield();
             return true;
+        }
 
         report(SyncVerbosityEventType.Contention);
         waiters.suspend(timeout);

@@ -53,6 +53,7 @@ public:
         if( numRequesting==0 ) {
             // Fast path
             numRequesting = 1;
+            theReactor.dontYield();
             return;
         }
 
