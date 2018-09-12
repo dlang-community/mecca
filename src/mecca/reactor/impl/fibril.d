@@ -87,11 +87,11 @@ extern(C) private void _fibril_wrapper(void function(void*) fn /* RDI */, void* 
 
     try {
         fn(opaque);
-        DIE("Fibril functio must never return", __FILE_FULL_PATH__, __LINE__, true);
+        DIE("Fibril function must never return", __FILE_FULL_PATH__, __LINE__, true);
     }
     catch (Throwable ex) {
         LOG_EXCEPTION(ex);
-        DIE("Fibril functio must never throw", __FILE_FULL_PATH__, __LINE__, true);
+        DIE("Fibril function must never throw", __FILE_FULL_PATH__, __LINE__, true);
     }
     // we add an extra call to abort here, so the compiler would be forced to emit `call` instead of `jmp`
     // above, thus leaving this function on the call stack. it produces a more readable backtrace.
