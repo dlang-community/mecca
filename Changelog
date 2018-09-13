@@ -1,5 +1,4 @@
  * Allow explicitly setting first time recurring timer will run
- * Allow explicitly setting first time recurring timer will run
  * Calling locks.acquire inside critical section asserts even if lock doesn't
    need to sleep.
  * Add FiberGroup.waitEmpty

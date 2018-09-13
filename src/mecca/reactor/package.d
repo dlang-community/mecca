@@ -1263,24 +1263,23 @@ public:
         return registerTimer!T(Timeout(timeout), dg);
     }
 
-    private TimedCallback* _registerRecurringTimer(Duration interval) nothrow @safe @nogc {
-        if( interval<optionsInEffect.timerGranularity )
-            interval = optionsInEffect.timerGranularity;
-
-        TimedCallback* callback = allocTimedCallback();
-        callback.intervalCycles = TscTimePoint.toCycles(interval);
-        rescheduleRecurringTimer(callback);
-        return callback;
-    }
-
     /**
      * registers a timer that will repeatedly trigger at set intervals.
+     *
+     * You do not control precisely when the callback is invoked, only how often. The invocations are going to be evenly
+     * spaced out (best effort), but the first invocation might be almost immediately after the call or a whole
+     * `interval` after.
+     *
+     * You can use the `firstRun` argument to control when the first invocation is going to be (but the same rule will
+     * still apply to the second one).
      *
      * Params:
      *  interval = the frequency with which the callback will be called.
      *  dg = the callback to invoke
      *  F = an alias to the function to be called
      *  params = the arguments to pass to F on each invocation
+     *  firstRun = if supplied, directly sets when is the first time the timer shall run. The value does not have any
+     *      special constraints.
      */
     TimerHandle registerRecurringTimer(Duration interval, void delegate() dg) nothrow @safe @nogc {
         TimedCallback* callback = _registerRecurringTimer(interval);
@@ -1292,6 +1291,28 @@ public:
     TimerHandle registerRecurringTimer(alias F)(Duration interval, Parameters!F params) nothrow @safe @nogc {
         TimedCallback* callback = _registerRecurringTimer(interval);
         callback.closure.set(&F, params);
+        return TimerHandle(callback);
+    }
+
+    /// ditto
+    TimerHandle registerRecurringTimer(Duration interval, void delegate() dg, Timeout firstRun) nothrow @safe @nogc {
+        TimedCallback* callback = allocRecurringTimer(interval);
+        callback.timePoint = firstRun.expiry;
+        callback.closure.set(dg);
+
+        timeQueue.insert(callback);
+
+        return TimerHandle(callback);
+    }
+
+    /// ditto
+    TimerHandle registerRecurringTimer(alias F)(Duration interval, Parameters!F params, Timeout firstRun) nothrow @safe @nogc {
+        TimedCallback* callback = allocRecurringTimer(interval);
+        callback.timePoint = firstRun.expiry;
+        callback.closure.set(&F, params);
+
+        timeQueue.insert(callback);
+
         return TimerHandle(callback);
     }
 
@@ -1719,6 +1740,21 @@ private:
         ret.generation = timedCallbackGeneration.getNext();
 
         return ret;
+    }
+
+    TimedCallback* allocRecurringTimer(Duration interval) nothrow @safe @nogc {
+        TimedCallback* callback = allocTimedCallback();
+        if( interval<optionsInEffect.timerGranularity )
+            interval = optionsInEffect.timerGranularity;
+
+        callback.intervalCycles = TscTimePoint.toCycles(interval);
+        return callback;
+    }
+
+    TimedCallback* _registerRecurringTimer(Duration interval) nothrow @safe @nogc {
+        TimedCallback* callback = allocRecurringTimer(interval);
+        rescheduleRecurringTimer(callback);
+        return callback;
     }
 
     @property bool shouldRunTimedCallbacks() nothrow @safe @nogc {
