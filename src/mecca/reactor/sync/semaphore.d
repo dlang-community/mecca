@@ -267,13 +267,17 @@ private:
     }
 
     void suspendPrimary(Timeout timeout) @safe @nogc {
+        scope(failure) resumeOne(false);
+
         DBG_ASSERT!"Cannot have two primary waiters"(!primaryWaiter.isValid);
         primaryWaiter = theReactor.currentFiberHandle();
-        scope(exit) primaryWaiter.reset();
+        scope(exit) {
+            resumePending = false;
+            primaryWaiter.reset();
+        }
+
         theReactor.suspendCurrentFiber(timeout);
         ASSERT!"Semaphore woke up without anyone owning up to waking us up."(resumePending);
-
-        resumePending = false;
     }
 }
 
@@ -387,6 +391,43 @@ unittest {
     }
 
     testWithReactor(&mainFunc);
+}
+
+unittest {
+    // WEKAPP-74912: exception injected during acquire
+    META!"Test exception injection during acquire"();
+    import mecca.reactor;
+
+    Semaphore sem;
+    Timeout timeout;
+
+    sem.open(1);
+
+    void testerBody() {
+        sem.acquire(1, timeout);
+        sem.release();
+    }
+
+    testWithReactor( {
+            timeout = Timeout(300.msecs);
+            sem.acquire(1, timeout);
+
+            auto fh1 = theReactor.spawnFiber(&testerBody);
+            theReactor.yield();
+
+            auto fh2 = theReactor.spawnFiber(&testerBody);
+            theReactor.yield();
+
+            auto fh3 = theReactor.spawnFiber(&testerBody);
+            theReactor.yield();
+
+            sem.release();
+            theReactor.throwInFiber!FiberKilled(fh1);
+            theReactor.joinFiber(fh1, timeout);
+
+            theReactor.joinFiber(fh2, timeout);
+            theReactor.joinFiber(fh3, timeout);
+        });
 }
 
 version(unittest):
