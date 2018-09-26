@@ -9,7 +9,11 @@ import mecca.log;
 import mecca.lib.exception;
 import mecca.reactor;
 
-enum FLS_AREA_SIZE = 512;
+version(unittest)
+    // Unittests use more FLS
+    enum FLS_AREA_SIZE = 1024;
+else
+    enum FLS_AREA_SIZE = 512;
 
 struct FLSArea {
     align( (void*).alignof ):
