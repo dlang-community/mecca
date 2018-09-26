@@ -987,6 +987,7 @@ public:
      */
     void assertMayContextSwitch(string message) nothrow @safe @nogc {
         pragma(inline, true);
+        ASSERT!"Context switch from outside the reactor thread: %s"(isReactorThread, message);
         ASSERT!"Context switch while inside a critical section: %s"(!isInCriticalSection, message);
     }
 
