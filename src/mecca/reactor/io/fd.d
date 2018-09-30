@@ -24,20 +24,6 @@ import mecca.reactor.subsystems.poller;
 
 enum LISTEN_BACKLOG = 10;
 
-/// Exception thrown if `Socket.recvObj` receives partial data
-///
-/// `ErrnoException.errno` will report `EREMOTEIO`.
-class ShortRead : ErrnoException {
-    this(string msg, string file = __FILE_FULL_PATH__, size_t line = __LINE__) @trusted {
-        super(msg, EREMOTEIO, file, line);
-    }
-}
-
-unittest {
-    auto except = new ShortRead("Message");
-    assert(except.errno == EREMOTEIO);
-}
-
 /**
   Wrapper for datagram oriented socket (such as UDP)
  */

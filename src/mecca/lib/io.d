@@ -3,6 +3,7 @@ module mecca.lib.io;
 
 // Licensed under the Boost license. Full copyright information in the AUTHORS file
 
+import core.stdc.errno;
 import core.sys.posix.unistd;
 public import core.sys.posix.fcntl :
     O_ACCMODE, O_RDONLY, O_WRONLY, O_RDWR, O_CREAT, O_EXCL, O_TRUNC, O_APPEND, O_DSYNC, O_RSYNC, O_SYNC, O_NOCTTY;
@@ -17,6 +18,20 @@ import mecca.lib.memory;
 import mecca.lib.string;
 import mecca.log;
 import mecca.platform.x86;
+
+/// Exception thrown if a read/recv receives partial data
+///
+/// `ErrnoException.errno` will report `EREMOTEIO`.
+class ShortRead : ErrnoException {
+    this(string msg, string file = __FILE_FULL_PATH__, size_t line = __LINE__) @trusted {
+        super(msg, EREMOTEIO, file, line);
+    }
+}
+
+unittest {
+    auto except = new ShortRead("Message");
+    assert(except.errno == EREMOTEIO);
+}
 
 private extern(C) nothrow @trusted @nogc {
     int pipe2(ref int[2], int flags);
@@ -358,6 +373,107 @@ public:
         return read(buffer, args);
     }
 
+    /** Read a single line
+     *
+     * Reads a single line from the buffered IO. The line must fit the struct's allocated read buffer.
+     *
+     * returns:
+     * The function returns a `const(char)[]` that points to the file's read buffer. This means that no copy is done
+     * (the data is read directly to its final resting place), but it also means that the data might disappear if
+     * further read operations are done on the file.
+     *
+     * Upon successful read, the returned range contains the terminating character as its last element. See Notes below
+     * for discussion on partial lines.
+     *
+     * In case of end of file, the function returns a slice of length 0.
+     *
+     * params:
+     * args = the arguments for the underlying FD, if any. Can be used to pass `Timeout` to a `ReactorFD`.
+     * terminator = the line terminator to look for.
+     * partialOk = whether it is okay for the line to be partial.
+     *
+     * Notes:
+     * A partial line might happen in one of two cases. Either the line width is longer than the entire read buffer
+     * (as set when calling `open` or during construction), or the file sends an EOF without terminating the last line.
+     *
+     * What happens in that case depends on whether `partialOk` is set. If it is, the buffer is returned with no
+     * terminator as the last character. If `partialOk` is clear (the default) then the call throws a `ShortRead`
+     * exception.
+     */
+    const(char)[] readLine(ARGS...)(ARGS args, char terminator = '\n', bool partialOk = false) @trusted @nogc {
+        size_t readLineFromBuffer(size_t start, char terminator) @trusted @nogc nothrow {
+            const(char)[] convertedBuffer = cast(const(char)[])readBuffer;
+
+            // Can't use std.algorithm.searching.find, as it's a GC function. Of course, the only reason it allocates is
+            // because it needs to throw range.empty if not found. Since we would then have to also catch that exception,
+            // using it quickly spirals out of control.
+            //
+            // Instead, we're going to spend the 4 lines it takes to roll our own :-(
+            foreach(i; start..readBuffer.length) {
+                if( convertedBuffer[i]==terminator ) {
+                    return i+1;
+                }
+            }
+
+            return 0;
+        }
+
+        // Fast path - the entire line is already present in the buffer
+        size_t intermediateLength = readLineFromBuffer(0, terminator);
+        if( intermediateLength!=0 ) {
+            const(char)[] result = cast(const(char)[])readBuffer[0..intermediateLength];
+            readBuffer = readBuffer[intermediateLength..$];
+
+            return result;
+        }
+
+        // Move the buffer we already have to the beginning of the memory, to maximize the efficiency of the next read
+        if( readBuffer.ptr!=rawReadBuffer.ptr ) {
+            // No point in moving memory if it's already at the beginning
+            foreach(i; 0..readBuffer.length) {
+                // Can't use array operations because the ranges might overlap
+                (cast(char[])rawReadBuffer)[i] = (cast(const(char)[])readBuffer)[i];
+            }
+
+            readBuffer = rawReadBuffer[0..readBuffer.length];
+        }
+
+        const(char)[] partialResult() {
+            if( partialOk ) {
+                const(char)[] result = (cast(const(char)[])readBuffer);
+                readBuffer = null;
+
+                return result;
+            } else {
+                throw mkExFmt!ShortRead("readline unable to find terminator in %s bytes", readBuffer.length);
+            }
+        }
+
+        intermediateLength = readBuffer.length;
+        size_t numRead;
+        size_t terminatorLocation;
+        do {
+            intermediateLength += numRead;
+            if( readBuffer.length==readBufferSize ) {
+                return partialResult(); // No more room to expand
+            }
+
+            numRead = fd.read(rawReadBuffer[intermediateLength..$], args);
+            if( numRead==0 )
+                return partialResult(); // EOF
+
+            readBuffer = rawReadBuffer[0..intermediateLength + numRead];
+        } while( (terminatorLocation = readLineFromBuffer(intermediateLength, terminator))==0 );
+
+        DBG_ASSERT!"Terminator not found in successful loop completion: loc %s str \"%s\""(
+                (cast(const(char)[])readBuffer)[terminatorLocation-1]==terminator, terminatorLocation,
+                (cast(const(char)[])readBuffer)[0..terminatorLocation]);
+        auto result = (cast(const(char)[])readBuffer)[0..terminatorLocation];
+        readBuffer = readBuffer[terminatorLocation..$];
+
+        return result;
+    }
+
     /// Perform @safe buffered write
     ///
     /// Function does not return until all data is either written to FD or buffered
@@ -521,4 +637,84 @@ unittest {
     assertEQ(fd.writeOffset, TestSize, "Did not write correct number of bytes");
     assertEQ(numReads, 16);
     assertEQ(numWrites, 16);
+}
+
+unittest {
+    import mecca.lib.time;
+    import mecca.reactor;
+    import mecca.reactor.io.fd;
+    import mecca.reactor.subsystems.poller;
+
+    void testBody() {
+        FD pipeReadFD, pipeWriteFD;
+        createPipe(pipeReadFD, pipeWriteFD);
+
+        BufferedIO!ReactorFD pipeRead = BufferedIO!ReactorFD( ReactorFD(move(pipeReadFD)), 128, 4096-128);
+        ReactorFD pipeWrite = ReactorFD(move(pipeWriteFD));
+
+        uint numLinesRead, numLinesFailed;
+
+        auto timeout = Timeout(300.msecs);
+
+        enum string[] expectedLines = [ "First line", "Second line", "", "Fourth line",
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" ~
+                    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "aaaaaaaaaaaa", "" ];
+        void reader() {
+            const(char)[] line;
+            int i;
+            do {
+                line = pipeRead.readLine(timeout, '\n', true);
+                if( line.length>0 && line[$-1]=='\n' ) {
+                    DEBUG!"Read \"%s\" expected \"%s\""( line[0..$-1], expectedLines[i] );
+                    assertEQ( expectedLines[i], line[0..$-1], ": Read the wrong data" );
+                    ++i;
+                    numLinesRead++;
+                } else {
+                    DEBUG!"Read \"%s\" expected \"%s\""( line[0..$], expectedLines[i] );
+                    assertEQ( expectedLines[i], line[0..$], ": Read the wrong data" );
+                    ++i;
+                    numLinesFailed++;
+                }
+            } while(line.length>0);
+        }
+
+        theReactor.spawnFiber(&reader);
+
+        void writeData(string data) {
+            pipeWrite.write(data, timeout);
+            poller.poll(); // Otherwise the other fiber won't get scheduled
+            theReactor.yield();
+        }
+
+        // Write two complete lines and one incomplete one
+        writeData("First line\nSecond line\n\nFour");
+        assertEQ(numLinesRead, 3, "Read lines count incorrect");
+        assertEQ(numLinesFailed, 0, "Failed lines count incorrect");
+
+        writeData("th lin");
+        assertEQ(numLinesRead, 3, "Read lines count incorrect");
+        assertEQ(numLinesFailed, 0, "Failed lines count incorrect");
+
+        writeData("e\n");
+        assertEQ(numLinesRead, 4, "Read lines count incorrect");
+        assertEQ(numLinesFailed, 0, "Failed lines count incorrect");
+
+        writeData("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"); // 70 "a"s
+        assertEQ(numLinesRead, 4, "Read lines count incorrect");
+        assertEQ(numLinesFailed, 0, "Failed lines count incorrect");
+
+        writeData("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"); // 70 more "a"s
+        assertEQ(numLinesRead, 4, "Read lines count incorrect");
+        assertEQ(numLinesFailed, 1, "Failed lines count incorrect");
+
+        destroy(pipeWrite);
+        poller.poll(); // Otherwise the other fiber won't get scheduled
+        theReactor.yield();
+
+        assertEQ(numLinesRead, 4, "Read lines count incorrect");
+        assertEQ(numLinesFailed, 3, "Failed lines count incorrect");
+    }
+
+    testWithReactor(&testBody);
 }

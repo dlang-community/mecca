@@ -1,3 +1,5 @@
+ * Add readline to BufferedIO
+
 Version 0.0.8 (Sep 20 2018)
  * Bug fixes
  * Allow explicitly setting first time recurring timer will run
