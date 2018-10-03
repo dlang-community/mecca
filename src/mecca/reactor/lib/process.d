@@ -32,6 +32,9 @@ struct Process {
         StdErr          /// Child's stderr stream.
     }
 private:
+    // Prevent accidental copying
+    @disable this(this);
+
     pid_t _pid;
     Event processDone;
     // Child side end of standard streams
@@ -217,6 +220,9 @@ private:
 /// Process tracking management
 struct ProcessManager {
 private:
+    // Prevent accidental copying
+    @disable this(this);
+
     enum OUTPUT_BUFF_SIZE = 1024;
 
     SimplePool!Process processPool;

@@ -62,6 +62,9 @@ private {
 }
 
 struct ReactorFiber {
+    // Prevent accidental copying
+    @disable this(this);
+
     static struct OnStackParams {
         Closure                 fiberBody;
         union {
@@ -439,6 +442,9 @@ package:
   The main scheduler for the micro-threading architecture.
  */
 struct Reactor {
+    // Prevent accidental copying
+    @disable this(this);
+
     /// Delegates passed to `registerIdleCallback` must be of this signature
     alias IdleCallbackDlg = bool delegate(Duration);
 

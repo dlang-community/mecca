@@ -441,6 +441,8 @@ unittest {
 
     // Linked list using abstracted _next and _prev
     struct Node {
+        @disable this(this);
+
         static Node[10] theNodes;
 
         int value;

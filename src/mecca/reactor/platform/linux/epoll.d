@@ -55,6 +55,9 @@ struct Epoll {
     }
 
 private: // Not that this does anything, as the struct itself is only visible to this file.
+    // Prevent accidental copying
+    @disable this(this);
+
     FD epollFd;
     FixedPool!(FdContext, MAX_CONCURRENT_FDS) fdPool;
 
