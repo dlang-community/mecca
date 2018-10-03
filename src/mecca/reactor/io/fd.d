@@ -459,7 +459,9 @@ struct Socket {
      *
      * Will throw TimeoutExpired if the timeout expired
      */
-    @notrace void recvObj(T)(T* data, int flags=0, Timeout timeout = Timeout.infinite) @safe @nogc {
+    @notrace void recvObj(T)(T* data, int flags=0, Timeout timeout = Timeout.infinite) @safe @nogc
+            if(!hasElaborateDestructor!T)
+    {
         objectCall!recv(data, flags, timeout);
     }
 
