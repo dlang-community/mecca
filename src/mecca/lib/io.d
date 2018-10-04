@@ -388,9 +388,9 @@ public:
      * In case of end of file, the function returns a slice of length 0.
      *
      * params:
-     * args = the arguments for the underlying FD, if any. Can be used to pass `Timeout` to a `ReactorFD`.
      * terminator = the line terminator to look for.
-     * partialOk = whether it is okay for the line to be partial.
+     * partialOk = whether it is okay for the line to be partial. Defaults to `false`.
+     * args = the arguments for the underlying FD, if any. Can be used to pass `Timeout` to a `ReactorFD`.
      *
      * Notes:
      * A partial line might happen in one of two cases. Either the line width is longer than the entire read buffer
@@ -400,7 +400,11 @@ public:
      * terminator as the last character. If `partialOk` is clear (the default) then the call throws a `ShortRead`
      * exception.
      */
-    const(char)[] readLine(ARGS...)(ARGS args, char terminator = '\n', bool partialOk = false) @trusted @nogc {
+    const(char)[] readLine(char terminator = '\n') @trusted @nogc {
+        return readLine(terminator, false);
+    }
+
+    const(char)[] readLine(ARGS...)(char terminator, bool partialOk, ARGS args) @trusted @nogc {
         size_t readLineFromBuffer(size_t start, char terminator) @trusted @nogc nothrow {
             const(char)[] convertedBuffer = cast(const(char)[])readBuffer;
 
@@ -664,7 +668,7 @@ unittest {
             const(char)[] line;
             int i;
             do {
-                line = pipeRead.readLine(timeout, '\n', true);
+                line = pipeRead.readLine('\n', true, timeout);
                 if( line.length>0 && line[$-1]=='\n' ) {
                     DEBUG!"Read \"%s\" expected \"%s\""( line[0..$-1], expectedLines[i] );
                     assertEQ( expectedLines[i], line[0..$-1], ": Read the wrong data" );
