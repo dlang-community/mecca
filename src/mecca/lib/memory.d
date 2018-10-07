@@ -8,14 +8,14 @@ import std.conv;
 import std.uuid;
 
 import core.atomic;
-import core.sys.posix.sys.mman;
 import core.stdc.errno;
 import core.sys.posix.fcntl;
+import core.sys.posix.sys.mman;
 import core.sys.posix.unistd;
-import core.sys.linux.sys.mman: MAP_ANONYMOUS, MAP_POPULATE;
+import core.sys.linux.sys.mman: MAP_ANONYMOUS, MAP_POPULATE, mremap, MREMAP_MAYMOVE;
 
 import mecca.lib.exception;
-import mecca.lib.reflection: setToInit, abiSignatureOf;
+import mecca.lib.reflection: setToInit, abiSignatureOf, as;
 
 import mecca.log;
 
@@ -28,52 +28,167 @@ shared static this() {
 
 public import mecca.platform.x86: prefetch;
 
-struct MmapArray(T) {
-    T[] arr;
+/**
+ * A variable size array backed by mmap-allocated memory.
+ *
+ * Behaves just like a native dynamic array, but all methods are `@nogc`.
+ *
+ * params:
+ *      shrink = Determines whether the capacity of the array can be reduced by setting .length.
+ *      Allocated memory can always be freed by calling free().
+ */
+public struct MmapArray(T, bool shrink = false) {
+private:
+    void *_ptr = MAP_FAILED;
+    size_t _capacity = 0;
+    T[] _arr;
+    bool registerWithGC = false;
 
+public:
+
+    /// Returns whether the array currently has any allocated memory.
+    @property bool closed() const pure nothrow @nogc { return (_ptr == MAP_FAILED); }
+
+    /// Returns the array as a standard D slice.
+    @property inout(T[]) arr() inout pure nothrow @nogc { return _arr; }
+
+    /// Returns the number of elements that can be appended to the array without reallocating.
+    @property size_t capacity() const pure nothrow @nogc { return _capacity / T.sizeof; }
+
+    /// Get/set the number of elements in the array.
+    @property size_t length() const pure nothrow @nogc { return _arr.length; }
+    /// ditto
+    @property size_t length(size_t numElements) @trusted @nogc {
+        return this.lengthImpl!true = numElements;
+    }
+
+    @disable this(this);
     ~this() nothrow @safe @nogc {
         free();
     }
 
-    @notrace void allocate(size_t numElements, bool registerWithGC = false) @trusted @nogc {
-        assert (arr is null, "Already open");
-        assert (numElements > 0);
-        auto size = T.sizeof * numElements;
-        auto ptr = mmap(null, size, PROT_READ | PROT_WRITE,
-            MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE, -1, 0);
-        enforceFmt!ErrnoException(ptr != MAP_FAILED, "mmap(%s bytes) failed", size);
-        arr = (cast(T*)ptr)[0 .. numElements];
-        if (registerWithGC) {
-            import core.memory;
-            GC.addRange(ptr, size);
+    alias arr this;
+
+    /// Pre-allocate enough memory for at least numElements to be appended to the array.
+    @notrace void reserve(size_t numElements) @trusted @nogc {
+        if (this.capacity >= numElements) {
+            return;
         }
-        if (typeid(T).initializer.ptr !is null) {
-            // if the initializer is null, it means it's inited to zeros, which is already the case
-            // otherwise, we'll have to init it ourselves
-            foreach(ref a; arr) {
-                setToInit(a);
-            }
-        }
-    }
-    @notrace void free() nothrow @trusted @nogc {
-        if (arr) {
-            import core.memory;
-            GC.removeRange(arr.ptr);
-            munmap(arr.ptr, T.sizeof * arr.length);
-        }
-        arr = null;
-    }
-    @property bool closed() const pure nothrow {
-        return arr is null;
+        reserveImpl(numElements);
     }
 
-    alias arr this;
+    /// Initial allocation of the array memory.
+    ///
+    /// params:
+    ///     numElements = The initial number of elements of the array.
+    ///     registerWithGC = Whether the array's memory should be scanned by the GC. This is required for arrays holding pointers to GC-allocated memory.
+    ///
+    /// Notes:
+    ///     Should be called on a closed array.
+    ///     This method is added for symmetry with free(), it's use is optional. Has the same effect as setting .length on a closed array.
+    @notrace void allocate(size_t numElements, bool registerWithGC = false) @trusted @nogc {
+        assert (closed, "Already opened");
+        assert (numElements > 0);
+        this.registerWithGC = registerWithGC;
+        this.lengthImpl!false = numElements;
+    }
+
+    /// Frees allocated memory and sets length to 0.
+    @notrace void free() nothrow @trusted @nogc {
+        if (closed) {
+            return;
+        }
+
+        this.gcUnregister();
+        munmap(_ptr, _capacity);
+        this._ptr = MAP_FAILED;
+        this._capacity = 0;
+        this._arr = null;
+    }
+
+private:
+
+    @notrace void reserveImpl(size_t numElements) @trusted @nogc {
+        immutable size_t newCapacity = ((((numElements * T.sizeof) + SYS_PAGE_SIZE - 1) / SYS_PAGE_SIZE) * SYS_PAGE_SIZE);
+        static if (shrink) {
+            if (newCapacity == _capacity) {
+                return;
+            }
+        } else {
+            if (newCapacity <= _capacity) {
+                return;
+            }
+        }
+
+        if (numElements == 0) {
+            free();
+            return;
+        }
+
+        this.gcUnregister();
+        void* ptr = MAP_FAILED;
+
+        // initial allocation - mmap
+        if (closed) {
+            ptr = mmap(null, newCapacity, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE, -1, 0);
+            enforceFmt!ErrnoException(ptr != MAP_FAILED, "mmap(%s bytes) failed", newCapacity);
+        }
+
+        // resize existing allocation - mremap
+        else {
+            ptr = as!"@nogc"(() => mremap(_ptr, _capacity, newCapacity, MREMAP_MAYMOVE));
+            enforceFmt!ErrnoException(ptr != MAP_FAILED, "mremap(%s bytes -> %s bytes) failed", _capacity, newCapacity);
+        }
+
+        immutable size_t currLength = this.length;
+        this._ptr = ptr;
+        this._capacity = newCapacity;
+        this._arr = (cast(T*)_ptr)[0 .. currLength];
+        this.gcRegister();
+    }
+
+    @property size_t lengthImpl(bool forceSetToInit)(size_t numElements) @trusted @nogc {
+        import std.algorithm : min;
+        import std.traits : hasElaborateDestructor;
+        immutable size_t currLength = this.length;
+
+        static if (hasElaborateDestructor!T) {
+            foreach (ref a; this._arr[min($, numElements) .. $]) {
+                a.__xdtor();
+            }
+        }
+
+        this.reserveImpl(numElements);
+        this._arr = this._arr.ptr[0 .. numElements];
+
+        // XXX DBUG change this runtime if() to static if with __traits(isZeroInit, T) once it's implemented
+        if (forceSetToInit || typeid(T).initializer.ptr !is null) {
+            foreach (ref a; this._arr[min($, currLength) .. $]) {
+                setToInit!true(a);
+            }
+        }
+
+        return numElements;
+    }
+
+    @notrace gcRegister() const nothrow @trusted @nogc {
+        import core.memory;
+        if (registerWithGC) {
+            GC.addRange(_ptr, _capacity);
+        }
+    }
+    @notrace gcUnregister() const nothrow @trusted @nogc {
+        import core.memory;
+        if (registerWithGC && !closed) {
+            GC.removeRange(_ptr);
+        }
+    }
 }
 
 alias MmapBuffer = MmapArray!ubyte;
 
-unittest {
-    MmapArray!ulong arr;
+@nogc unittest {
+    MmapArray!ubyte arr;
     assert (arr is null);
     assert (arr.length == 0);
     arr.allocate(1024);
@@ -82,6 +197,63 @@ unittest {
     arr[$-1] = 200;
     arr.free();
     assert (arr is null);
+
+    arr.length = SYS_PAGE_SIZE / 4;
+    assert (arr.capacity == SYS_PAGE_SIZE);
+    arr[$-1] = 0x13;
+    arr.length = SYS_PAGE_SIZE / 2;
+    arr[$-1] = 0x37;
+    arr.length = SYS_PAGE_SIZE / 4;
+    assert (arr[$-1] == 0x13);
+    arr.length = SYS_PAGE_SIZE / 2;
+    assert (arr[$-1] == 0);
+    assert (arr.capacity == SYS_PAGE_SIZE);
+
+    arr.length = 4*SYS_PAGE_SIZE - 100;
+    assert (arr.capacity == 4*SYS_PAGE_SIZE);
+    assert (arr[SYS_PAGE_SIZE/4 - 1] == 0x13);
+    arr.length = SYS_PAGE_SIZE / 4;
+    assert (arr.capacity == 4*SYS_PAGE_SIZE);
+    assert (arr[$ - 1] == 0x13);
+    arr.length = 0;
+    assert (arr.empty);
+    assert (arr.capacity == 4*SYS_PAGE_SIZE);
+
+    arr.free();
+    assert (arr is null);
+    assert (arr.empty);
+    assert (arr.capacity == 0);
+}
+
+@nogc unittest {
+    static ulong count;
+    count = 0;
+
+    struct S {
+        int x;
+        ~this() @nogc {
+            // count is global (static) to avoid allocating a closure.
+            count++;
+        }
+    }
+    MmapArray!S arr;
+
+    arr.reserve(100);
+    assert (arr.empty);
+    assert (arr.capacity >= 100);
+
+    arr.length = 10;
+    assert (!arr.empty);
+    assert (count == 0);
+
+    arr[9].x = 9;
+    arr.length = 5;
+    assert (count == 5);
+    arr.length = 20;
+    assert (count == 5);
+    assert (arr[9].x == 0);
+    arr.length = 5;
+    assert (count == 20);
 }
 
 struct SharedFile {
