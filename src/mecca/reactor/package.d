@@ -599,6 +599,9 @@ private:
     bool _gcCollectionForce;
     bool _hangDetectorEnabled;
     ubyte maxNumFibersBits;     // Number of bits sufficient to represent the maximal number of fibers
+    bool nothingScheduled; // true if there is no scheduled fiber
+    enum HIGH_PRIORITY_SCHEDULES_RATIO = 2; // How many high priority schedules before shceduling a low priority fiber
+    ubyte highPrioritySchedules; // Number of high priority schedules done
     FiberIdx.UnderlyingType maxNumFibersMask;
     int reactorReturn;
     int criticalSectionNesting;
@@ -609,7 +612,8 @@ private:
     MmapBuffer fiberStacks;
     MmapArray!ReactorFiber allFibers;
     LinkedQueueWithLength!(ReactorFiber*) freeFibers;
-    LinkedListWithLength!(ReactorFiber*) scheduledFibers;
+    enum FiberPriorities { NORMAL, HIGH, IMMEDIATE };
+    LinkedListWithOwner!(ReactorFiber*) scheduledFibersNormal, scheduledFibersHigh, scheduledFibersImmediate;
 
     ReactorFiber* _thisFiber;
     ReactorFiber* mainFiber;
@@ -769,7 +773,10 @@ public:
         timedCallbacksPool.close();
 
         setToInit(freeFibers);
-        setToInit(scheduledFibers);
+        setToInit(scheduledFibersNormal);
+        setToInit(scheduledFibersHigh);
+        setToInit(scheduledFibersImmediate);
+        nothingScheduled = true;
 
         _thisFiber = null;
         mainFiber = null;
@@ -1118,41 +1125,49 @@ public:
     }
 
     /**
-      Give a fiber temporary priority in execution.
-
-      Setting fiber priority means that the next time this fiber is scheduled, it will be scheduled ahead of other
-      fibers already scheduled to be run.
-
-      This attribute is a one-off. As soon as the fiber gets scheduled again, it will revert to being a normal fiber.
-
-      Params:
-      fib = FiberHandle of fiber to boost. If missing, boost the current fiber
-      priority = Whether to prioritize (default) of de-prioritize the fiber
+     * Give a fiber temporary priority in execution.
+     *
+     * Setting fiber priority means that the next time this fiber is scheduled, it will be scheduled ahead of other
+     * fibers already scheduled to be run.
+     *
+     * Returns a RAII object that sets the priority back when destroyed. Typically, that happens at the end of the scope.
+     *
+     * Can be used as:
+     * ---
+     * with(boostFiberPriority()) {
+     *    // High priority stuff goes here
+     * }
+     * ---
      */
-    void boostFiberPriority(FiberHandle fib, bool priority = true) nothrow @safe @nogc {
-        ReactorFiber* fiber = fib.get();
-        if( fiber is null ) {
-            WARN!"Can't prioritize invalid fiber handle"();
-            return;
-        }
+    auto boostFiberPriority() nothrow @safe @nogc {
+        static struct FiberPriorityRAII {
+        private:
+            FiberHandle fh;
 
-        DEBUG!"Setting fiber %s priority to %s"(fiber.identity, priority);
-        ASSERT!"Cannot ask to prioritize non-user fiber %s"(!fiber.flag!"SPECIAL", fiber.identity);
-        if( fiber.flag!"SCHEDULED" ) {
-            ASSERT!"Fiber %s has PRIORITY set while scheduled"(!fiber.flag!"PRIORITY", fiber.identity);
-            if( priority ) {
-                resumeFiber( fiber, true );
+        public:
+            @disable this(this);
+            this(FiberHandle fh) {
+                this.fh = fh;
             }
-        } else {
-            fiber.flag!"PRIORITY" = priority;
-        }
-    }
 
-    /// ditto
-    void boostFiberPriority(bool priority = true) nothrow @safe @nogc {
+            ~this() {
+                if( fh.isValid ) {
+                    ASSERT!"Cannot move priority watcher between fibers (opened on %s)"(
+                            fh == theReactor.currentFiberHandle, fh.fiberId);
+
+                    ASSERT!"Trying to reset priority which is not set"( theReactor.thisFiber.flag!"PRIORITY" );
+                    theReactor.thisFiber.flag!"PRIORITY" = false;
+                }
+            }
+        }
+
         ASSERT!"Cannot ask to prioritize a non-user fiber"(!isSpecialFiber);
-        DEBUG!"Setting fiber priority to %s"(priority);
-        thisFiber.flag!"PRIORITY" = priority;
+        ASSERT!"Asked to prioritize a fiber %s which is already high priority"(
+                !thisFiber.flag!"PRIORITY", currentFiberId );
+        DEBUG!"Setting fiber priority"();
+        thisFiber.flag!"PRIORITY" = true;
+
+        return FiberPriorityRAII(currentFiberHandle);
     }
 
     /** Don't yield
@@ -1598,9 +1613,9 @@ public:
         return FibersIterator(cast(uint) reactorStats.numUsedFibers);
     }
 
-    auto iterateScheduledFibers() nothrow @safe @nogc {
+    auto iterateScheduledFibers(FiberPriorities priority) nothrow @safe @nogc {
         @notrace static struct Range {
-            private typeof(scheduledFibers.range()) fibersRange;
+            private typeof(scheduledFibersNormal.range()) fibersRange;
 
             @property FiberHandle front() nothrow @nogc {
                 return FiberHandle(fibersRange.front);
@@ -1615,7 +1630,16 @@ public:
             }
         }
 
-        return Range(scheduledFibers.range());
+        with(FiberPriorities) final switch(priority) {
+        case NORMAL:
+            return scheduledFibersNormal.range();
+        case HIGH:
+            return scheduledFibersHigh.range();
+        case IMMEDIATE:
+            return scheduledFibersImmediate.range();
+        }
+
+        assert(false, "Priority must be member of FiberPriorities");
     }
 
     /**
@@ -1790,11 +1814,31 @@ private:
             if (thisFiber !is mainFiber && !mainFiber.flag!"SCHEDULED" && shouldRunTimedCallbacks()) {
                 resumeSpecialFiber(mainFiber);
             }
-            else if (scheduledFibers.empty) {
-                resumeSpecialFiber(idleFiber);
-            }
 
-            assert (!scheduledFibers.empty, "scheduledList is empty");
+            ReactorFiber* nextFiber;
+
+            if( !scheduledFibersImmediate.empty ) {
+                nextFiber = scheduledFibersImmediate.popHead();
+            } else if(
+                    !scheduledFibersHigh.empty &&
+                    ( highPrioritySchedules<HIGH_PRIORITY_SCHEDULES_RATIO || scheduledFibersNormal.empty))
+            {
+                nextFiber = scheduledFibersHigh.popHead();
+                highPrioritySchedules++;
+            } else if( !scheduledFibersNormal.empty ) {
+                nextFiber = scheduledFibersNormal.popHead();
+                if( !scheduledFibersHigh.empty ) {
+                    ERROR!"Scheduled normal priority fiber %s over high priority %s to prevent starvation"(
+                            nextFiber.identity, scheduledFibersHigh.head.identity);
+                }
+
+                highPrioritySchedules = 0;
+            } else {
+                DBG_ASSERT!"Idle fiber scheduled but all queues empty"( !idleFiber.flag!"SCHEDULED" );
+                nextFiber = idleFiber;
+                idleFiber.flag!"SCHEDULED" = true;
+                nothingScheduled = true;
+            }
 
             if( thisFiber.state==FiberState.Running )
                 thisFiber.state = FiberState.Sleeping;
@@ -1803,7 +1847,7 @@ private:
                 thisFiber.state = FiberState.None;
             }
 
-            auto nextFiber = scheduledFibers.popHead();
+            DBG_ASSERT!"Couldn't decide on a fiber to schedule"(nextFiber !is null);
 
             ASSERT!"Next fiber %s is not marked scheduled" (nextFiber.flag!"SCHEDULED", nextFiber.identity);
             nextFiber.flag!"SCHEDULED" = false;
@@ -1865,11 +1909,12 @@ private:
         DBG_ASSERT!"Asked to resume special fiber %s which isn't marked special" (fib.flag!"SPECIAL", fib.identity);
         DBG_ASSERT!"Asked to resume special fiber %s with no body set" (fib.flag!"CALLBACK_SET", fib.identity);
         DBG_ASSERT!"Special fiber %s scheduled not in head of list" (
-                !fib.flag!"SCHEDULED" || scheduledFibers.head is fib, fib.identity);
+                !fib.flag!"SCHEDULED" || scheduledFibersImmediate.head is fib, fib.identity);
 
         if (!fib.flag!"SCHEDULED") {
             fib.flag!"SCHEDULED" = true;
-            scheduledFibers.prepend(fib);
+            scheduledFibersImmediate.prepend(fib);
+            nothingScheduled = false;
         }
     }
 
@@ -1877,10 +1922,18 @@ private:
         DBG_ASSERT!"Cannot resume a special fiber %s using the standard resumeFiber" (!fib.flag!"SPECIAL", fib.identity);
         ASSERT!"resumeFiber called on %s, which does not have a callback set"(fib.flag!"CALLBACK_SET", fib.identity);
 
-        bool effectiveImmediate = immediate;
-        if (fib.flag!"PRIORITY") {
-            effectiveImmediate = true;
-            fib.flag!"PRIORITY" = false;
+        typeof(scheduledFibersNormal)* queue;
+        if( immediate ) {
+            if( fib.flag!"SCHEDULED" && fib !in scheduledFibersImmediate ) {
+                fib._owner.remove(fib);
+                fib.flag!"SCHEDULED" = false;
+            }
+
+            queue = &scheduledFibersImmediate;
+        } else if( fib.flag!"PRIORITY" ) {
+            queue = &scheduledFibersHigh;
+        } else {
+            queue = &scheduledFibersNormal;
         }
 
         if (!fib.flag!"SCHEDULED") {
@@ -1889,17 +1942,8 @@ private:
                 fib._owner.remove(fib);
             }
             fib.flag!"SCHEDULED" = true;
-            if (effectiveImmediate) {
-                scheduledFibers.prepend(fib);
-            }
-            else {
-                scheduledFibers.append(fib);
-            }
-        } else if( immediate ) {
-            // If specifically asked for immediate resume, move the fiber to the beginning of the line even if already
-            // scheduled
-            scheduledFibers.remove(fib);
-            scheduledFibers.prepend(fib);
+            queue.append(fib);
+            nothingScheduled = false;
         }
     }
 
@@ -1922,7 +1966,7 @@ private:
             TscTimePoint start, end;
             end = start = TscTimePoint.hardNow;
 
-            while (scheduledFibers.empty) {
+            while (nothingScheduled) {
                 auto critSect = criticalSection();
 
                 /*
@@ -1951,7 +1995,7 @@ private:
                 if( countsAsIdle ) {
                     end = TscTimePoint.hardNow;
                 } else {
-                    if( scheduledFibers.empty ) {
+                    if( nothingScheduled ) {
                         // We are going in for another round, but this round should not count as idle time
                         stats.idleCycles += end.diff!"cycles"(start);
                         end = start = TscTimePoint.hardNow;
@@ -2782,20 +2826,37 @@ unittest {
     // test priority of scheduled fibers
 
     uint gen;
+    string[] runOrder;
 
-    void verify(uint expected) {
-        assert(gen==expected);
-        gen++;
+    void verify(bool Priority)(string id) {
+
+        static if( Priority ) {
+            auto priorityWatcher = theReactor.boostFiberPriority();
+        }
+        theReactor.suspendCurrentFiber();
+        runOrder ~= id;
     }
 
     testWithReactor({
-            theReactor.spawnFiber(&verify, 1);
-            theReactor.spawnFiber(&verify, 2);
-            auto fh = theReactor.spawnFiber(&verify, 0);
-            theReactor.spawnFiber(&verify, 3);
-            theReactor.boostFiberPriority(fh);
+            FiberHandle[] fh;
+            fh ~= theReactor.spawnFiber(&verify!false, "reg1");
+            fh ~= theReactor.spawnFiber(&verify!false, "reg2");
+            fh ~= theReactor.spawnFiber(&verify!false, "imm1"); // Scheduled immediate
+            fh ~= theReactor.spawnFiber(&verify!true, "pri1");
+            fh ~= theReactor.spawnFiber(&verify!false, "imm2"); // Scheduled immediate
+            fh ~= theReactor.spawnFiber(&verify!true, "pri2");
+            fh ~= theReactor.spawnFiber(&verify!false, "reg3");
+            fh ~= theReactor.spawnFiber(&verify!true, "pri3"); // reg1 bypasses this one in order to avoid starvation
+            fh ~= theReactor.spawnFiber(&verify!false, "imm3"); // Scheduled immediate
             theReactor.yield();
-            assert(gen==4);
+            foreach(i; 0..fh.length)
+                theReactor.resumeFiber( fh[i], i==2 || i==4 );
+
+            // Resuming immediate an already scheduled fiber should change its priority
+            theReactor.resumeFiber( fh[8], true );
+
+            theReactor.yield();
+            assertEQ(["imm1", "imm2", "imm3", "pri1", "pri2", "reg1", "pri3", "reg2", "reg3"], runOrder);
         });
 }
 
