@@ -181,7 +181,9 @@ public:
     }
 
 private:
-    void runChildHelper(string[] args) nothrow @trusted {
+    // runChildHelper is called in a vfork'd child, any data modifications affect the parent process, so must not affect
+    // tracing indent level/etc, thus @notrace is mandatory!
+    @notrace void runChildHelper(string[] args) nothrow @trusted {
         try {
             sigset_t emptyMask;
             errnoEnforceNGC( sigprocmask( SIG_SETMASK, &emptyMask, null )==0, "sigprocmask failed" );
