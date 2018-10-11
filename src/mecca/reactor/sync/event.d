@@ -93,7 +93,7 @@ public:
         }
 
         // We might have gone through without sleeping
-        theReactor.dontYield();
+        theReactor.assertMayContextSwitch();
     }
 
     /**
@@ -129,7 +129,7 @@ public:
      */
     bool unreliableWait(Timeout timeout = Timeout.infinite) @safe @nogc {
         if( isSet ) {
-            theReactor.dontYield();
+            theReactor.assertMayContextSwitch();
             return true;
         }
 

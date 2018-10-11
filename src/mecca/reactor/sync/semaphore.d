@@ -195,7 +195,7 @@ public:
             suspendPrimary(timeout);
         }
         // In case we didn't sleep
-        theReactor.dontYield();
+        theReactor.assertMayContextSwitch();
 
         DBG_ASSERT!"Semaphore has %s requests pending including us, but we're requesting %s"(
                 requestsPending >= amount, requestsPending, amount);

@@ -949,7 +949,7 @@ public:
       reactorReturn = The return value to be returned from `start`
      */
     void stop(int reactorReturn = 0) @safe @nogc {
-        if( _stopping ) {
+        if( !isActive ) {
             ERROR!"Reactor.stop called, but reactor is not running"();
             return;
         }
@@ -998,7 +998,7 @@ public:
      * explicitly, however, from contexts that $(I might) context switch, so that they fail even if they don't actually
      * attempt it, in accordance with the "fail early" doctrine.
      */
-    void assertMayContextSwitch(string message) nothrow @safe @nogc {
+    void assertMayContextSwitch(string message = "Simulated context switch") nothrow @safe @nogc {
         pragma(inline, true);
         ASSERT!"Context switch from outside the reactor thread: %s"(isReactorThread, message);
         ASSERT!"Context switch while inside a critical section: %s"(!isInCriticalSection, message);
@@ -1081,6 +1081,7 @@ public:
      * Unlike suspend, the current fiber will automatically resume running after any currently scheduled fibers are finished.
      */
     @notrace void yield() @safe @nogc {
+        // TODO both scheduled and running is not a desired state to be in other than here.
         resumeFiber(thisFiber);
         suspendCurrentFiber();
     }
@@ -1146,11 +1147,11 @@ public:
 
         public:
             @disable this(this);
-            this(FiberHandle fh) {
+            this(FiberHandle fh) @safe @nogc nothrow {
                 this.fh = fh;
             }
 
-            ~this() {
+            ~this() @safe @nogc nothrow {
                 if( fh.isValid ) {
                     ASSERT!"Cannot move priority watcher between fibers (opened on %s)"(
                             fh == theReactor.currentFiberHandle, fh.fiberId);
@@ -1168,24 +1169,6 @@ public:
         thisFiber.flag!"PRIORITY" = true;
 
         return FiberPriorityRAII(currentFiberHandle);
-    }
-
-    /** Don't yield
-     *
-     * This function should called by functions that might yield but, in this case, don't. For example, `Lock.acquire`
-     * calls this function if the lock is available and no sleep is necessary.
-     *
-     * This function checks certain condition that have to happen in case a yield happens (such as that we're not inside
-     * a critical section). Under the "fail early" doctrine, we want those asserts to fail despite the fact we do not,
-     * actually, yield in this case.
-     *
-     * This function also resets certain flags that are meant to take effect only until the next context switch, such
-     * as calls to `boostFiberPriority`.
-     */
-    void dontYield() nothrow @safe @nogc {
-        assertMayContextSwitch("Simulated context switch");
-
-        thisFiber.flag!"PRIORITY" = false;
     }
 
     /// Handle used to manage registered timers
@@ -1736,7 +1719,7 @@ public:
         ReactorFiber* fiber = fh.get();
 
         if( fiber is null ) {
-            dontYield();
+            assertMayContextSwitch();
             return;
         }
 
