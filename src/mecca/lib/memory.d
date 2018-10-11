@@ -1,3 +1,4 @@
+/// Constructs for allocating and managing memory without the GC
 module mecca.lib.memory;
 
 // Licensed under the Boost license. Full copyright information in the AUTHORS file
@@ -33,7 +34,7 @@ public import mecca.platform.x86: prefetch;
  *
  * Behaves just like a native dynamic array, but all methods are `@nogc`.
  *
- * params:
+ * Params:
  *      shrink = Determines whether the capacity of the array can be reduced by setting .length.
  *      Allocated memory can always be freed by calling free().
  */
@@ -46,13 +47,13 @@ private:
 
 public:
 
-    /// Returns whether the array currently has any allocated memory.
+    /// Returns `true` if the array currently has no allocated memory.
     @property bool closed() const pure nothrow @nogc { return (_ptr == MAP_FAILED); }
 
     /// Returns the array as a standard D slice.
     @property inout(T[]) arr() inout pure nothrow @nogc { return _arr; }
 
-    /// Returns the number of elements that can be appended to the array without reallocating.
+    /// Returns the number of elements the array can grow to with no further allocations
     @property size_t capacity() const pure nothrow @nogc { return _capacity / T.sizeof; }
 
     /// Get/set the number of elements in the array.
@@ -79,13 +80,16 @@ public:
 
     /// Initial allocation of the array memory.
     ///
-    /// params:
+    /// Params:
     ///     numElements = The initial number of elements of the array.
-    ///     registerWithGC = Whether the array's memory should be scanned by the GC. This is required for arrays holding pointers to GC-allocated memory.
+    ///     registerWithGC = Whether the array's memory should be scanned by the GC. This is required for arrays holding
+    ///         pointers to GC-allocated memory.
     ///
     /// Notes:
     ///     Should be called on a closed array.
-    ///     This method is added for symmetry with free(), it's use is optional. Has the same effect as setting .length on a closed array.
+    ///
+    ///     This method is added for symmetry with `free()`. Its use is optional. If `registerWithGC` is `false`, this
+    ///     call has the same effect as setting `length` on a closed array.
     @notrace void allocate(size_t numElements, bool registerWithGC = false) @trusted @nogc {
         assert (closed, "Already opened");
         assert (numElements > 0);
@@ -93,7 +97,7 @@ public:
         this.lengthImpl!false = numElements;
     }
 
-    /// Frees allocated memory and sets length to 0.
+    /// Free all allocated memory and set length to 0.
     @notrace void free() nothrow @trusted @nogc {
         if (closed) {
             return;
