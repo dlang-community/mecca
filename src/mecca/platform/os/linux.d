@@ -556,6 +556,8 @@ public import core.sys.linux.sys.mman : MAP_POPULATE;
 import core.sys.posix.sys.types : pid_t;
 import std.traits : ReturnType;
 
+package(mecca):
+
 /**
  * Represents the ID of a thread.
  *
@@ -572,3 +574,17 @@ ThreadId currentThreadId() nothrow @system @nogc
 {
     return gettid();
 }
+
+__gshared static immutable BLOCKED_SIGNALS = [
+    OSSignal.SIGHUP, OSSignal.SIGINT, OSSignal.SIGQUIT,
+    //OSSignal.SIGILL, OSSignal.SIGTRAP, OSSignal.SIGABRT,
+    //OSSignal.SIGBUS, OSSignal.SIGFPE, OSSignal.SIGKILL,
+    //OSSignal.SIGUSR1, OSSignal.SIGSEGV, OSSignal.SIGUSR2,
+    OSSignal.SIGPIPE, OSSignal.SIGALRM, OSSignal.SIGTERM,
+    //OSSignal.SIGSTKFLT, OSSignal.SIGCONT, OSSignal.SIGSTOP,
+    OSSignal.SIGCHLD, OSSignal.SIGTSTP, OSSignal.SIGTTIN,
+    OSSignal.SIGTTOU, OSSignal.SIGURG, OSSignal.SIGXCPU,
+    OSSignal.SIGXFSZ, OSSignal.SIGVTALRM, OSSignal.SIGPROF,
+    OSSignal.SIGWINCH, OSSignal.SIGIO, OSSignal.SIGPWR,
+    //OSSignal.SIGSYS,
+];
