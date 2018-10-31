@@ -7,7 +7,7 @@ import core.thread;
 import core.sys.posix.signal;
 import std.exception;
 
-import mecca.platform.os: currentThreadId, ThreadId, OSSignal;
+import mecca.platform.os: currentThreadId, ThreadId;
 import mecca.lib.reflection;
 import mecca.lib.exception;
 import mecca.lib.time;
@@ -22,19 +22,7 @@ import mecca.reactor: theReactor, FiberHandle, TimerHandle;
 
 
 class WorkerThread: Thread {
-    __gshared static immutable BLOCKED_SIGNALS = [
-        OSSignal.SIGHUP, OSSignal.SIGINT, OSSignal.SIGQUIT,
-        //OSSignal.SIGILL, OSSignal.SIGTRAP, OSSignal.SIGABRT,
-        //OSSignal.SIGBUS, OSSignal.SIGFPE, OSSignal.SIGKILL,
-        //OSSignal.SIGUSR1, OSSignal.SIGSEGV, OSSignal.SIGUSR2,
-        OSSignal.SIGPIPE, OSSignal.SIGALRM, OSSignal.SIGTERM,
-        //OSSignal.SIGSTKFLT, OSSignal.SIGCONT, OSSignal.SIGSTOP,
-        OSSignal.SIGCHLD, OSSignal.SIGTSTP, OSSignal.SIGTTIN,
-        OSSignal.SIGTTOU, OSSignal.SIGURG, OSSignal.SIGXCPU,
-        OSSignal.SIGXFSZ, OSSignal.SIGVTALRM, OSSignal.SIGPROF,
-        OSSignal.SIGWINCH, OSSignal.SIGIO, OSSignal.SIGPWR,
-        //OSSignal.SIGSYS,
-    ];
+    public import mecca.platform.os : BLOCKED_SIGNALS;
 
     __gshared static void delegate(WorkerThread) preThreadFunc;
 
