@@ -553,3 +553,22 @@ mixin template hookSyscall(alias F, Syscall nr, alias traceFunc, SyscallTracePoi
 }+/
 
 public import core.sys.linux.sys.mman : MAP_POPULATE;
+import core.sys.posix.sys.types : pid_t;
+import std.traits : ReturnType;
+
+/**
+ * Represents the ID of a thread.
+ *
+ * This type is platform dependent.
+ */
+alias ThreadId = ReturnType!gettid;
+
+/**
+ * Represents the ID of a thread.
+ *
+ * This type is platform dependent.
+ */
+ThreadId currentThreadId() nothrow @system @nogc
+{
+    return gettid();
+}

@@ -7,7 +7,7 @@ import core.thread;
 import core.sys.posix.signal;
 import std.exception;
 
-import mecca.platform.os: gettid, OSSignal;
+import mecca.platform.os: currentThreadId, ThreadId, OSSignal;
 import mecca.lib.reflection;
 import mecca.lib.exception;
 import mecca.lib.time;
@@ -38,7 +38,7 @@ class WorkerThread: Thread {
 
     __gshared static void delegate(WorkerThread) preThreadFunc;
 
-    align(8) int kernel_tid = -1;
+    align(8) ThreadId kernel_tid = -1;
     void delegate() dg;
 
     this(void delegate() dg, size_t stackSize = 0) {
@@ -50,7 +50,7 @@ class WorkerThread: Thread {
 
     private void wrapper() nothrow {
         scope(exit) kernel_tid = -1;
-        kernel_tid = gettid();
+        kernel_tid = currentThreadId();
 
         sigset_t sigset = void;
         ASSERT!"sigemptyset failed"(sigemptyset(&sigset) == 0);
