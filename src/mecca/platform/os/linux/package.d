@@ -8,6 +8,8 @@ import mecca.log: notrace;
 version(linux):
 version(X86_64):
 
+public import mecca.platform.os.linux.time;
+
 enum Syscall: int {
     NR_read = 0,
     NR_write = 1,

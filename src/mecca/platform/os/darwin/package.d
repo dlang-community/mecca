@@ -1,8 +1,11 @@
 module mecca.platform.os.darwin;
 
-import core.sys.posix.sys.types : pthread_t;
-
+version (Darwin):
 package(mecca):
+
+public import mecca.platform.os.darwin.time;
+
+import core.sys.posix.sys.types : pthread_t;
 
 // This does not exist on Darwin platforms. We'll just use a value that won't
 // have any affect when used together with mmap.
