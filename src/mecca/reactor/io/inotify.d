@@ -3,6 +3,8 @@ module mecca.reactor.io.inotify;
 
 // Licensed under the Boost license. Full copyright information in the AUTHORS file
 
+version (linux):
+
 import core.sys.linux.sys.inotify;
 
 import mecca.lib.exception;
