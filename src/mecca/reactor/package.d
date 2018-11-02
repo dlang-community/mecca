@@ -621,8 +621,7 @@ private:
     FixedArray!(IdleCallbackDlg, MAX_IDLE_CALLBACKS) idleCallbacks;
     // Point to idleCallbacks as a range, in case it gets full and we need to spill over to GC allocation
     IdleCallbackDlg[] actualIdleCallbacks;
-    __gshared OSSignal hangDetectorSig;
-    posix_time.timer_t hangDetectorTimerId;
+    __gshared Timer hangDetectorTimer;
 
     SignalHandlerValue!TscTimePoint fiberRunStartTime;
     void delegate() nothrow @nogc @safe crossFiberHook;
@@ -736,6 +735,10 @@ public:
 
         import mecca.reactor.io.signals;
         reactorSignal._open();
+
+        enum TIMER_GRANULARITY = 4; // Number of wakeups during the monitored period
+        Duration threshold = optionsInEffect.hangDetectorTimeout / TIMER_GRANULARITY;
+        hangDetectorTimer = Timer(threshold, &hangDetectorHandler);
     }
 
     /**
@@ -2054,55 +2057,15 @@ private:
     }
 
     void registerHangDetector() @trusted @nogc {
-        DBG_ASSERT!"registerHangDetector called twice"( hangDetectorSig == OSSignal.SIGNONE );
-        hangDetectorSig = cast(OSSignal)SIGRTMIN;
-        scope(failure) hangDetectorSig = OSSignal.init;
-
-        posix_signal.sigaction_t sa;
-        sa.sa_flags = posix_signal.SA_RESTART | posix_signal.SA_ONSTACK | posix_signal.SA_SIGINFO;
-        sa.sa_sigaction = &hangDetectorHandler;
-        errnoEnforceNGC(posix_signal.sigaction(hangDetectorSig, &sa, null) == 0, "sigaction() for registering hang detector signal failed");
-        scope(failure) posix_signal.signal(hangDetectorSig, posix_signal.SIG_DFL);
-
-        enum SIGEV_THREAD_ID = 4;
-        // SIGEV_THREAD_ID (Linux-specific)
-        // As  for  SIGEV_SIGNAL, but the signal is targeted at the thread whose ID is given in sigev_notify_thread_id,
-        // which must be a thread in the same process as the caller.  The sigev_notify_thread_id field specifies a kernel
-        // thread ID, that is, the value returned by clone(2) or gettid(2).  This flag is intended only for use by
-        // threading libraries.
-
-        sigevent sev;
-        sev.sigev_notify = SIGEV_THREAD_ID;
-        sev.sigev_signo = hangDetectorSig;
-        sev.sigev_value.sival_ptr = &hangDetectorTimerId;
-        sev._sigev_un._tid = gettid();
-
-        errnoEnforceNGC(posix_time.timer_create(posix_time.CLOCK_MONOTONIC, &sev, &hangDetectorTimerId) == 0,
-                "timer_create for hang detector");
-        ASSERT!"hangDetectorTimerId is null"(hangDetectorTimerId !is posix_time.timer_t.init);
-        scope(failure) posix_time.timer_delete(hangDetectorTimerId);
-
-        posix_time.itimerspec its;
-
-        enum TIMER_GRANULARITY = 4; // Number of wakeups during the monitored period
-        Duration threshold = optionsInEffect.hangDetectorTimeout / TIMER_GRANULARITY;
-        threshold.split!("seconds", "nsecs")(its.it_value.tv_sec, its.it_value.tv_nsec);
-        its.it_interval = its.it_value;
-        INFO!"Hang detector will wake up every %s seconds and %s nsecs"(its.it_interval.tv_sec, its.it_interval.tv_nsec);
-
-        errnoEnforceNGC(posix_time.timer_settime(hangDetectorTimerId, 0, &its, null) == 0, "timer_settime");
+        DBG_ASSERT!"registerHangDetector called twice"(!hangDetectorTimer.isSet);
+        hangDetectorTimer.start();
     }
 
     void deregisterHangDetector() nothrow @trusted @nogc {
-        if( hangDetectorSig is OSSignal.SIGNONE )
-            return; // Hang detector was not initialized
-
-        posix_time.timer_delete(hangDetectorTimerId);
-        posix_signal.signal(hangDetectorSig, posix_signal.SIG_DFL);
-        hangDetectorSig = OSSignal.init;
+        hangDetectorTimer.cancel();
     }
 
-    extern(C) static void hangDetectorHandler(int signum, siginfo_t* info, void *ctx) nothrow @trusted @nogc {
+    extern(C) static void hangDetectorHandler() nothrow @trusted @nogc {
         if( !theReactor._hangDetectorEnabled )
             return;
 
