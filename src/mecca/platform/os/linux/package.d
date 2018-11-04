@@ -590,3 +590,9 @@ __gshared static immutable BLOCKED_SIGNALS = [
     OSSignal.SIGWINCH, OSSignal.SIGIO, OSSignal.SIGPWR,
     //OSSignal.SIGSYS,
 ];
+
+static if( __traits(compiles, O_CLOEXEC) ) {
+    enum O_CLOEXEC = core.sys.posix.fcntl.O_CLOEXEC;
+} else {
+    enum O_CLOEXEC = 0x80000;
+}

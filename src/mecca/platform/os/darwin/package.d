@@ -84,3 +84,5 @@ ThreadId currentThreadId() @system nothrow
 
     return threadId;
 }
+
+enum O_CLOEXEC = 0x1000000;

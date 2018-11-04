@@ -18,6 +18,7 @@ import mecca.lib.memory;
 import mecca.lib.string;
 import mecca.log;
 import mecca.platform.x86;
+import mecca.platform.os : O_CLOEXEC;
 
 /// Exception thrown if a read/recv receives partial data
 ///
@@ -35,14 +36,6 @@ unittest {
 
 private extern(C) nothrow @trusted @nogc {
     int pipe2(ref int[2], int flags);
-}
-
-version(linux) {
-    static if( __traits(compiles, O_CLOEXEC) ) {
-        enum O_CLOEXEC = core.sys.posix.fcntl.O_CLOEXEC;
-    } else {
-        enum O_CLOEXEC = 0x80000;
-    }
 }
 
 /**
