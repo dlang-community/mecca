@@ -87,3 +87,6 @@ ThreadId currentThreadId() @system nothrow
 
 enum O_CLOEXEC = 0x1000000;
 enum F_DUPFD_CLOEXEC = 67;
+
+// this does not exist on Darwin
+enum EREMOTEIO = -1;
