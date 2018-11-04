@@ -6,7 +6,6 @@ module mecca.runtime.main;
 import std.stdio;
 import std.string;
 import mecca.reactor: theReactor;
-import mecca.reactor.io.signals: reactorSignal;
 import mecca.runtime.services;
 
 
