@@ -191,16 +191,10 @@ public:
      * An FD representing a duplicate of the current FD.
      */
     @notrace FD dup() @trusted @nogc {
-        import fcntl = core.sys.posix.fcntl;
-        static if( __traits(compiles, fcntl.F_DUPFD_CLOEXEC) ) {
-            enum F_DUPFD_CLOEXEC = fcntl.F_DUPFD_CLOEXEC;
-        } else {
-            version(linux) {
-                enum F_DUPFD_CLOEXEC = 1030;
-            }
-        }
+        import core.sys.posix.fcntl : fcntl;
+        import mecca.platform.os : F_DUPFD_CLOEXEC;
 
-        int newFd = osCall!(fcntl.fcntl)( F_DUPFD_CLOEXEC, 0 );
+        int newFd = osCall!(fcntl)( F_DUPFD_CLOEXEC, 0 );
         errnoEnforceNGC(newFd!=-1, "Failed to duplicate FD");
         return FD( newFd );
     }

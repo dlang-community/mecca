@@ -86,3 +86,4 @@ ThreadId currentThreadId() @system nothrow
 }
 
 enum O_CLOEXEC = 0x1000000;
+enum F_DUPFD_CLOEXEC = 67;
