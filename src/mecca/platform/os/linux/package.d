@@ -605,3 +605,5 @@ static if( __traits(compiles, fcntl.F_DUPFD_CLOEXEC) ) {
         enum F_DUPFD_CLOEXEC = 1030;
     }
 }
+
+public import core.stdc.errno : EREMOTEIO;

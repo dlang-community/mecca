@@ -18,7 +18,7 @@ import mecca.lib.memory;
 import mecca.lib.string;
 import mecca.log;
 import mecca.platform.x86;
-import mecca.platform.os : O_CLOEXEC;
+import mecca.platform.os : EREMOTEIO, O_CLOEXEC;
 
 /// Exception thrown if a read/recv receives partial data
 ///
