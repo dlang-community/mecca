@@ -102,3 +102,41 @@ struct Timer
         return hangDetectorSig != OSSignal.SIGNONE;
     }
 }
+
+auto calculateCycles()
+{
+    import core.sys.posix.signal : timespec;
+    import core.sys.posix.time: clock_gettime, CLOCK_MONOTONIC, nanosleep;
+
+    import std.exception: enforce, errnoEnforce;
+    import std.file: readText;
+    import std.string: indexOf;
+    import std.typecons: tuple;
+
+    import mecca.platform.x86: readTSC;
+
+    enforce(readText("/proc/cpuinfo").indexOf("constant_tsc") >= 0,
+        "constant_tsc not supported");
+
+    timespec sleepTime = timespec(0, 200_000_000);
+    timespec t0, t1;
+
+    auto rc1 = clock_gettime(CLOCK_MONOTONIC, &t0);
+    auto cyc0 = readTSC();
+    auto rc2 = nanosleep(&sleepTime, null);
+    auto rc3 = clock_gettime(CLOCK_MONOTONIC, &t1);
+    auto cyc1 = readTSC();
+
+    errnoEnforce(rc1 == 0, "clock_gettime");
+    errnoEnforce(rc2 == 0, "nanosleep");   // we hope we won't be interrupted by a signal here
+    errnoEnforce(rc3 == 0, "clock_gettime");
+
+    const nsecs = (t1.tv_sec - t0.tv_sec) * 1_000_000_000UL +
+        (t1.tv_nsec  - t0.tv_nsec);
+    const cyclesPerSecond = cast(long)((cyc1 - cyc0) / (nsecs / 1E9));
+    const cyclesPerMsec = cyclesPerSecond / 1_000;
+    const cyclesPerUsec = cyclesPerSecond / 1_000_000;
+
+    return tuple!("perSecond", "perMsec", "perUsec")(
+        cyclesPerSecond, cyclesPerMsec, cyclesPerUsec);
+}

@@ -83,3 +83,40 @@ private:
         (cast(Timer*) timer).release();
     }
 }
+
+auto calculateCycles()
+{
+    import core.sys.darwin.mach.kern_return : KERN_SUCCESS;
+    import core.sys.posix.time : nanosleep, timespec;
+    import core.time: mach_absolute_time, mach_timebase_info_data_t,
+        mach_timebase_info;
+
+    import std.exception: enforce, errnoEnforce;
+    import std.typecons: tuple;
+
+    import mecca.platform.x86: readTSC;
+
+    const sleepTime = timespec(0, 200_000_000);
+
+    const start = mach_absolute_time();
+    const cyc0 = readTSC();
+    const rcNanosleep = nanosleep(&sleepTime, null);
+    const end = mach_absolute_time();
+    const cyc1 = readTSC();
+
+    errnoEnforce(rcNanosleep == 0, "nanosleep"); // we hope we won't be interrupted by a signal here
+
+    const elapsed = end - start;
+
+    mach_timebase_info_data_t timebaseInfo;
+    enforce(mach_timebase_info(&timebaseInfo) == KERN_SUCCESS);
+
+    const nsecs = elapsed * timebaseInfo.numer / timebaseInfo.denom;
+
+    const cyclesPerSecond = cast(long)((cyc1 - cyc0) / (nsecs / 1E9));
+    const cyclesPerMsec = cyclesPerSecond / 1_000;
+    const cyclesPerUsec = cyclesPerSecond / 1_000_000;
+
+    return tuple!("perSecond", "perMsec", "perUsec")(
+        cyclesPerSecond, cyclesPerMsec, cyclesPerUsec);
+}
