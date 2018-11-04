@@ -15,6 +15,7 @@ import mecca.lib.exception;
 import mecca.lib.io;
 import mecca.lib.time;
 import mecca.log;
+import mecca.platform.os : OSSignal;
 import mecca.reactor;
 import mecca.reactor.io.fd;
 import mecca.reactor.io.signals;
@@ -260,7 +261,8 @@ public:
     void open(size_t maxProcesses) @trusted @nogc {
         processPool.open(maxProcesses);
 
-        reactorSignal.registerHandler(OSSignal.SIGCHLD, &sigChildHandler);
+        version (linux)
+            reactorSignal.registerHandler(OSSignal.SIGCHLD, &sigChildHandler);
         customHandler = null;
     }
 
@@ -270,7 +272,8 @@ public:
      * still active.
      */
     void close() @trusted @nogc {
-        reactorSignal.unregisterHandler(OSSignal.SIGCHLD);
+        version (linux)
+            reactorSignal.unregisterHandler(OSSignal.SIGCHLD);
         processPool.close();
     }
 
@@ -324,7 +327,7 @@ public:
     }
 
 private:
-    void sigChildHandler(const ref signalfd_siginfo siginfo) @system {
+    version (linux) void sigChildHandler(const ref signalfd_siginfo siginfo) @system {
         // Ignore the siginfo, as SIGCHLD notifications might be merged
 
         bool handled;
@@ -471,12 +474,15 @@ unittest {
 
             import mecca.reactor.io.signals;
 
-            void termHandler(const ref signalfd_siginfo si) {
-                // Nothing. We don't expect this to get called
-            }
+            version (linux)
+            {
+                void termHandler(const ref signalfd_siginfo si) {
+                    // Nothing. We don't expect this to get called
+                }
 
-            // Register a TERM handler so that the signal is masked in the parent
-            reactorSignal.registerHandler(OSSignal.SIGTERM, &termHandler);
+                // Register a TERM handler so that the signal is masked in the parent
+                reactorSignal.registerHandler(OSSignal.SIGTERM, &termHandler);
+            }
 
             RunContext ctx;
 

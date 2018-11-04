@@ -734,7 +734,8 @@ public:
         }
 
         import mecca.reactor.io.signals;
-        reactorSignal._open();
+        version (linux)
+            reactorSignal._open();
 
         enum TIMER_GRANULARITY = 4; // Number of wakeups during the monitored period
         Duration threshold = optionsInEffect.hangDetectorTimeout / TIMER_GRANULARITY;
@@ -752,7 +753,9 @@ public:
         ASSERT!"reactor teardown called inside a critical section"(criticalSectionNesting==0);
 
         import mecca.reactor.io.signals;
-        reactorSignal._close();
+
+        version (linux)
+            reactorSignal._close();
 
         import mecca.reactor.io.fd;
         _closeReactorEpoll();
