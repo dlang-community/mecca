@@ -249,9 +249,9 @@ private:
     }
 }
 
-private __gshared Epoll __epoller;
-public @property ref Epoll epoller() nothrow @trusted @nogc {
-    return __epoller;
+private __gshared Epoll __poller;
+public @property ref Epoll poller() nothrow @trusted @nogc {
+    return __poller;
 }
 
 // Unit test in mecca.reactor.io
