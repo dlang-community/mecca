@@ -5,7 +5,6 @@ module mecca.reactor;
 
 static import posix_signal = core.sys.posix.signal;
 static import posix_time = core.sys.posix.time;
-static import posix_ucontext = core.sys.posix.ucontext;
 import core.memory: GC;
 import core.sys.posix.signal;
 import core.sys.posix.sys.mman: munmap, mprotect, PROT_NONE;
@@ -2126,8 +2125,8 @@ private:
         dumpStackTrace();
         flushLog(); // There is a certain chance the following lines themselves fault. Flush the logs now so that we have something
 
-        posix_ucontext.ucontext_t* contextPtr = cast(posix_ucontext.ucontext_t*)ctx;
-        auto pc = contextPtr ? contextPtr.uc_mcontext.gregs[posix_ucontext.REG_RIP] : 0;
+        Ucontext* contextPtr = cast(Ucontext*)ctx;
+        auto pc = contextPtr ? contextPtr.uc_mcontext.registers.rip : 0;
 
         if( isReactorThread ) {
             auto currentSD = theReactor.getCurrentFiberPtr(true).stackDescriptor;
