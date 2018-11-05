@@ -530,7 +530,7 @@ struct Reactor {
           called, however, so file operations might block indefinitely unless another mechanism (such as timer based)
           is put in place to call it periodically.
 
-          The non-registered idle handler can be manually triggered by calling `epoller.poll`.
+          The non-registered idle handler can be manually triggered by calling `poller.poll`.
          */
         bool registerDefaultIdler = true;
 
