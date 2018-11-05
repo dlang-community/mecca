@@ -3,6 +3,7 @@ module mecca.platform.os.darwin;
 version (Darwin):
 package(mecca):
 
+public import mecca.platform.os.darwin.ucontext;
 public import mecca.platform.os.darwin.time;
 
 import core.sys.posix.sys.types : pthread_t;

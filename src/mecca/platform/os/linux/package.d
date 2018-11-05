@@ -8,6 +8,7 @@ import mecca.log: notrace;
 version(linux):
 version(X86_64):
 
+public import mecca.platform.os.linux.ucontext;
 public import mecca.platform.os.linux.time;
 
 enum Syscall: int {
