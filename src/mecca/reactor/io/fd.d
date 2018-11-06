@@ -717,7 +717,7 @@ public:
         if( fd.isValid ) {
             DBG_ASSERT!"%s Asked to close fd %s with null context"(ctx !is null, &this, fd.fileNo);
 
-            poller.deregisterFd( fd, ctx );
+            poller.deregisterFd( fd, ctx, true );
 
             fd.close();
             ctx = null;
