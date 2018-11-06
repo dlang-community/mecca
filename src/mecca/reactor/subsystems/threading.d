@@ -45,8 +45,11 @@ class WorkerThread: Thread {
         foreach(sig; BLOCKED_SIGNALS) {
             ASSERT!"sigaddset(%s) failed"(sigaddset(&sigset, sig) == 0, sig);
         }
-        foreach(sig; SIGRTMIN .. SIGRTMAX /* +1? */) {
-            ASSERT!"sigaddset(%s) failed"(sigaddset(&sigset, sig) == 0, sig);
+        static if (is(typeof(SIGRTMIN)) && is(typeof(SIGRTMAX)))
+        {
+            foreach(sig; SIGRTMIN .. SIGRTMAX /* +1? */) {
+                ASSERT!"sigaddset(%s) failed"(sigaddset(&sigset, sig) == 0, sig);
+            }
         }
         ASSERT!"pthread_sigmask failed"(pthread_sigmask(SIG_BLOCK, &sigset, null) == 0);
 
