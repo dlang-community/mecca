@@ -3,6 +3,8 @@ module mecca.lib.time;
 
 // Licensed under the Boost license. Full copyright information in the AUTHORS file
 
+import core.sys.posix.sys.time : timespec;
+
 public import std.datetime;
 import mecca.lib.division: S64Divisor;
 public import mecca.platform.x86: readTSC;
@@ -295,4 +297,12 @@ struct Timeout {
     @notrace bool opEquals()(in Timeout rhs) const nothrow @safe @nogc {
         return expiry == rhs.expiry;
     }
+}
+
+package(mecca) timespec toTimespec(Duration duration) nothrow pure @safe @nogc
+{
+    timespec spec;
+    duration.split!("seconds", "nsecs")(spec.tv_sec, spec.tv_nsec);
+
+    return spec;
 }
