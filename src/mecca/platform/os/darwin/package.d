@@ -91,3 +91,45 @@ enum F_DUPFD_CLOEXEC = 67;
 
 // this does not exist on Darwin
 enum EREMOTEIO = -1;
+
+// `pipe2` does not exist on Darwin so we're emulating it instead. This is
+// emulated by first calling the regular `pipe` followed by `fcntl` on the two
+// file descriptors. This is not thread safe.
+extern(C) private int pipe2(ref int[2] pipefd, int flags) nothrow @trusted @nogc
+{
+    import core.sys.posix.unistd : close, pipe;
+
+    static int setFlags(int fd, int flags)
+    {
+        import core.sys.posix.fcntl : fcntl, F_SETFD, F_GETFD;
+
+        const existingFlags = fcntl(fd, F_GETFD);
+
+        if (existingFlags == -1)
+            return existingFlags;
+
+        return fcntl(fd, F_SETFD, existingFlags | flags);
+    }
+
+    static void closePipe(ref int[2] pipe)
+    {
+        foreach (fd; pipe)
+            close(fd);
+    }
+
+    const pipeResult = pipe(pipefd);
+
+    if (pipeResult != 0)
+        return pipeResult;
+
+    foreach (fd; pipefd)
+    {
+        if (setFlags(fd, flags) == -1)
+        {
+            closePipe(pipefd);
+            return -1;
+        }
+    }
+
+    return 0;
+}
