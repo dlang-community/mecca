@@ -328,7 +328,7 @@ struct ConnectedSocket {
 }
 
 private void connectHelper(ref Socket sock, SockAddr sa, Timeout timeout) @trusted @nogc {
-    int result = sock.osCall!(.connect)(&sa.base, SockAddr.sizeof);
+    int result = sock.osCall!(.connect)(&sa.base, sa.len);
 
     while(result!=0 && errno==EINPROGRESS) {
         // Wait for connect to finish
@@ -386,7 +386,7 @@ struct Socket {
             @trusted @nogc
     {
         return fd.blockingCall!(.sendto)(
-                Direction.Write, data.ptr, data.length, flags, &destAddr.base, SockAddr.sizeof, timeout);
+                Direction.Write, data.ptr, data.length, flags, &destAddr.base, destAddr.len, timeout);
     }
 
     /// ditto
