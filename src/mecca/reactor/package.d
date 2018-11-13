@@ -733,8 +733,7 @@ public:
         }
 
         import mecca.reactor.io.signals;
-        version (linux)
-            reactorSignal._open();
+        reactorSignal._open();
 
         enum TIMER_GRANULARITY = 4; // Number of wakeups during the monitored period
         Duration threshold = optionsInEffect.hangDetectorTimeout / TIMER_GRANULARITY;
@@ -752,9 +751,7 @@ public:
         ASSERT!"reactor teardown called inside a critical section"(criticalSectionNesting==0);
 
         import mecca.reactor.io.signals;
-
-        version (linux)
-            reactorSignal._close();
+        reactorSignal._close();
 
         import mecca.reactor.io.fd;
         _closeReactorEpoll();
@@ -2618,6 +2615,12 @@ unittest {
 unittest {
     import mecca.reactor.sync.event;
 
+    // Linux has a fiber running for the signal handler, Darwin does not.
+    version (Darwin)
+        enum startupFiberCount = 0;
+    else version (linux)
+        enum startupFiberCount = 1;
+
     theReactor.setup();
     scope(exit) theReactor.teardown();
 
@@ -2655,10 +2658,11 @@ unittest {
         evt1.wait();
 
         assertEQ( theReactor.reactorStats.fibersHistogram[FiberState.Starting], 0 );
-        assertEQ( theReactor.reactorStats.fibersHistogram[FiberState.Sleeping], 2 );
+
+        assertEQ( theReactor.reactorStats.fibersHistogram[FiberState.Sleeping], startupFiberCount + 1 );
         theReactor.throwInFiber(fib, new TheException);
         // The following should be "1", because the state would switch to Scheduled. Since that's not implemented yet...
-        assertEQ( theReactor.reactorStats.fibersHistogram[FiberState.Sleeping], 2 ); // Should be 1
+        assertEQ( theReactor.reactorStats.fibersHistogram[FiberState.Sleeping], startupFiberCount + 1 ); // Should be 1
         assertEQ( theReactor.reactorStats.fibersHistogram[FiberState.Scheduled], 0 ); // Should 1
         evt2.set();
     }

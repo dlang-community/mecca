@@ -608,3 +608,4 @@ static if( __traits(compiles, fcntl.F_DUPFD_CLOEXEC) ) {
 }
 
 public import core.stdc.errno : EREMOTEIO;
+public import core.sys.posix.sys.time : ITIMER_REAL;
