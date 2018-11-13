@@ -133,3 +133,5 @@ extern(C) private int pipe2(ref int[2] pipefd, int flags) nothrow @trusted @nogc
 
     return 0;
 }
+
+enum ITIMER_REAL = 0;

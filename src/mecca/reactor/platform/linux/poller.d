@@ -114,6 +114,9 @@ public:
         case CallbackOneShot:
             ASSERT!"Cannot wait on FD %s direction %s already waiting on a callback"(false, fd, dir);
             break;
+        case SignalHandler:
+            ASSERT!"Should never happen for epoll, SignalHandler is kqueue only"(false);
+            break;
         }
         ctxState.type = FdContext.Type.FiberHandle;
         scope(exit) ctxState.type = FdContext.Type.None;
@@ -213,6 +216,9 @@ public:
                 case CallbackOneShot:
                     state.type = None;
                     state.callback(state.opaq);
+                    break;
+                case SignalHandler:
+                    ASSERT!"Should never happen for epoll, SignalHandler is kqueue only"(false);
                     break;
                 }
             }

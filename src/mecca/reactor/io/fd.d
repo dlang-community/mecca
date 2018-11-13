@@ -804,7 +804,7 @@ public:
         poller.unregisterFdCallback(ctx, dir);
     }
 
-package:
+package(mecca.reactor):
     auto blockingCall(alias F)(Direction dir, Parameters!F[1 .. $] args, Timeout timeout) @system @nogc {
         static assert (is(Parameters!F[0] == int));
         static assert (isSigned!(ReturnType!F));

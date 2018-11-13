@@ -17,9 +17,12 @@ struct Kqueue
     import mecca.lib.reflection : setToInit;
     import mecca.lib.time : Timeout;
     import mecca.log : INFO, notrace;
+    import mecca.platform.os : OSSignal;
     import mecca.reactor : theReactor;
-    import mecca.reactor.platform : EVFILT_READ, EVFILT_WRITE, kevent64, kevent64_s;
+    import mecca.reactor.platform : EVFILT_READ, EVFILT_WRITE, EVFILT_SIGNAL, kevent64, kevent64_s;
     import mecca.reactor.subsystems.poller : Direction;
+
+    package(mecca.reactor) alias SignalHandler = void delegate(OSSignal) @system;
 
     private
     {
@@ -114,6 +117,9 @@ struct Kqueue
         case CallbackOneShot:
             ASSERT!"Cannot wait on FD %s already waiting on a callback"(false, fd, dir);
             break;
+        case SignalHandler:
+            ASSERT!"Cannot wait on signal %s already waiting on a signal handler"(false, fd);
+            break;
         }
         ctxState.type = FdContext.Type.FiberHandle;
         scope(exit) ctxState.type = FdContext.Type.None;
@@ -148,6 +154,35 @@ struct Kqueue
         state.type = FdContext.Type.None;
     }
 
+    package(mecca.reactor) @notrace FdContext* registerSignalHandler(OSSignal signal, SignalHandler handler)
+        @trusted @nogc
+    {
+        enum reactorMessage = "registerFD called outside of an open reactor";
+        enum fdMessage = "registerFD called without first calling " ~
+            "ReactorFD.openReactor";
+
+        ASSERT!reactorMessage(theReactor.isOpen);
+        ASSERT!fdMessage(kqueueFd.isValid);
+
+        auto ctx = fdPool.alloc();
+        setToInit(ctx);
+
+        auto state = &ctx.states[Direction.Read];
+        state.type = FdContext.Type.SignalHandler;
+        state.signalHandler = handler;
+        ctx.fdNum = signal;
+        scope(failure) fdPool.release(ctx);
+
+        internalRegisterSignalHandler(ctx);
+        return ctx;
+    }
+
+    package(mecca.reactor) @notrace void unregisterSignalHandler(FdContext* ctx) nothrow @safe @nogc
+    {
+        internalDeregisterSignalHandler(ctx);
+        fdPool.release(ctx);
+    }
+
     /// Export of the poller function
     ///
     /// A variation of this function is what's called by the reactor idle callback (unless `OpenOptions.registerDefaultIdler`
@@ -164,6 +199,18 @@ struct Kqueue
         import mecca.lib.time : toTimespec;
         import mecca.log : DEBUG, WARN;
         import mecca.reactor.platform : EV_DELETE, EV_ERROR, EV_EOF;
+
+        static OSSignal toOSSignal(typeof(kevent64_s.ident) signal)
+        in
+        {
+            ASSERT!"Event signal %s could not be converted to OSSignal"(
+                signal >= OSSignal.min && signal <= OSSignal.max, signal
+            );
+        }
+        do
+        {
+            return cast(OSSignal) signal;
+        }
 
         const spec = timeout.toTimespec();
         const specTimeout = timeout == Duration.max ? null : &spec;
@@ -206,7 +253,7 @@ struct Kqueue
             with(Direction) foreach(dir; Read..(Write+1)) {
                 final switch(dir) {
                 case Read:
-                    if (event.filter != EVFILT_READ)
+                    if (event.filter != EVFILT_READ && event.filter != EVFILT_SIGNAL)
                         continue;
                     break;
                 case Write:
@@ -239,6 +286,10 @@ struct Kqueue
                 case CallbackOneShot:
                     state.type = None;
                     state.callback(state.opaq);
+                    break;
+                case SignalHandler:
+                    ASSERT!"Event signal %s was not the same as the registered signal %s"(event.ident == ctx.fdNum, event.ident, ctx.fdNum);
+                    state.signalHandler(toOSSignal(event.ident));
                     break;
                 }
             }
@@ -296,11 +347,43 @@ private:
         }
     }
 
-    int queueEvent(const ref kevent64_s event) nothrow @trusted @nogc
+    void internalRegisterSignalHandler(FdContext* ctx) @trusted @nogc
+    {
+        import mecca.reactor.platform : EV_ADD, EV_CLEAR, EV_ENABLE;
+
+        ASSERT!"ctx is null"(ctx !is null);
+
+        const kevent64_s event = {
+            ident: ctx.fdNum,
+            filter: EVFILT_SIGNAL,
+            flags: EV_ADD | EV_ENABLE | EV_CLEAR,
+            udata: cast(ulong) ctx
+        };
+
+        const result = queueEvent(event, true);
+        errnoEnforceNGC(result >= 0, "Adding signal to queue failed");
+    }
+
+    void internalDeregisterSignalHandler(FdContext* ctx) nothrow @trusted @nogc
+    {
+        import core.stdc.errno : errno;
+        import mecca.reactor.platform : EV_DELETE;
+
+        const kevent64_s event = {
+            ident: ctx.fdNum,
+            filter: EVFILT_SIGNAL,
+            flags: EV_DELETE
+        };
+
+        const result = queueEvent(event, true);
+        ASSERT!"Removing signal from queue failed with errno %s"(result >= 0, errno);
+    }
+
+    int queueEvent(const ref kevent64_s event, bool flush = false) nothrow @trusted @nogc
     {
         changes[numberOfChanges++] = event;
 
-        if (numberOfChanges != changes.length)
+        if (numberOfChanges != changes.length && !flush)
             return 1;
 
         const result = kqueueFd.osCall!kevent64(changes.ptr, numberOfChanges,
