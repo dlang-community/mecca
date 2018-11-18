@@ -146,7 +146,7 @@ struct DeferredTask {
 }
 
 private extern(C) nothrow @system @nogc {
-    import core.sys.posix.pthread: pthread_mutex_t;
+    import core.sys.posix.pthread: pthread_mutex_t, PTHREAD_MUTEX_INITIALIZER;
 
     // these are not marked as @nogc in some versions of phobos
     int pthread_mutex_lock(pthread_mutex_t*);
@@ -154,7 +154,7 @@ private extern(C) nothrow @system @nogc {
 }
 
 private struct PthreadMutex {
-    pthread_mutex_t mtx;
+    pthread_mutex_t mtx = PTHREAD_MUTEX_INITIALIZER;
 
     void lock() nothrow @nogc {
         ASSERT!"pthread_mutex_lock"(pthread_mutex_lock(&mtx) == 0);
