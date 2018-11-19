@@ -8,9 +8,12 @@ public import mecca.platform.os.darwin.time;
 
 import core.sys.posix.sys.types : pthread_t;
 
-// This does not exist on Darwin platforms. We'll just use a value that won't
-// have any affect when used together with mmap.
+import mecca.platform.os : MmapArguments;
+
+// These two do not exist on Darwin platforms. We'll just use a value that won't
+// have any affect when used together with mmap and mremap.
 enum MAP_POPULATE = 0;
+enum MREMAP_MAYMOVE = 0;
 
 ///
 enum OSSignal
@@ -135,3 +138,39 @@ extern(C) private int pipe2(ref int[2] pipefd, int flags) nothrow @trusted @nogc
 }
 
 enum ITIMER_REAL = 0;
+
+void* mremap(MmapArguments mmapArguments, void* oldAddress, size_t oldSize,
+    size_t newSize, int flags, void* newAddress = null)
+{
+    import core.stdc.string : memcpy;
+    import core.sys.posix.sys.mman : mmap, munmap, MAP_FAILED;
+
+    if (oldSize == newSize)
+        return oldAddress;
+
+    if (newSize < oldSize)
+    {
+        const sizeToUnmap = oldSize - newSize;
+        if (munmap(oldAddress + sizeToUnmap, sizeToUnmap) != 0)
+            return MAP_FAILED;
+
+        return oldAddress;
+    }
+
+    auto newMemory = mmap(newAddress, newSize, mmapArguments.tupleof);
+
+    if (newMemory == MAP_FAILED)
+        return MAP_FAILED;
+
+    memcpy(newMemory, oldAddress, oldSize);
+
+    if (munmap(oldAddress, oldSize) != 0)
+    {
+        if (munmap(newMemory, newSize) != 0)
+            assert(false);
+
+        return MAP_FAILED;
+    }
+
+    return newMemory;
+}

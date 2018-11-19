@@ -555,7 +555,7 @@ mixin template hookSyscall(alias F, Syscall nr, alias traceFunc, SyscallTracePoi
     }
 }+/
 
-public import core.sys.linux.sys.mman : MAP_POPULATE;
+public import core.sys.linux.sys.mman : MAP_POPULATE, MREMAP_MAYMOVE;
 import core.sys.posix.sys.types : pid_t;
 import std.traits : ReturnType;
 
@@ -609,3 +609,13 @@ static if( __traits(compiles, fcntl.F_DUPFD_CLOEXEC) ) {
 
 public import core.stdc.errno : EREMOTEIO;
 public import core.sys.posix.sys.time : ITIMER_REAL;
+
+import mecca.platform.os : MmapArguments;
+
+// A wrapper that is compatible with the signature used for Darwin
+void* mremap(Args...)(MmapArguments, void* oldAddress,
+    size_t oldSize, size_t newSize, int flags, Args args)
+{
+    import core.sys.linux.sys.mman: mremap;
+    return mremap(oldAddress, oldSize, newSize, flags, args);
+}
