@@ -13,11 +13,11 @@ import core.stdc.errno;
 import core.sys.posix.fcntl;
 import core.sys.posix.sys.mman;
 import core.sys.posix.unistd;
-import core.sys.linux.sys.mman: MAP_ANON, mremap, MREMAP_MAYMOVE;
+import core.sys.posix.sys.mman: MAP_ANON;
 
 import mecca.lib.exception;
 import mecca.lib.reflection: setToInit, abiSignatureOf, as;
-import mecca.platform.os : MAP_POPULATE;
+import mecca.platform.os : MAP_POPULATE, MREMAP_MAYMOVE, mremap, MmapArguments;
 
 import mecca.log;
 
@@ -132,16 +132,22 @@ private:
 
         this.gcUnregister();
         void* ptr = MAP_FAILED;
+        enum MmapArguments mmapArguments = {
+            prot: PROT_READ | PROT_WRITE,
+            flags: MAP_PRIVATE | MAP_ANON | MAP_POPULATE,
+            fd: -1,
+            offset: 0
+        };
 
         // initial allocation - mmap
         if (closed) {
-            ptr = mmap(null, newCapacity, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON | MAP_POPULATE, -1, 0);
+            ptr = mmap(null, newCapacity, mmapArguments.tupleof);
             enforceFmt!ErrnoException(ptr != MAP_FAILED, "mmap(%s bytes) failed", newCapacity);
         }
 
         // resize existing allocation - mremap
         else {
-            ptr = as!"@nogc"(() => mremap(_ptr, _capacity, newCapacity, MREMAP_MAYMOVE));
+            ptr = as!"@nogc"(() => mremap(mmapArguments, _ptr, _capacity, newCapacity, MREMAP_MAYMOVE));
             enforceFmt!ErrnoException(ptr != MAP_FAILED, "mremap(%s bytes -> %s bytes) failed", _capacity, newCapacity);
         }
 
