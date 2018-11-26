@@ -9,6 +9,10 @@ d:
   - dmd
   - gdc
 
+os:
+  - linux
+  - osx
+
 matrix:
   allow_failures:
     - d: gdc
@@ -23,7 +27,7 @@ script:
   - dub build --config=lordcmdr
   - dub build --config=sleeper
   - dub build --config=echo-server
-  
+
 
 # notifications:
     # email:
