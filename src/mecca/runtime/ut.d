@@ -56,7 +56,8 @@ shared static this() {
 
     foreach(m; modules) {
         counter++;
-        DEBUG!"#LOADAVG %s"(cast(immutable char[])read("/proc/loadavg"));
+        version (linux)
+            DEBUG!"#LOADAVG %s"(cast(immutable char[])read("/proc/loadavg"));
         META!"Running UT of %s"(m.name);
         logLine(FG.yellow("Running UT of ") ~ FG.iwhite(m.name));
         try {
@@ -110,7 +111,8 @@ shared static this() {
         logLine(FG.igreen("Success. Ran %s unittests in %.2f seconds".format(counter, secs)));
         retVal = 0;
     }
-    DEBUG!"#LOADAVG %s"(cast(immutable char[])read("/proc/loadavg"));
+    version (linux)
+        DEBUG!"#LOADAVG %s"(cast(immutable char[])read("/proc/loadavg"));
 
     return retVal;
 }
