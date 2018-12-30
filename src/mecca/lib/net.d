@@ -47,22 +47,22 @@ struct IPv4 {
     }
 
     /// Assignment
-    ref typeof(this) opAssign(uint netOrder) pure nothrow @safe @nogc {
+    ref typeof(this) opAssign(uint netOrder) return pure nothrow @safe @nogc {
         inaddr.s_addr = netOrder;
         return this;
     }
     /// ditto
-    ref typeof(this) opAssign(ubyte[4] bytes) pure nothrow @safe @nogc {
+    ref typeof(this) opAssign(ubyte[4] bytes) return pure nothrow @safe @nogc {
         this.bytes = bytes;
         return this;
     }
     /// ditto
-    ref typeof(this) opAssign(in_addr ia) pure nothrow @safe @nogc {
+    ref typeof(this) opAssign(in_addr ia) return pure nothrow @safe @nogc {
         inaddr = ia;
         return this;
     }
     /// ditto
-    ref typeof(this) opAssign(string dottedString) @trusted @nogc {
+    ref typeof(this) opAssign(string dottedString) return @trusted @nogc {
         int res = inet_pton(AF_INET, ToStringz!INET_ADDRSTRLEN(dottedString), &inaddr);
 
         DBG_ASSERT!"Invalid call to inet_pton"(res>=0);
