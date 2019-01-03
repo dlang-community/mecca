@@ -1025,7 +1025,7 @@ unittest {
 
         @property bool empty() { return true; }
 
-        @property ref int front() { return a; }
+        @property ref int front() return { return a; }
     }
 
     static assert( isRefInputRange!S );

@@ -113,7 +113,7 @@ struct DefaultTraceInfoABI {
     static DefaultTraceInfoABI* extract(Throwable ex) nothrow @safe @nogc {
         return extract(ex.info);
     }
-    @property void*[] frames() nothrow @trusted @nogc {
+    @property void*[] frames() return nothrow @trusted @nogc {
         return callstack.ptr[0 .. numframes];
     }
 }
@@ -129,7 +129,7 @@ struct ExcBuf {
     char[MAX_EXCEPTION_MESSAGE_SIZE] msgBuf;
 
     /// Get the Throwable stored in the buffer
-    Throwable get() nothrow @trusted @nogc {
+    Throwable get() return nothrow @trusted @nogc {
         if (*(cast(void**)ex.ptr) is null) {
             return null;
         }

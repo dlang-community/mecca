@@ -386,7 +386,7 @@ struct Socket {
             @trusted @nogc
     {
         return fd.blockingCall!(.sendto)(
-                Direction.Write, data.ptr, data.length, flags, &destAddr.base, SockAddr.sizeof, timeout); 
+                Direction.Write, data.ptr, data.length, flags, &destAddr.base, SockAddr.sizeof, timeout);
     }
 
     /// ditto
@@ -705,7 +705,7 @@ public:
     }
 
     /// Move semantics opAssign
-    ref ReactorFD opAssign(ReactorFD rhs) nothrow @safe @nogc {
+    ref ReactorFD opAssign(ReactorFD rhs) return nothrow @safe @nogc {
         swap( rhs.fd, fd );
         swap( rhs.ctx, ctx );
 
@@ -730,7 +730,7 @@ public:
     }
 
     /// Returns the underlying mecca.lib.io.FD
-    @property ref FD get() nothrow @safe @nogc {
+    @property ref FD get() return nothrow @safe @nogc {
         return fd;
     }
 
