@@ -441,8 +441,19 @@ struct DRuntimeStackDescriptor {
     DRuntimeStackDescriptor*    prev;
 
     static assert (__traits(classInstanceSize, Mutex) == 72); // This size is part of the mangle
-    pragma(mangle, "_D4core6thread6Thread6_locksG2G72v") extern __gshared static
+    static if (__traits(hasMember, Thread, "_locks")) {
+        pragma(mangle, "_D4core6thread6Thread6_locksG2G72v") extern __gshared static
             void[__traits(classInstanceSize, Mutex)][2] _locks;
+        @notrace private Mutex _slock() {
+            return cast(Mutex)_locks[0].ptr;
+        }
+    } else {
+        pragma(mangle,"_D4core6thread6Thread6_slockG72v") extern __gshared static
+            void[__traits(classInstanceSize, Mutex)] _slock;
+        @notrace private Mutex _slock() {
+            return cast(Mutex)_slock.ptr;
+        }
+    }
     static if (__VERSION__ < 2077) {
         pragma(mangle, "_D4core6thread6Thread7sm_cbegPS4core6thread6Thread7Context") extern __gshared static
                 DRuntimeStackDescriptor* sm_cbeg;
@@ -452,7 +463,7 @@ struct DRuntimeStackDescriptor {
     }
 
     @notrace void add() nothrow @nogc {
-        auto slock = cast(Mutex)_locks[0].ptr;
+        auto slock = _slock();
         slock.lock_nothrow();
         scope(exit) slock.unlock_nothrow();
 
@@ -464,7 +475,7 @@ struct DRuntimeStackDescriptor {
     }
 
     @notrace void remove() nothrow @nogc {
-        auto slock = cast(Mutex)_locks[0].ptr;
+        auto slock = _slock();
         slock.lock_nothrow();
         scope(exit) slock.unlock_nothrow();
 
