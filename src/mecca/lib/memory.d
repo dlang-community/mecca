@@ -432,6 +432,7 @@ struct GCStats {
 
 struct DRuntimeStackDescriptor {
     private import core.sync.mutex: Mutex;
+    private import core.thread: Thread;
 
     void*                       bstack; /// Stack bottom
     void*                       tstack; /// Stack top
