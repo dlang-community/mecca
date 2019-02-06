@@ -451,7 +451,7 @@ struct DRuntimeStackDescriptor {
     } else {
         pragma(mangle,"_D4core6thread6Thread6_slockG72v") extern __gshared static
             void[__traits(classInstanceSize, Mutex)] _slock;
-        @notrace private Mutex _slock() {
+        @notrace private Mutex _slock() nothrow @nogc {
             return cast(Mutex)_slock.ptr;
         }
     }
