@@ -443,8 +443,8 @@ struct DRuntimeStackDescriptor {
 
     static assert (__traits(classInstanceSize, Mutex) == 72); // This size is part of the mangle
     static if (__traits(hasMember, Thread, "_locks")) {
-        pragma(mangle, "_D4core6thread6Thread6_locksG2G72v") extern __gshared static
-            void[__traits(classInstanceSize, Mutex)][2] _locks;
+        pragma(mangle, Thread._locks.mangleof) extern __gshared static
+            typeof(Thread._locks) _locks;
         @notrace private Mutex _slock() nothrow @nogc {
             return cast(Mutex)_locks[0].ptr;
         }
