@@ -852,7 +852,8 @@ public:
      * Returns:
      *  A FiberHandle to the newly created fiber.
      */
-    @notrace FiberHandle spawnFiber(alias F)(Parameters!F args) {
+    @notrace FiberHandle spawnFiber(alias F)(Parameters!F args)
+    if (!isType!F) {
         static assert( is( ReturnType!F == void ), "spawnFiber callback must be of type void" );
         auto fib = _spawnFiber(false);
         import std.algorithm: move;
