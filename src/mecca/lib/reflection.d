@@ -194,7 +194,8 @@ public:
         }
     }
 
-    void set(alias F)(Parameters!F args) nothrow @nogc @trusted {
+    void set(alias F)(Parameters!F args) nothrow @nogc @trusted
+    if (!isType!F) {
         static assert (is(ReturnType!F == void), "Delegate must return void");
         foreach(i, storage; ParameterStorageClassTuple!F) {
             static assert(
