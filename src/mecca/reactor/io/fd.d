@@ -603,13 +603,15 @@ unittest {
 
         char[BUF_SIZE] buffer;
 
-        uint last;
-        while( clientSock.read(buffer)==BUF_SIZE ) {
-            assertEQ( *cast(uint*)buffer.ptr, last, "Got incorrect value from socket" );
-            last++;
+        uint totalSize;
+        while(true) {
+            auto size = clientSock.read(buffer);
+            if(size == 0) break;
+            assertEQ( buffer[0], cast(ubyte)(totalSize / BUF_SIZE), "Got incorrect value from socket" );
+            totalSize += size;
         }
 
-        assertEQ( last, NUM_BUFFERS, "Did not get the expected number of buffers" );
+        assertEQ( totalSize, NUM_BUFFERS * BUF_SIZE, "Did not get the expected number of bytes" );
 
         theReactor.stop();
     }
@@ -622,7 +624,7 @@ unittest {
 
         char[BUF_SIZE] buffer;
         foreach( uint i; 0..NUM_BUFFERS ) {
-            (cast(uint*)buffer.ptr)[0] = i;
+            buffer[] = cast(ubyte)i;
             sock.write( buffer );
         }
     }
