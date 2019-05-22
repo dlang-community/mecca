@@ -41,7 +41,9 @@ nothrow:
         const interval = this.interval.total!"nsecs";
 
         queue = dispatch_queue_create("com.github.weka-io.mecca.timer", null);
-        timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0, queue);
+        timer = dispatch_source_create(
+            DISPATCH_SOURCE_TYPE_TIMER, 0, DISPATCH_TIMER_STRICT, queue
+        );
 
         dispatch_source_set_event_handler_f(timer, &handler);
         dispatch_set_context(timer, &this);

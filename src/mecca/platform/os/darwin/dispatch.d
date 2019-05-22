@@ -21,6 +21,7 @@ alias dispatch_time_t = ulong;
 enum ulong DISPATCH_TIME_NOW = 0;
 enum ulong NSEC_PER_SEC	= 1000000000;
 
+enum DISPATCH_TIMER_STRICT = 0x1;
 enum DISPATCH_SOURCE_TYPE_TIMER = &_dispatch_source_type_timer;
 
 extern __gshared const dispatch_source_type_s _dispatch_source_type_timer;
