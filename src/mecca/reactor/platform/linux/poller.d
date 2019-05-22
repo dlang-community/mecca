@@ -1,6 +1,9 @@
-module mecca.reactor.platform.linux.epoll;
+module mecca.reactor.platform.linux.poller;
 
 // Licensed under the Boost license. Full copyright information in the AUTHORS file
+
+version (linux):
+package(mecca.reactor.platform):
 
 import core.stdc.errno;
 import core.sys.linux.epoll;
@@ -36,23 +39,8 @@ private extern(C) {
     +/
 }
 
-struct Epoll {
-    static struct FdContext {
-        enum Type { None, FiberHandle, Callback, CallbackOneShot }
-
-        static struct State {
-            Type type = Type.None;
-            union {
-                FiberHandle fibHandle;
-                void delegate(void* opaq) callback;
-            }
-            void* opaq;
-        }
-
-        int fdNum;
-
-        State[Direction.max] states; // Only for read and for write
-    }
+struct Poller {
+    public import mecca.reactor.subsystems.poller : FdContext;
 
 private: // Not that this does anything, as the struct itself is only visible to this file.
     // Prevent accidental copying
@@ -102,7 +90,8 @@ public:
         return ctx;
     }
 
-    void deregisterFd(ref FD fd, FdContext* ctx) nothrow @safe @nogc {
+    void deregisterFd(ref FD fd, FdContext* ctx, bool fdIsClosing = false) nothrow @safe @nogc {
+        // fdIsClosing is only used for kqueue
         internalDeregisterFD(fd.fileNo, ctx);
 
         fdPool.release(ctx);
@@ -124,6 +113,9 @@ public:
         case Callback:
         case CallbackOneShot:
             ASSERT!"Cannot wait on FD %s direction %s already waiting on a callback"(false, fd, dir);
+            break;
+        case SignalHandler:
+            ASSERT!"Should never happen for epoll, SignalHandler is kqueue only"(false);
             break;
         }
         ctxState.type = FdContext.Type.FiberHandle;
@@ -225,6 +217,9 @@ public:
                     state.type = None;
                     state.callback(state.opaq);
                     break;
+                case SignalHandler:
+                    ASSERT!"Should never happen for epoll, SignalHandler is kqueue only"(false);
+                    break;
                 }
             }
         }
@@ -247,11 +242,6 @@ private:
         // There is no reason for a registered FD to fail removal, so we assert instead of throwing
         ASSERT!"Removing fd from epoll failed with errno %s"( res>=0, errno );
     }
-}
-
-private __gshared Epoll __epoller;
-public @property ref Epoll epoller() nothrow @trusted @nogc {
-    return __epoller;
 }
 
 // Unit test in mecca.reactor.io

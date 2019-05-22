@@ -15,6 +15,7 @@ import mecca.lib.exception;
 import mecca.lib.io;
 import mecca.lib.time;
 import mecca.log;
+import mecca.platform.os : OSSignal;
 import mecca.reactor;
 import mecca.reactor.io.fd;
 import mecca.reactor.io.signals;
@@ -323,8 +324,7 @@ public:
         customHandler = handler;
     }
 
-private:
-    void sigChildHandler(const ref signalfd_siginfo siginfo) @system {
+    package(mecca.reactor) void sigChildHandler(OSSignal) @system {
         // Ignore the siginfo, as SIGCHLD notifications might be merged
 
         bool handled;
@@ -351,8 +351,7 @@ private:
         if( !handled ) {
             // This isn't as serious a condition as the code might suggest. We might have handled that PID in a previous
             // invocation.
-            DEBUG!"SIGCHLD reported for %s with status 0x%x, but wait failed with errno %s"(
-                    siginfo.ssi_pid, siginfo.ssi_status, errno );
+            DEBUG!"SIGCHLD reported, but wait failed with errno %s"(errno);
         }
     }
 
@@ -408,6 +407,13 @@ unittest {
 
             child.run("echo", "-e", "Hello\\r", "world");
 
+            version (linux)
+                enum expectedBuffer = "Hello\r world\n";
+            else version (Darwin)
+                enum expectedBuffer = "-e Hello\\r world\n"; // BSD `echo` doesn't support the `-e` flag
+            else
+                static assert(false, "Unsupported platform");
+
             char[] buffer;
             ssize_t res;
             do {
@@ -424,7 +430,7 @@ unittest {
             theReactor.sleep(4.msecs); // Allow time for child2 to actually exit
 
             ASSERT!"Child closed stdout but is still running"(!child.isRunning);
-            ASSERT!"Child output is \"%s\", not as expected"( buffer == "Hello\r world\n", buffer );
+            ASSERT!"Child output is \"%s\", not as expected"( buffer == expectedBuffer, buffer );
         });
 }
 
@@ -471,7 +477,7 @@ unittest {
 
             import mecca.reactor.io.signals;
 
-            void termHandler(const ref signalfd_siginfo si) {
+            void termHandler(OSSignal) {
                 // Nothing. We don't expect this to get called
             }
 

@@ -1,5 +1,5 @@
 /// Linux platform specific functions
-module mecca.platform.linux;
+module mecca.platform.os.linux;
 
 // Licensed under the Boost license. Full copyright information in the AUTHORS file
 
@@ -7,6 +7,9 @@ import mecca.log: notrace;
 
 version(linux):
 version(X86_64):
+
+public import mecca.platform.os.linux.ucontext;
+public import mecca.platform.os.linux.time;
 
 enum Syscall: int {
     NR_read = 0,
@@ -488,7 +491,7 @@ extern(C) nothrow /*@nogc*/ {
  *
  *     return ret;
  * }
- * 
+ *
  * mixin InterceptCall!socket;
  * ---
  */
@@ -551,3 +554,68 @@ mixin template hookSyscall(alias F, Syscall nr, alias traceFunc, SyscallTracePoi
         assert (hitPreFunc);
     }
 }+/
+
+public import core.sys.linux.sys.mman : MAP_POPULATE, MREMAP_MAYMOVE;
+import core.sys.posix.sys.types : pid_t;
+import std.traits : ReturnType;
+
+package(mecca):
+
+/**
+ * Represents the ID of a thread.
+ *
+ * This type is platform dependent.
+ */
+alias ThreadId = ReturnType!gettid;
+
+/**
+ * Represents the ID of a thread.
+ *
+ * This type is platform dependent.
+ */
+ThreadId currentThreadId() nothrow @system @nogc
+{
+    return gettid();
+}
+
+__gshared static immutable BLOCKED_SIGNALS = [
+    OSSignal.SIGHUP, OSSignal.SIGINT, OSSignal.SIGQUIT,
+    //OSSignal.SIGILL, OSSignal.SIGTRAP, OSSignal.SIGABRT,
+    //OSSignal.SIGBUS, OSSignal.SIGFPE, OSSignal.SIGKILL,
+    //OSSignal.SIGUSR1, OSSignal.SIGSEGV, OSSignal.SIGUSR2,
+    OSSignal.SIGPIPE, OSSignal.SIGALRM, OSSignal.SIGTERM,
+    //OSSignal.SIGSTKFLT, OSSignal.SIGCONT, OSSignal.SIGSTOP,
+    OSSignal.SIGCHLD, OSSignal.SIGTSTP, OSSignal.SIGTTIN,
+    OSSignal.SIGTTOU, OSSignal.SIGURG, OSSignal.SIGXCPU,
+    OSSignal.SIGXFSZ, OSSignal.SIGVTALRM, OSSignal.SIGPROF,
+    OSSignal.SIGWINCH, OSSignal.SIGIO, OSSignal.SIGPWR,
+    //OSSignal.SIGSYS,
+];
+
+static if( __traits(compiles, O_CLOEXEC) ) {
+    enum O_CLOEXEC = core.sys.posix.fcntl.O_CLOEXEC;
+} else {
+    enum O_CLOEXEC = 0x80000;
+}
+
+import fcntl = core.sys.posix.fcntl;
+static if( __traits(compiles, fcntl.F_DUPFD_CLOEXEC) ) {
+    enum F_DUPFD_CLOEXEC = fcntl.F_DUPFD_CLOEXEC;
+} else {
+    version(linux) {
+        enum F_DUPFD_CLOEXEC = 1030;
+    }
+}
+
+public import core.stdc.errno : EREMOTEIO;
+public import core.sys.posix.sys.time : ITIMER_REAL;
+
+import mecca.platform.os : MmapArguments;
+
+// A wrapper that is compatible with the signature used for Darwin
+void* mremap(Args...)(MmapArguments, void* oldAddress,
+    size_t oldSize, size_t newSize, int flags, Args args)
+{
+    import core.sys.linux.sys.mman: mremap;
+    return mremap(oldAddress, oldSize, newSize, flags, args);
+}

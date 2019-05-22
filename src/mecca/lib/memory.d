@@ -13,10 +13,11 @@ import core.stdc.errno;
 import core.sys.posix.fcntl;
 import core.sys.posix.sys.mman;
 import core.sys.posix.unistd;
-import core.sys.linux.sys.mman: MAP_ANONYMOUS, MAP_POPULATE, mremap, MREMAP_MAYMOVE;
+import core.sys.posix.sys.mman: MAP_ANON;
 
 import mecca.lib.exception;
 import mecca.lib.reflection: setToInit, abiSignatureOf, as;
+import mecca.platform.os : MAP_POPULATE, MREMAP_MAYMOVE, mremap, MmapArguments;
 
 import mecca.log;
 
@@ -131,16 +132,22 @@ private:
 
         this.gcUnregister();
         void* ptr = MAP_FAILED;
+        enum MmapArguments mmapArguments = {
+            prot: PROT_READ | PROT_WRITE,
+            flags: MAP_PRIVATE | MAP_ANON | MAP_POPULATE,
+            fd: -1,
+            offset: 0
+        };
 
         // initial allocation - mmap
         if (closed) {
-            ptr = mmap(null, newCapacity, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE, -1, 0);
+            ptr = mmap(null, newCapacity, mmapArguments.tupleof);
             enforceFmt!ErrnoException(ptr != MAP_FAILED, "mmap(%s bytes) failed", newCapacity);
         }
 
         // resize existing allocation - mremap
         else {
-            ptr = as!"@nogc"(() => mremap(_ptr, _capacity, newCapacity, MREMAP_MAYMOVE));
+            ptr = as!"@nogc"(() => mremap(mmapArguments, _ptr, _capacity, newCapacity, MREMAP_MAYMOVE));
             enforceFmt!ErrnoException(ptr != MAP_FAILED, "mremap(%s bytes -> %s bytes) failed", _capacity, newCapacity);
         }
 
@@ -434,6 +441,8 @@ struct DRuntimeStackDescriptor {
     private import core.sync.mutex: Mutex;
     private import core.thread: Thread;
 
+    import std.conv: to;
+
     void*                       bstack; /// Stack bottom
     void*                       tstack; /// Stack top
     void*                       ehContext;
@@ -441,20 +450,23 @@ struct DRuntimeStackDescriptor {
     DRuntimeStackDescriptor*    next;
     DRuntimeStackDescriptor*    prev;
 
-    static assert (__traits(classInstanceSize, Mutex) == 72); // This size is part of the mangle
+    private enum mutextInstanceSize = __traits(classInstanceSize, Mutex);
+    private enum mangleSuffix = mutextInstanceSize.to!string ~ "v";
+
     static if (__traits(hasMember, Thread, "_locks")) {
-        pragma(mangle, "_D4core6thread6Thread6_locksG2G72v") extern __gshared static
+        pragma(mangle, "_D4core6thread6Thread6_locksG2G" ~ mangleSuffix) extern __gshared static
             void[__traits(classInstanceSize, Mutex)][2] _locks;
         @notrace private Mutex _slock() nothrow @nogc {
             return cast(Mutex)_locks[0].ptr;
         }
     } else {
-        pragma(mangle,"_D4core6thread6Thread6_slockG72v") extern __gshared static
+        pragma(mangle,"_D4core6thread6Thread6_slockG72" ~ mangleSuffix) extern __gshared static
             void[__traits(classInstanceSize, Mutex)] _slock;
         @notrace private Mutex _slock() nothrow @nogc {
             return cast(Mutex)_slock.ptr;
         }
     }
+
     static if (__VERSION__ < 2077) {
         pragma(mangle, "_D4core6thread6Thread7sm_cbegPS4core6thread6Thread7Context") extern __gshared static
                 DRuntimeStackDescriptor* sm_cbeg;

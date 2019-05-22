@@ -328,7 +328,7 @@ struct ConnectedSocket {
 }
 
 private void connectHelper(ref Socket sock, SockAddr sa, Timeout timeout) @trusted @nogc {
-    int result = sock.osCall!(.connect)(&sa.base, SockAddr.sizeof);
+    int result = sock.osCall!(.connect)(&sa.base, sa.len);
 
     while(result!=0 && errno==EINPROGRESS) {
         // Wait for connect to finish
@@ -386,7 +386,7 @@ struct Socket {
             @trusted @nogc
     {
         return fd.blockingCall!(.sendto)(
-                Direction.Write, data.ptr, data.length, flags, &destAddr.base, SockAddr.sizeof, timeout);
+                Direction.Write, data.ptr, data.length, flags, &destAddr.base, destAddr.len, timeout);
     }
 
     /// ditto
@@ -719,7 +719,7 @@ public:
         if( fd.isValid ) {
             DBG_ASSERT!"%s Asked to close fd %s with null context"(ctx !is null, &this, fd.fileNo);
 
-            poller.deregisterFd( fd, ctx );
+            poller.deregisterFd( fd, ctx, true );
 
             fd.close();
             ctx = null;
@@ -804,7 +804,7 @@ public:
         poller.unregisterFdCallback(ctx, dir);
     }
 
-package:
+package(mecca.reactor):
     auto blockingCall(alias F)(Direction dir, Parameters!F[1 .. $] args, Timeout timeout) @system @nogc {
         static assert (is(Parameters!F[0] == int));
         static assert (isSigned!(ReturnType!F));

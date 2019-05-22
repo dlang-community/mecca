@@ -9,6 +9,10 @@ d:
   - dmd
   - gdc
 
+os:
+  - linux
+  - osx
+
 matrix:
   allow_failures:
     - d: gdc
@@ -17,13 +21,14 @@ matrix:
 env: DFLAGS="-w -de"
 
 script:
+  - system_profiler SPHardwareDataType
   # Build and run the unittests:
   - dub run --config=mecca-ut
   # Make sure the examples build without errors:
   - dub build --config=lordcmdr
   - dub build --config=sleeper
   - dub build --config=echo-server
-  
+
 
 # notifications:
     # email:

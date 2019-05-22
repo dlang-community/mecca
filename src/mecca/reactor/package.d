@@ -5,7 +5,6 @@ module mecca.reactor;
 
 static import posix_signal = core.sys.posix.signal;
 static import posix_time = core.sys.posix.time;
-static import posix_ucontext = core.sys.posix.ucontext;
 import core.memory: GC;
 import core.sys.posix.signal;
 import core.sys.posix.sys.mman: munmap, mprotect, PROT_NONE;
@@ -29,7 +28,7 @@ import mecca.lib.time_queue;
 import mecca.lib.typedid;
 import mecca.log;
 import mecca.log.impl;
-import mecca.platform.linux;
+import mecca.platform.os;
 import mecca.reactor.fiber_group;
 import mecca.reactor.fls;
 import mecca.reactor.impl.fibril: Fibril;
@@ -531,7 +530,7 @@ struct Reactor {
           called, however, so file operations might block indefinitely unless another mechanism (such as timer based)
           is put in place to call it periodically.
 
-          The non-registered idle handler can be manually triggered by calling `epoller.poll`.
+          The non-registered idle handler can be manually triggered by calling `poller.poll`.
          */
         bool registerDefaultIdler = true;
 
@@ -621,8 +620,7 @@ private:
     FixedArray!(IdleCallbackDlg, MAX_IDLE_CALLBACKS) idleCallbacks;
     // Point to idleCallbacks as a range, in case it gets full and we need to spill over to GC allocation
     IdleCallbackDlg[] actualIdleCallbacks;
-    __gshared OSSignal hangDetectorSig;
-    posix_time.timer_t hangDetectorTimerId;
+    __gshared Timer hangDetectorTimer;
 
     SignalHandlerValue!TscTimePoint fiberRunStartTime;
     void delegate() nothrow @nogc @safe crossFiberHook;
@@ -736,6 +734,10 @@ public:
 
         import mecca.reactor.io.signals;
         reactorSignal._open();
+
+        enum TIMER_GRANULARITY = 4; // Number of wakeups during the monitored period
+        Duration threshold = optionsInEffect.hangDetectorTimeout / TIMER_GRANULARITY;
+        hangDetectorTimer = Timer(threshold, &hangDetectorHandler);
     }
 
     /**
@@ -2054,55 +2056,15 @@ private:
     }
 
     void registerHangDetector() @trusted @nogc {
-        DBG_ASSERT!"registerHangDetector called twice"( hangDetectorSig == OSSignal.SIGNONE );
-        hangDetectorSig = cast(OSSignal)SIGRTMIN;
-        scope(failure) hangDetectorSig = OSSignal.init;
-
-        posix_signal.sigaction_t sa;
-        sa.sa_flags = posix_signal.SA_RESTART | posix_signal.SA_ONSTACK | posix_signal.SA_SIGINFO;
-        sa.sa_sigaction = &hangDetectorHandler;
-        errnoEnforceNGC(posix_signal.sigaction(hangDetectorSig, &sa, null) == 0, "sigaction() for registering hang detector signal failed");
-        scope(failure) posix_signal.signal(hangDetectorSig, posix_signal.SIG_DFL);
-
-        enum SIGEV_THREAD_ID = 4;
-        // SIGEV_THREAD_ID (Linux-specific)
-        // As  for  SIGEV_SIGNAL, but the signal is targeted at the thread whose ID is given in sigev_notify_thread_id,
-        // which must be a thread in the same process as the caller.  The sigev_notify_thread_id field specifies a kernel
-        // thread ID, that is, the value returned by clone(2) or gettid(2).  This flag is intended only for use by
-        // threading libraries.
-
-        sigevent sev;
-        sev.sigev_notify = SIGEV_THREAD_ID;
-        sev.sigev_signo = hangDetectorSig;
-        sev.sigev_value.sival_ptr = &hangDetectorTimerId;
-        sev._sigev_un._tid = gettid();
-
-        errnoEnforceNGC(posix_time.timer_create(posix_time.CLOCK_MONOTONIC, &sev, &hangDetectorTimerId) == 0,
-                "timer_create for hang detector");
-        ASSERT!"hangDetectorTimerId is null"(hangDetectorTimerId !is posix_time.timer_t.init);
-        scope(failure) posix_time.timer_delete(hangDetectorTimerId);
-
-        posix_time.itimerspec its;
-
-        enum TIMER_GRANULARITY = 4; // Number of wakeups during the monitored period
-        Duration threshold = optionsInEffect.hangDetectorTimeout / TIMER_GRANULARITY;
-        threshold.split!("seconds", "nsecs")(its.it_value.tv_sec, its.it_value.tv_nsec);
-        its.it_interval = its.it_value;
-        INFO!"Hang detector will wake up every %s seconds and %s nsecs"(its.it_interval.tv_sec, its.it_interval.tv_nsec);
-
-        errnoEnforceNGC(posix_time.timer_settime(hangDetectorTimerId, 0, &its, null) == 0, "timer_settime");
+        DBG_ASSERT!"registerHangDetector called twice"(!hangDetectorTimer.isSet);
+        hangDetectorTimer.start();
     }
 
     void deregisterHangDetector() nothrow @trusted @nogc {
-        if( hangDetectorSig is OSSignal.SIGNONE )
-            return; // Hang detector was not initialized
-
-        posix_time.timer_delete(hangDetectorTimerId);
-        posix_signal.signal(hangDetectorSig, posix_signal.SIG_DFL);
-        hangDetectorSig = OSSignal.init;
+        hangDetectorTimer.cancel();
     }
 
-    extern(C) static void hangDetectorHandler(int signum, siginfo_t* info, void *ctx) nothrow @trusted @nogc {
+    extern(C) static void hangDetectorHandler() nothrow @trusted @nogc {
         if( !theReactor._hangDetectorEnabled )
             return;
 
@@ -2160,8 +2122,8 @@ private:
         dumpStackTrace();
         flushLog(); // There is a certain chance the following lines themselves fault. Flush the logs now so that we have something
 
-        posix_ucontext.ucontext_t* contextPtr = cast(posix_ucontext.ucontext_t*)ctx;
-        auto pc = contextPtr ? contextPtr.uc_mcontext.gregs[posix_ucontext.REG_RIP] : 0;
+        Ucontext* contextPtr = cast(Ucontext*)ctx;
+        auto pc = contextPtr ? contextPtr.uc_mcontext.registers.rip : 0;
 
         if( isReactorThread ) {
             auto currentSD = theReactor.getCurrentFiberPtr(true).stackDescriptor;
@@ -2653,6 +2615,12 @@ unittest {
 unittest {
     import mecca.reactor.sync.event;
 
+    // Linux has a fiber running for the signal handler, Darwin does not.
+    version (Darwin)
+        enum startupFiberCount = 0;
+    else version (linux)
+        enum startupFiberCount = 1;
+
     theReactor.setup();
     scope(exit) theReactor.teardown();
 
@@ -2690,10 +2658,11 @@ unittest {
         evt1.wait();
 
         assertEQ( theReactor.reactorStats.fibersHistogram[FiberState.Starting], 0 );
-        assertEQ( theReactor.reactorStats.fibersHistogram[FiberState.Sleeping], 2 );
+
+        assertEQ( theReactor.reactorStats.fibersHistogram[FiberState.Sleeping], startupFiberCount + 1 );
         theReactor.throwInFiber(fib, new TheException);
         // The following should be "1", because the state would switch to Scheduled. Since that's not implemented yet...
-        assertEQ( theReactor.reactorStats.fibersHistogram[FiberState.Sleeping], 2 ); // Should be 1
+        assertEQ( theReactor.reactorStats.fibersHistogram[FiberState.Sleeping], startupFiberCount + 1 ); // Should be 1
         assertEQ( theReactor.reactorStats.fibersHistogram[FiberState.Scheduled], 0 ); // Should 1
         evt2.set();
     }

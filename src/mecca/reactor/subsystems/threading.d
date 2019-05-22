@@ -7,7 +7,7 @@ import core.thread;
 import core.sys.posix.signal;
 import std.exception;
 
-import mecca.platform.linux: gettid, OSSignal;
+import mecca.platform.os: currentThreadId, ThreadId;
 import mecca.lib.reflection;
 import mecca.lib.exception;
 import mecca.lib.time;
@@ -22,23 +22,11 @@ import mecca.reactor: theReactor, FiberHandle, TimerHandle;
 
 
 class WorkerThread: Thread {
-    __gshared static immutable BLOCKED_SIGNALS = [
-        OSSignal.SIGHUP, OSSignal.SIGINT, OSSignal.SIGQUIT,
-        //OSSignal.SIGILL, OSSignal.SIGTRAP, OSSignal.SIGABRT,
-        //OSSignal.SIGBUS, OSSignal.SIGFPE, OSSignal.SIGKILL,
-        //OSSignal.SIGUSR1, OSSignal.SIGSEGV, OSSignal.SIGUSR2,
-        OSSignal.SIGPIPE, OSSignal.SIGALRM, OSSignal.SIGTERM,
-        //OSSignal.SIGSTKFLT, OSSignal.SIGCONT, OSSignal.SIGSTOP,
-        OSSignal.SIGCHLD, OSSignal.SIGTSTP, OSSignal.SIGTTIN,
-        OSSignal.SIGTTOU, OSSignal.SIGURG, OSSignal.SIGXCPU,
-        OSSignal.SIGXFSZ, OSSignal.SIGVTALRM, OSSignal.SIGPROF,
-        OSSignal.SIGWINCH, OSSignal.SIGIO, OSSignal.SIGPWR,
-        //OSSignal.SIGSYS,
-    ];
+    public import mecca.platform.os : BLOCKED_SIGNALS;
 
     __gshared static void delegate(WorkerThread) preThreadFunc;
 
-    align(8) int kernel_tid = -1;
+    align(8) ThreadId kernel_tid = -1;
     void delegate() dg;
 
     this(void delegate() dg, size_t stackSize = 0) {
@@ -50,15 +38,18 @@ class WorkerThread: Thread {
 
     private void wrapper() nothrow {
         scope(exit) kernel_tid = -1;
-        kernel_tid = gettid();
+        kernel_tid = currentThreadId();
 
         sigset_t sigset = void;
         ASSERT!"sigemptyset failed"(sigemptyset(&sigset) == 0);
         foreach(sig; BLOCKED_SIGNALS) {
             ASSERT!"sigaddset(%s) failed"(sigaddset(&sigset, sig) == 0, sig);
         }
-        foreach(sig; SIGRTMIN .. SIGRTMAX /* +1? */) {
-            ASSERT!"sigaddset(%s) failed"(sigaddset(&sigset, sig) == 0, sig);
+        static if (is(typeof(SIGRTMIN)) && is(typeof(SIGRTMAX)))
+        {
+            foreach(sig; SIGRTMIN .. SIGRTMAX /* +1? */) {
+                ASSERT!"sigaddset(%s) failed"(sigaddset(&sigset, sig) == 0, sig);
+            }
         }
         ASSERT!"pthread_sigmask failed"(pthread_sigmask(SIG_BLOCK, &sigset, null) == 0);
 
@@ -155,7 +146,7 @@ struct DeferredTask {
 }
 
 private extern(C) nothrow @system @nogc {
-    import core.sys.posix.pthread: pthread_mutex_t;
+    import core.sys.posix.pthread: pthread_mutex_t, PTHREAD_MUTEX_INITIALIZER;
 
     // these are not marked as @nogc in some versions of phobos
     int pthread_mutex_lock(pthread_mutex_t*);
@@ -163,7 +154,7 @@ private extern(C) nothrow @system @nogc {
 }
 
 private struct PthreadMutex {
-    pthread_mutex_t mtx;
+    pthread_mutex_t mtx = PTHREAD_MUTEX_INITIALIZER;
 
     void lock() nothrow @nogc {
         ASSERT!"pthread_mutex_lock"(pthread_mutex_lock(&mtx) == 0);

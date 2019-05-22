@@ -6,7 +6,7 @@ module mecca.lib.io;
 import core.stdc.errno;
 import core.sys.posix.unistd;
 public import core.sys.posix.fcntl :
-    O_ACCMODE, O_RDONLY, O_WRONLY, O_RDWR, O_CREAT, O_EXCL, O_TRUNC, O_APPEND, O_DSYNC, O_RSYNC, O_SYNC, O_NOCTTY;
+    O_ACCMODE, O_RDONLY, O_WRONLY, O_RDWR, O_CREAT, O_EXCL, O_TRUNC, O_APPEND, O_SYNC, O_NOCTTY;
     /* O_NOATIME, O_NOFOLLOW not included because not defined */
 import core.sys.posix.fcntl;
 import std.algorithm : min, move;
@@ -18,6 +18,7 @@ import mecca.lib.memory;
 import mecca.lib.string;
 import mecca.log;
 import mecca.platform.x86;
+import mecca.platform.os : EREMOTEIO, O_CLOEXEC;
 
 /// Exception thrown if a read/recv receives partial data
 ///
@@ -35,14 +36,6 @@ unittest {
 
 private extern(C) nothrow @trusted @nogc {
     int pipe2(ref int[2], int flags);
-}
-
-version(linux) {
-    static if( __traits(compiles, O_CLOEXEC) ) {
-        enum O_CLOEXEC = core.sys.posix.fcntl.O_CLOEXEC;
-    } else {
-        enum O_CLOEXEC = 0x80000;
-    }
 }
 
 /**
@@ -198,16 +191,10 @@ public:
      * An FD representing a duplicate of the current FD.
      */
     @notrace FD dup() @trusted @nogc {
-        import fcntl = core.sys.posix.fcntl;
-        static if( __traits(compiles, fcntl.F_DUPFD_CLOEXEC) ) {
-            enum F_DUPFD_CLOEXEC = fcntl.F_DUPFD_CLOEXEC;
-        } else {
-            version(linux) {
-                enum F_DUPFD_CLOEXEC = 1030;
-            }
-        }
+        import core.sys.posix.fcntl : fcntl;
+        import mecca.platform.os : F_DUPFD_CLOEXEC;
 
-        int newFd = osCall!(fcntl.fcntl)( F_DUPFD_CLOEXEC, 0 );
+        int newFd = osCall!(fcntl)( F_DUPFD_CLOEXEC, 0 );
         errnoEnforceNGC(newFd!=-1, "Failed to duplicate FD");
         return FD( newFd );
     }

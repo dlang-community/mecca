@@ -9,13 +9,12 @@ module mecca.reactor.io.fs_watcher;
 import mecca.log;
 import mecca.reactor;
 
-version(linux) {
-    import mecca.reactor.io.inotify;
-    public import mecca.reactor.io.inotify : WatchDescriptor;
-    public import core.sys.linux.sys.inotify;
-} else {
-    static assert(false, "Unsupported platform for file watching");
-}
+version(linux):
+
+import mecca.reactor.io.inotify;
+public import mecca.reactor.io.inotify : WatchDescriptor;
+public import core.sys.linux.sys.inotify;
+
 
 /// file watcher struct
 struct FSWatcher {

@@ -3,6 +3,8 @@ module mecca.lib.time;
 
 // Licensed under the Boost license. Full copyright information in the AUTHORS file
 
+import core.sys.posix.sys.time : timespec;
+
 public import std.datetime;
 import mecca.lib.division: S64Divisor;
 public import mecca.platform.x86: readTSC;
@@ -97,36 +99,12 @@ public:
     }
 
     shared static this() {
-        import std.exception;
-        import core.sys.posix.time;
-        import std.file: readText;
-        import std.string;
+        import mecca.platform.os: calculateCycles;
 
-        version (linux) {
-        }
-        else {
-            static assert (false, "a linux system is required");
-        }
-
-        enforce(readText("/proc/cpuinfo").indexOf("constant_tsc") >= 0, "constant_tsc not supported");
-
-        timespec sleepTime = timespec(0, 200_000_000);
-        timespec t0, t1;
-
-        auto rc1 = clock_gettime(CLOCK_MONOTONIC, &t0);
-        auto cyc0 = readTSC();
-        auto rc2 = nanosleep(&sleepTime, null);
-        auto rc3 = clock_gettime(CLOCK_MONOTONIC, &t1);
-        auto cyc1 = readTSC();
-
-        errnoEnforce(rc1 == 0, "clock_gettime");
-        errnoEnforce(rc2 == 0, "nanosleep");   // we hope we won't be interrupted by a signal here
-        errnoEnforce(rc3 == 0, "clock_gettime");
-
-        auto nsecs = (t1.tv_sec - t0.tv_sec) * 1_000_000_000UL + (t1.tv_nsec  - t0.tv_nsec);
-        cyclesPerSecond = cast(long)((cyc1 - cyc0) / (nsecs / 1E9));
-        cyclesPerMsec = cyclesPerSecond / 1_000;
-        cyclesPerUsec = cyclesPerSecond / 1_000_000;
+        const cycles = calculateCycles();
+        cyclesPerSecond = cycles.perSecond;
+        cyclesPerMsec = cycles.perMsec;
+        cyclesPerUsec = cycles.perUsec;
 
         cyclesPerSecondDivisor = S64Divisor(cyclesPerSecond);
         cyclesPerMsecDivisor = S64Divisor(cyclesPerMsec);
@@ -319,4 +297,12 @@ struct Timeout {
     @notrace bool opEquals()(in Timeout rhs) const nothrow @safe @nogc {
         return expiry == rhs.expiry;
     }
+}
+
+package(mecca) timespec toTimespec(Duration duration) nothrow pure @safe @nogc
+{
+    timespec spec;
+    duration.split!("seconds", "nsecs")(spec.tv_sec, spec.tv_nsec);
+
+    return spec;
 }
