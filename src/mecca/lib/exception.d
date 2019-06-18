@@ -27,6 +27,7 @@ import mecca.lib.string : nogcFormat, nogcRtFormat;
 
 private bool _assertInProgress;
 
+// The default TraceInfo provided by DMD is not `@nogc`
 private extern(C) nothrow @nogc {
     int backtrace(void** buffer, int size);
 
