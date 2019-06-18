@@ -27,14 +27,18 @@ import mecca.lib.string : nogcFormat, nogcRtFormat;
 
 private bool _assertInProgress;
 
+// The default TraceInfo provided by DMD is not `@nogc`
 private extern(C) nothrow @nogc {
     int backtrace(void** buffer, int size);
 
     static if (__VERSION__ < 2077) {
         pragma(mangle, "_D4core7runtime19defaultTraceHandlerFPvZ16DefaultTraceInfo6__ctorMFZC4core7runtime19defaultTraceHandlerFPvZ16DefaultTraceInfo")
             void defaultTraceInfoCtor(Object);
-    } else {
+    } else static if (__VERSION__ < 2087) {
         pragma(mangle, "_D4core7runtime19defaultTraceHandlerFPvZ16DefaultTraceInfo6__ctorMFZCQCpQCnQCiFQBqZQBr")
+            void defaultTraceInfoCtor(Object);
+    } else {
+        pragma(mangle, "_D4core7runtime16DefaultTraceInfo6__ctorMFZCQBqQBoQBj")
             void defaultTraceInfoCtor(Object);
     }
 }
@@ -702,8 +706,3 @@ unittest {
     // double close will throw
     assertThrows!ErrnoException(errnoCall!close(newFd));
 }
-
-
-
-
-
