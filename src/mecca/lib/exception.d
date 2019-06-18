@@ -702,8 +702,3 @@ unittest {
     // double close will throw
     assertThrows!ErrnoException(errnoCall!close(newFd));
 }
-
-
-
-
-
