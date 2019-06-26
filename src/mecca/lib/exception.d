@@ -34,7 +34,7 @@ private extern(C) nothrow @nogc {
     static if (__VERSION__ < 2077) {
         pragma(mangle, "_D4core7runtime19defaultTraceHandlerFPvZ16DefaultTraceInfo6__ctorMFZC4core7runtime19defaultTraceHandlerFPvZ16DefaultTraceInfo")
             void defaultTraceInfoCtor(Object);
-    } else static if (__VERSION__ < 2087) {
+    } else static if (__VERSION__ < 2088) {
         pragma(mangle, "_D4core7runtime19defaultTraceHandlerFPvZ16DefaultTraceInfo6__ctorMFZCQCpQCnQCiFQBqZQBr")
             void defaultTraceInfoCtor(Object);
     } else {
