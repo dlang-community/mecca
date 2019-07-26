@@ -495,19 +495,23 @@ extern(C) nothrow /*@nogc*/ {
  * mixin InterceptCall!socket;
  * ---
  */
-mixin template InterceptCall(alias F) {
+public import core.sys.posix.dlfcn;
+mixin template InterceptCall(alias F, alias lib=null) {
 private:
-    import core.sys.posix.dlfcn: dlsym;
-    import core.sys.linux.dlfcn: RTLD_NEXT;
     import std.string: format;
     import mecca.lib.reflection:  funcAttrToString;
+    import core.sys.linux.dlfcn: RTLD_NEXT;
 
     mixin(q{
             typeof(F)* next_%1$s = &stub_%1$s;
 
             extern(%2$s) ReturnType!F stub_%1$s(Parameters!F args) %3$s {
                 if( next_%1$s is &stub_%1$s ) {
-                    next_%1$s = cast(typeof(F)*)dlsym(RTLD_NEXT, "%1$s");
+                    void *handle = RTLD_NEXT;
+                    static if(lib!=null) {
+                        handle=dlopen(lib, RTLD_NOW);
+                    }
+                    next_%1$s = cast(typeof(F)*)dlsym(handle, "%1$s");
                 }
 
                 return next_%1$s(args);
