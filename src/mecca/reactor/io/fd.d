@@ -699,15 +699,18 @@ public:
     }
 
     /// Cleanly closes an FD
-    void close() nothrow @safe @nogc {
+    int close() nothrow @safe @nogc {
+        int ret=-1;
         if( fd.isValid ) {
             DBG_ASSERT!"%s Asked to close fd %s with null context"(ctx !is null, &this, fd.fileNo);
 
             poller.deregisterFd( fd, ctx, true );
 
-            fd.close();
+            ret = fd.close();
             ctx = null;
         }
+        return ret;
+    }
 
     auto connect(SockAddr sa, Timeout timeout=Timeout.infinite) @trusted @nogc {
         return connect!(.connect)(&sa.base, sa.len, timeout);
