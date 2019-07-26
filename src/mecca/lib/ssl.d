@@ -23,37 +23,9 @@ shared static this() {
     SSL_load_error_strings();
 }
 
-struct BioPair {
-    BIO* read_;
-    BIO* write_;
-    
-
-    @disable this(this);
-    
-    this(int)  {
-        BIO_new_bio_pair(&read_, 0, &write_, 0);
-    }
-
-    ~this() nothrow {
-        if (!read_) return;
-        BIO_free(read_);
-        BIO_free(write_);
-        read_ = null;
-        write_ = null;
-    }
-}
-
 class SslError : Exception {
-    //char[128] msg;
     this(int ret, int err, string file = __FILE__, size_t line = __LINE__) {
-        import deimos.openssl.err: ERR_reason_error_string;
-        import core.stdc.string : strlen;
-
         string buf = "SslError(%d) ".format(err);
-        //const(char) *err_sz = ERR_reason_error_string(err);
-        //size_t err_l = strlen(err_sz);
-        //msg[buf.length..buf.length+err_l] = err_sz[0..err_l];
-        //buf = cast(string) msg[0..buf.length+err_l];
         super(buf, file, line);
     }
 }
@@ -171,7 +143,6 @@ struct SSLSocket(SocketT) {
 
     int do_handshake() {
         do {
-            //DEBUG!"SSL_do_handshake"();
             check_state();
             int ret = SSL_do_handshake(ssl_);
             doIO(ret);
@@ -183,10 +154,9 @@ struct SSLSocket(SocketT) {
     int do_write() {
         int ret;
         int total = 0;
-        //do {
+
         while((ret = BIO_read(write_, wrbuf_.ptr, cast(int)wrbuf_.length))>0) {
             check_state();
-            //DEBUG!"SSL_write..."();
             debug {
                 char[32] tmp;
                 INFO!"SSL_do_write(%d, 0x%s)"(ret, nogcFormat!"%x"(tmp, wrbuf_[0..min(ret, 16)]));
@@ -194,7 +164,6 @@ struct SSLSocket(SocketT) {
             long written = underlying_.write(wrbuf_[0..ret]);
             total += written;
         }
-        //}while(BIO_should_retry(write_));
         return ret<0 ? ret : total;
     }
 
@@ -229,12 +198,7 @@ struct SSLSocket(SocketT) {
         BIO_set_nbio(read_, 1);
         write_ = BIO_new(BIO_s_mem());
         BIO_set_nbio(write_, 1);
-        //BIO_make_bio_pair(read_,write_);
-        //BIO_new_bio_pair(&read_, 0, &write_, 0);
         SSL_set_bio(ssl_, read_, write_);
-        // not used in non-blocking mode
-        //auto fd = fd_.fileNo;
-        //SSL_set_fd(ssl_, fd);
         SSL_set_verify(ssl_, SSL_VERIFY_NONE, null);
         switch(mode) {
             case SslMode.CLIENT: SSL_set_connect_state(ssl_); break;
@@ -299,7 +263,6 @@ struct SSLSocket(SocketT) {
             }
             if(!SSL_is_init_finished(ssl_)) {
                 check_state();
-                //INFO!"SSL_do_handshake"();
                 ret = SSL_do_handshake(ssl_);
             }else {
                 return;
