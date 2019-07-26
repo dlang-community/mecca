@@ -18,7 +18,7 @@ import mecca.lib.exception;
 import mecca.lib.io;
 public import mecca.lib.net;
 import mecca.lib.string;
-import mecca.lib.time : Timeout, msecs;
+import mecca.lib.time : Timeout, msecs, TscTimePoint;
 import mecca.log;
 import mecca.reactor.subsystems.poller;
 
@@ -656,7 +656,8 @@ struct ReactorFD {
 private:
     FD fd;
     Poller.FdContext* ctx;
-
+public:    
+    TscTimePoint lastIOTime;
 public:
     @disable this(this);
 
@@ -827,6 +828,7 @@ package(mecca.reactor):
                 }
             }
             else {
+                lastIOTime = TscTimePoint.hardNow;
                 return ret;
             }
         }
