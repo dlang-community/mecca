@@ -239,8 +239,10 @@ private:
     @notrace void internalDeregisterFD(int fd, FdContext* ctx) nothrow @trusted @nogc {
         int res = epollFd.osCall!epoll_ctl(EPOLL_CTL_DEL, fd, null);
 
+        if(res<0) {
         // There is no reason for a registered FD to fail removal, so we assert instead of throwing
-        ASSERT!"Removing fd from epoll failed with errno %s"( res>=0, errno );
+            INFO!"Removing fd %d from epoll failed with errno %s"(fd, errno );
+        }
     }
 }
 
