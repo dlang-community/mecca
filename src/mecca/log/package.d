@@ -78,11 +78,11 @@ void WARN(string fmt, string file = __FILE_FULL_PATH__, string mod = __MODULE__,
 }
 
 void ERROR(string fmt, string file = __FILE_FULL_PATH__, string mod = __MODULE__, int line = __LINE__, T...)(T args) nothrow @safe @nogc {
-    internalLogOutput!(LEVEL_ERROR,fmt)(file, line, args);
+    internalLogOutput!(LEVEL_ERROR, fmt)(file, line, args);
 }
 
 void LOG_EXCEPTION(Throwable ex) nothrow @trusted @nogc {
-    internalLogOutput!(LEVEL_EXCEPTION,"%s@%s(%s): %s")(ex.file, ex.line, typeid(ex).name, ex.file, ex.line, ex.msg);
+    internalLogOutput!(LEVEL_EXCEPTION, "%s@%s(%s): %s")(ex.file, ex.line, typeid(ex).name, ex.file, ex.line, ex.msg);
     if (ex.info) {
         foreach( ptr; DefaultTraceInfoABI.extract(ex.info).frames ) {
             as!"nothrow @nogc"({ writefln("\t0x%x", ptr); });
