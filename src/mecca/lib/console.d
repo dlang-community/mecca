@@ -27,6 +27,14 @@ public:
         return "\x1b[" ~ code ~ "m" ~ text ~ "\x1b[0m";
     }
 
+    void writeTo(R)(ref R output, string text) const {
+        output ~= "\x1b[";
+        output ~= code;
+        output ~= "m";
+        output ~= text;
+        output ~= "\x1b[0m";
+    }
+
     /// Predefined ANSI sequences
     enum reset = ANSI("0");
     enum inverse = ANSI("7");           /// ditto
