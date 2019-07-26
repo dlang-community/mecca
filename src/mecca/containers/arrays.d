@@ -89,6 +89,20 @@ public:
         return this;
     }
 
+    static if(is(T==char)) {
+        /// Returns a standard slice pointing at the array's data
+        @property string str() nothrow pure @nogc {
+            return cast(immutable(T)[])(data[0 .. _length]);
+        }
+
+        auto ref nogcFormat(string fmt, T...)(T args) pure nothrow @nogc {
+            import mecca.lib.string : nogcFormat;
+            auto len =nogcFormat!(fmt)(data[length..N], args).length;
+            _length+=len;
+            return this;
+        }
+    }
+    
     /// FixedArray is implicitly convertible to its underlying array
     alias array this;
 
