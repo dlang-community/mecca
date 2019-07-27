@@ -153,7 +153,8 @@ auto ref fixedArray(size_t N, R)(R range) {
 
 unittest {
     auto a = [1,2,3].fixedArray!5;
-    assert(a.length==5);
+    assert(a.length==3);
+    assert(a.capacity==5);
     assert(a[0..3] == [1,2,3]);
 }
 
