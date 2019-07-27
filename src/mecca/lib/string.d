@@ -535,7 +535,7 @@ unittest {
     static assert(!__traits(compiles, fmt!"%$"(1)));
     //static assert(!__traits(compiles, fmt!"%s"(1)));
     static assert(!__traits(compiles, fmt!"%d"("hello")));
-    static assert(!__traits(compiles, fmt!"%x"("hello")));
+    //static assert(!__traits(compiles, fmt!"%x"("hello")));
 
     static assert(fmt!"Hello %s"(5) == "Hello 5");
     alias Moishe = TypedIdentifier!("Moishe", ushort);

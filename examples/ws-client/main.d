@@ -10,6 +10,7 @@ import std.range: take;
 import std.algorithm.mutation:copy;
 import mecca.lib.websockets;
 import mecca.lib.url;
+import mecca.lib.reflection;
 import mecca.lib.ssl;
 import core.stdc.stdlib;
 import core.stdc.signal;

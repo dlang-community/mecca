@@ -15,6 +15,7 @@ import std.typecons;
 import mecca.lib.ssl;
 import mecca.containers.stringtable;
 import mecca.lib.url;
+import mecca.lib.reflection;
 
 struct WebSocketFrame {
     enum : ubyte {

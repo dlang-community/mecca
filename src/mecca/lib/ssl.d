@@ -14,6 +14,7 @@ import mecca.lib.memory;
 import std.conv;
 import std.string: fromStringz;
 import std.typecons : Yes;
+import std.format: format;
 
 shared static this() {
     import deimos.openssl.err : ERR_load_crypto_strings;
@@ -27,12 +28,6 @@ class SslError : Exception {
     this(int ret, int err, string file = __FILE__, size_t line = __LINE__) {
         string buf = "SslError(%d) ".format(err);
         super(buf, file, line);
-    }
-}
-
-class UnderlyingShutdown : Exception {
-    this() {
-        super("Underlying connection shutdown when expecting data");
     }
 }
 
