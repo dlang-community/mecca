@@ -815,7 +815,7 @@ public:
         poller.unregisterFdCallback(ctx, dir);
     }
 
-package(mecca.reactor):
+
     auto blockingCall(alias F)(Direction dir, Parameters!F[1 .. $] args, Timeout timeout=Timeout.infinite) @system @nogc {
         static assert (is(Parameters!F[0] == int));
         static assert (isSigned!(ReturnType!F));
@@ -841,6 +841,7 @@ package(mecca.reactor):
         return fd.osCall!F(args);
     }
 
+package(mecca.reactor):
     auto osCallErrno(alias F)(Parameters!F[1..$] args) @system @nogc if(isSigned!(ReturnType!F) && isIntegral!(ReturnType!F)) {
         enum FuncFullName = fullyQualifiedName!F;
 
