@@ -59,6 +59,10 @@ private:
         if (v >= 0) {
             return v;
         }
+        return doCreate(k);
+    }
+
+    int doCreate(K k) {
         enforceFmt!TableFull(_length < capacity, typeof(this).stringof ~ " is full");
         auto tmp = _length;
         _length++;
@@ -107,7 +111,24 @@ public:
         //    return (idx < 0) ? defaultValue : values[idx];
         //}
         V* getOrCreate(K k) {
-            return &values[create(k)];
+            return &values[doCreate(k)];
+        }
+
+        ref V getOrAdd(K k, out bool found) {
+            int index = lookup(k);
+            if(index<0) {
+                found = false;
+                index = doCreate(k);
+                return values[index];
+            }else {
+                found = true;
+                return values[index];
+            }
+        }
+
+        ref V getOrAdd(K k) {
+            int index = create(k);
+            return values[index];
         }
 
         @property inout(K)[] byKey() inout {
