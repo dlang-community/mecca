@@ -34,7 +34,7 @@ struct ServiceManager {
         theReactor.start();
     }
 
-    version(unittest) void utMain(string[] args, string[] servicesToInit = null) {
+    void utMain(string[] args, string[] servicesToInit = null) {
         this.servicesToInit = servicesToInit;
         main(args);
     }
