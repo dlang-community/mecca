@@ -142,11 +142,14 @@ public:
         }
     }
     /// ditto
-    static Duration toDuration(long cycles) pure @safe @nogc nothrow {
+    static Duration durationof(long cycles) pure @safe @nogc nothrow {
         return hnsecs((cycles / cyclesPerSecond) * HECTONANO + ((cycles % cyclesPerSecond) * HECTONANO) / cyclesPerSecond);
     }
+
+    alias toDuration this;
+    
     /// ditto
-    Duration toDuration() const @safe @nogc nothrow {
+    @property Duration toDuration() const @safe @nogc nothrow {
         return hnsecs((cycles / cyclesPerSecond) * HECTONANO + ((cycles % cyclesPerSecond) * HECTONANO) / cyclesPerSecond);
     }
     /// ditto
@@ -166,13 +169,17 @@ public:
         return cycles / cyclesPerMsecDivisor;
     }
 
+    double toSeconds() pure const @nogc @safe nothrow {
+        return cast(double)cycles/cyclesPerSecond;
+    }
+
     int opCmp(TscTimePoint rhs) pure const @nogc @safe nothrow {
         return (cycles > rhs.cycles) ? 1 : ((cycles < rhs.cycles) ? -1 : 0);
     }
     bool opEquals()(TscTimePoint rhs) pure const @nogc @safe nothrow {
         return cycles == rhs.cycles;
     }
-
+    
     TscTimePoint opBinary(string op: "+")(long cycles) const @nogc @safe nothrow pure {
         return TscTimePoint(this.cycles + cycles);
     }
@@ -183,8 +190,8 @@ public:
     TscTimePoint opBinary(string op: "-")(long cycles) const @nogc @safe nothrow pure {
         return TscTimePoint(this.cycles - cycles);
     }
-    Duration opBinary(string op: "-")(TscTimePoint rhs) const @nogc @safe nothrow pure {
-        return TscTimePoint.toDuration(cycles - rhs.cycles);
+    TscTimePoint opBinary(string op: "-")(TscTimePoint rhs) const @nogc @safe nothrow pure {
+        return TscTimePoint(cycles - rhs.cycles);
     }
     TscTimePoint opBinary(string op: "-")(Duration dur) const @nogc @safe nothrow {
         return TscTimePoint(cycles - toCycles(dur));
