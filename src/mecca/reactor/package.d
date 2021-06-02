@@ -582,6 +582,7 @@ private:
     enum TIMER_NUM_BINS = 256;
     enum TIMER_NUM_LEVELS = 4;
     enum MAX_DEFERRED_TASKS = 1024;
+    version(unittest) package enum UT_MAX_DEFERRED_TASKS = MAX_DEFERRED_TASKS;
 
     enum GUARD_ZONE_SIZE = SYS_PAGE_SIZE;
 
@@ -643,6 +644,7 @@ private:
     CascadingTimeQueue!(TimedCallback*, TIMER_NUM_BINS, TIMER_NUM_LEVELS, true) timeQueue;
 
     ThreadPool!MAX_DEFERRED_TASKS threadPool;
+    version(unittest) package ref auto utThreadPool() inout { return threadPool; }
 
 public:
     /// Report whether the reactor has been properly opened (i.e. - setup has been called).
