@@ -181,6 +181,7 @@ private:
     WorkerThread[] threads;
     TimerHandle timerHandle;
     PoolType tasksPool;
+    version(unittest) package ref auto utTasksPool() inout { return tasksPool; }
     DuplexQueue!(IdxType, numTasks) queue;
 
 public:
@@ -318,20 +319,17 @@ public:
 
         // we reach this part if-and-only-if the thread is done with the task.
         // the task is already finalized
+        scope(exit) tasksPool.release(task);
+
         Throwable ex = task.pendingException.get();
         if (ex !is null) {
             // We don't know what the lifetime of the task is, so copy the exception again
             throw setEx(ex);
         }
-        else {
-            static if (is(ReturnType!F == void)) {
-                tasksPool.release(task);
-            }
-            else {
-                auto tmp = *(cast(ReturnType!F*)task.result.ptr);
-                tasksPool.release(task);
-                return tmp;
-            }
+
+        static if (!is(ReturnType!F == void)) {
+            auto tmp = *(cast(ReturnType!F*)task.result.ptr);
+            return tmp;
         }
     }
 }
@@ -457,4 +455,59 @@ unittest {
     Reactor.OpenOptions options;
     options.threadDeferralEnabled = true;
     testWithReactor(&testBody, options);
+}
+
+unittest {
+    // Make sure an exception thrown from a thread doesn't leak a task
+    import mecca.reactor;
+
+    static class SomeException : Exception {
+        mixin ExceptionBody!"Just some exception";
+    }
+
+    static void threadBody() {
+        throw mkEx!SomeException;
+    }
+
+    static void runThreadThatThrowsException() {
+        try {
+            theReactor.deferToThread!threadBody();
+        } catch(SomeException ex) {
+            // Expecting this
+        }
+    }
+
+    Reactor.OpenOptions options;
+    options.threadDeferralEnabled = true;
+
+    testWithReactor({
+        auto tasksAvailableInPool() {
+            return theReactor.utThreadPool.utTasksPool.numAvailable();
+        }
+
+        // Verify the number of tasks available tasks in the pool doesn't decrease
+        const initialTasksAvailableInPool = tasksAvailableInPool();
+        runThreadThatThrowsException();
+        assertEQ(initialTasksAvailableInPool, tasksAvailableInPool());
+    }, options);
+
+    testWithReactor({
+        // Run more threads than MAX_DEFERRED_TASKS - crashes when the tasks leak.
+        // Run in concurrent chunks to avoid the test running for a very long time.
+        import mecca.reactor.sync.barrier: Barrier;
+        Barrier barrier;
+        enum CHUNK_SIZE = 128;
+        uint counter = 0;
+        while (counter < Reactor.UT_MAX_DEFERRED_TASKS * 2) {
+            foreach(_; 0..CHUNK_SIZE) {
+                counter++;
+                barrier.addWaiter();
+                theReactor.spawnFiber({
+                    runThreadThatThrowsException();
+                    barrier.markDone();
+                });
+            }
+            barrier.waitAll();
+        }
+    }, options);
 }
