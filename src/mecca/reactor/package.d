@@ -600,7 +600,7 @@ private:
     bool _hangDetectorEnabled;
     ubyte maxNumFibersBits;     // Number of bits sufficient to represent the maximal number of fibers
     bool nothingScheduled; // true if there is no scheduled fiber
-    enum HIGH_PRIORITY_SCHEDULES_RATIO = 2; // How many high priority schedules before shceduling a low priority fiber
+    enum HIGH_PRIORITY_SCHEDULES_RATIO = 2; // How many high priority schedules before scheduling a low priority fiber
     ubyte highPrioritySchedules; // Number of high priority schedules done
     FiberIdx.UnderlyingType maxNumFibersMask;
     int reactorReturn;
