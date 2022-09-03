@@ -155,7 +155,7 @@ struct _LinkedList(T, string nextAttr, string prevAttr, string ownerAttr, bool w
                 assert (!isValid(getPrevOf(node)), "no owner but prev is linked");
                 return false;
             }
-            ASSERT!"Trying to remove node that doesn't belong to list. Owner %s, this %s" (owner is &this, owner, &this);
+            DBG_ASSERT!"Trying to remove node that doesn't belong to list. Owner %s, this %s" (owner is &this, owner, &this);
             clearOwnerOf(node);
         }
 

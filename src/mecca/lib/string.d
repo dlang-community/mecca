@@ -371,6 +371,16 @@ unittest {
         p[0..str.length] = str;
         advance(str);
     }
+
+    @nogc pure nothrow
+    void writeHex(const(char[]) str) {
+        for(auto i=0; i< str.length; i++) {
+            p[0] = "0123456789abcdef"[(str[i]>>4)];
+            p[1] = "0123456789abcdef"[(str[i]&0x0F)];
+            p=p[2..$];
+        }
+    }
+
     foreach(tok; sfmt.tokens) {
         static if (is(typeof(tok) == string)) {
             static if (tok.length > 0) {
@@ -387,7 +397,7 @@ unittest {
             static if (f == FMT.STR) {
                 static if (is(typeof(advance(val.nogcToString(p))))) {
                     advance(val.nogcToString(p));
-                } else static if (is(Typ == string) || is(Typ == char[]) || is(Typ == char[Len], uint Len)) {
+                } else static if (is(Typ == string) || is(Typ == char[]) || is(Typ == const(char)[]) || is(Typ == char[Len], uint Len)) {
                     write(val[]);
                 } else static if (is(Typ == enum)) {
                     auto tmp = enumToStr(val);
@@ -439,9 +449,13 @@ unittest {
                 advance(formatDecimal(p, val));
             }
             else static if (f == FMT.HEX) {
+                static if (is(Typ == string) || is(Typ == char[])|| is(Typ == const(char)[]) || is(Typ == char[Len], uint Len)) {
+                    writeHex(val);
+                } else {
                 static assert (is(T[j] : ulong));
-                write("0x");
-                advance(formatHex(p, val));
+                    write("0x");
+                    advance(formatHex(p, val));
+                }
             }
             else static if (f == FMT.PTR) {
                 static assert (is(T[j] : ulong) || isPointer!(T[j]));
@@ -521,7 +535,7 @@ unittest {
     static assert(!__traits(compiles, fmt!"%$"(1)));
     //static assert(!__traits(compiles, fmt!"%s"(1)));
     static assert(!__traits(compiles, fmt!"%d"("hello")));
-    static assert(!__traits(compiles, fmt!"%x"("hello")));
+    //static assert(!__traits(compiles, fmt!"%x"("hello")));
 
     static assert(fmt!"Hello %s"(5) == "Hello 5");
     alias Moishe = TypedIdentifier!("Moishe", ushort);

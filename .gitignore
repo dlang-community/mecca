@@ -10,3 +10,6 @@
 /echo-server
 /lordcmdr
 /sleeper
+**/*.log
+/.vscode
+*dscanner.ini

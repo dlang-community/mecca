@@ -7,7 +7,9 @@
     "copyright": "Copyright © 2017-2018, Weka.IO Ltd.",
     "license": "Boost",
     "versions-osx": ["Darwin", "Kqueue"],
-    "dependencies" : {},
+    "dependencies" : {
+        "openssl": "~>1.1.4+1.0.1g"
+    },
     "configurations": [
         {
             "name": "mecca-lib",
@@ -41,6 +43,13 @@
             "importPaths": ["examples"],
             "sourcePaths": ["examples/echo-server"],
             "targetName": "echo-server"
+        },
+        {
+            "name": "ws-client",
+            "targetType": "executable",
+            "importPaths": ["examples"],
+            "sourcePaths": ["examples/ws-client"],
+            "targetName": "ws-client"
         }
     ]
 }

@@ -156,7 +156,7 @@ private:
         long numMissingTokens = (AllowOverdraft ? 0 : tokens) - tokenBallance;
         DBG_ASSERT!"negative missing %s: requested %s have %s"(numMissingTokens>0, numMissingTokens, tokens, tokenBallance);
 
-        auto sleepDuration = TscTimePoint.toDuration( numMissingTokens * ticksPerToken );
+        auto sleepDuration = TscTimePoint.durationof( numMissingTokens * ticksPerToken );
         if( TscTimePoint.now + sleepDuration > timeout.expiry )
             throw mkEx!TimeoutExpired;
         return sleepDuration;

@@ -127,7 +127,7 @@ public:
         if( cycles==ulong.max )
             return Duration.max;
 
-        return TscTimePoint.toDuration(cycles);
+        return TscTimePoint.durationof(cycles);
     }
 
     ulong cyclesTillNextEntry(TscTimePoint now) nothrow @safe @nogc {

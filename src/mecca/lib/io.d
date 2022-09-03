@@ -146,12 +146,14 @@ public:
      * Throws:
      * Nothing. There is nothing useful to do if close fails.
      */
-    void close() nothrow @safe @nogc {
+    int close() nothrow @safe @nogc {
+        int ret = -1;
         if( fd != InvalidFd ) {
-            .close(fd);
+            ret = .close(fd);
         }
 
         fd = InvalidFd;
+        return ret;
     }
 
     /**

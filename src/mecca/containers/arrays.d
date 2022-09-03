@@ -6,6 +6,7 @@ module mecca.containers.arrays;
 import std.traits;
 import mecca.lib.reflection: CapacityType;
 import mecca.lib.exception;
+import std.range;
 
 /**
  * A variable size array with a fixed maximal capacity
@@ -70,6 +71,38 @@ public:
         return this;
     }
 
+    // implicitly convert from range
+    this(R)(R range) @safe if ((isInputRange!R)) {
+        foreach(val; range) {
+            ASSERT!"FixedArray is full. Capacity is %s"( _length < capacity, capacity );
+            data[_length] = val;
+            ++_length;
+        }
+    }
+
+    ref FixedArray!(T, N, InitializeMembers) opOpAssign(string op: "~", R)(R range) nothrow @safe @nogc  if ((isInputRange!R)) {
+        foreach(val; range) {
+            ASSERT!"FixedArray is full. Capacity is %s"( _length < capacity, capacity );
+            data[_length] = val;
+            ++_length;
+        }
+        return this;
+    }
+
+    static if(is(T==char)) {
+        /// Returns a standard slice pointing at the array's data
+        @property string str() nothrow pure @nogc {
+            return cast(immutable(T)[])(data[0 .. _length]);
+        }
+
+        auto ref nogcFormat(string fmt, T...)(T args) pure nothrow @nogc {
+            import mecca.lib.string : nogcFormat;
+            auto len =nogcFormat!(fmt)(data[length..N], args).length;
+            _length+=len;
+            return this;
+        }
+    }
+    
     /// FixedArray is implicitly convertible to its underlying array
     alias array this;
 
@@ -111,6 +144,18 @@ alias FixedString(size_t N) = FixedArray!(char, N, false);
 void setStringzLength(size_t N)(ref FixedArray!(char, N, false) str) pure nothrow @safe @nogc {
     import std.string : indexOf;
     str.length = str.array.indexOf('\0');
+}
+
+auto ref fixedArray(size_t N, R)(R range) {
+    FixedArray!(ElementType!R, N, false) result = range;
+    return result;
+}
+
+unittest {
+    auto a = [1,2,3].fixedArray!5;
+    assert(a.length==3);
+    assert(a.capacity==5);
+    assert(a[0..3] == [1,2,3]);
 }
 
 unittest {

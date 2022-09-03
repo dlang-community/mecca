@@ -3,7 +3,7 @@ module mecca.runtime.ut;
 
 // Licensed under the Boost license. Full copyright information in the AUTHORS file
 
-version(unittest):
+//version(unittest):
 
 import std.file: read;
 import std.stdio;
@@ -12,7 +12,7 @@ import std.datetime;
 import std.path: absolutePath, buildNormalizedPath;
 import core.sys.posix.unistd: isatty;
 import core.runtime: Runtime;
-
+import mecca.lib.time;
 import mecca.lib.console;
 import mecca.log;
 
@@ -50,23 +50,28 @@ shared static this() {
     size_t counter;
     bool failed = false;
     auto startTime = MonoTime.currTime();
+    
+    version (linux)
+        DEBUG!"#LOADAVG %s"(cast(immutable char[])read("/proc/loadavg")[0..$-1]);
 
-    META!"Started UT of %s (a total of %s found)"(buildNormalizedPath(argv[0].absolutePath()), modules.length);
-    logLine(FG.icyan("Started UT of %s (a total of %s found)".format(buildNormalizedPath(argv[0].absolutePath()), modules.length)));
+
+    INFO!"Started UT of %s (a total of %s found)"(buildNormalizedPath(argv[0].absolutePath()), modules.length);
+    CONSOLE!(FG.icyan("Started UT of %s (a total of %s found)"))(buildNormalizedPath(argv[0].absolutePath()), modules.length);
 
     foreach(m; modules) {
         counter++;
-        version (linux)
-            DEBUG!"#LOADAVG %s"(cast(immutable char[])read("/proc/loadavg"));
-        META!"Running UT of %s"(m.name);
-        logLine(FG.yellow("Running UT of ") ~ FG.iwhite(m.name));
+        INFO!"Running UT of %s"(m.name);
+        CONSOLE!"Running UT of %s"(m.name);
         try {
             auto ut = m.unitTest;
+            auto testStartTs = TscTimePoint.hardNow;
             ut();
+            auto dur = cast(double)(TscTimePoint.hardNow - testStartTs).toSeconds();
+            INFO!"Done    UT of %s in %.4f ms"(m.name, dur*1e3);
         }
         catch (Throwable ex) {
-            ERROR!"UT failed!"();
-            logLine(FG.red("UT failed!"));
+            ERROR!"Failed  UT of %s!"(m.name);
+            CONSOLE!(FG.red("Failed UT of %s!"))(m.name);
             auto seenSep = false;
             foreach(line; ex.toString().lineSplitter()) {
                 auto idx = line.indexOf(" ");
@@ -97,22 +102,22 @@ shared static this() {
 
     int retVal;
     if (failed) {
-        META!"Failed. Ran %s unittests in %.2f seconds"(counter, secs);
-        logLine(FG.ired("Failed. Ran %s unittests in %.2f seconds".format(counter, secs)));
+        META!"Failed. Ran %s unittests in %.3f seconds"(counter, secs);
+        CONSOLE!(FG.ired("Failed. Ran %s unittests in %.3f seconds"))(counter, secs);
         retVal = 1;
     }
     else if (counter == 0) {
         META!"Did not find any unittest to run"();
-        logLine(FG.ired("Did not find any unittests to run"));
+        CONSOLE!(FG.ired("Did not find any unittests to run"))();
         retVal = 2;
     }
     else {
-        META!"Success. Ran %s unittests in %.2f seconds"(counter, secs);
-        logLine(FG.igreen("Success. Ran %s unittests in %.2f seconds".format(counter, secs)));
+        META!"Success. Ran %s unittests in %.3f seconds"(counter, secs);
+        CONSOLE!(FG.igreen("Success. Ran %s unittests in %.3f seconds"))(counter, secs);
         retVal = 0;
     }
     version (linux)
-        DEBUG!"#LOADAVG %s"(cast(immutable char[])read("/proc/loadavg"));
+        DEBUG!"#LOADAVG %s"(cast(immutable char[])read("/proc/loadavg")[0..$-1]);
 
     return retVal;
 }
@@ -178,11 +183,13 @@ struct FilterLine {
 FilterLine[] filters;
 bool listModules;
 bool runTests = true;
-
-@notrace void logLine(string text) {
-    auto t = Clock.currTime();
-    writefln(FG.grey("%02d:%02d:%02d.%03d") ~ " %s", t.hour, t.minute, t.second,
-            t.fracSecs.total!"msecs", text);
+enum FMT_PREFIX = FG.grey("%02d:%02d:%02d.%03d| ");
+@notrace void CONSOLE(string fmt, Args...)(Args args) {
+    static if(!LogToConsole) {
+        auto t = Clock.currTime();
+        writefln(FMT_PREFIX ~ fmt, t.hour, t.minute, t.second,
+                t.fracSecs.total!"msecs", args);
+    }
 }
 
 bool shouldRun(string name) {

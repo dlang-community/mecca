@@ -18,7 +18,7 @@ import mecca.lib.exception;
 import mecca.lib.io;
 public import mecca.lib.net;
 import mecca.lib.string;
-import mecca.lib.time : Timeout, msecs;
+import mecca.lib.time : Timeout, msecs, TscTimePoint;
 import mecca.log;
 import mecca.reactor.subsystems.poller;
 
@@ -106,8 +106,7 @@ struct ConnectedDatagramSocket {
      */
     static ConnectedDatagramSocket connect(SockAddr sa, Timeout timeout = Timeout.infinite) @safe @nogc {
         ConnectedDatagramSocket ret = ConnectedDatagramSocket( Socket.socket(sa.family, SOCK_SEQPACKET, 0) );
-
-        connectHelper(ret, sa, timeout);
+        ret.fd.connect(sa, timeout);
 
         return ret;
     }
@@ -223,7 +222,8 @@ struct ConnectedSocket {
     static ConnectedSocket connect(SockAddr sa, Timeout timeout = Timeout.infinite, bool nodelay = true) @safe @nogc {
         ConnectedSocket ret = ConnectedSocket( Socket.socket(sa.family, SOCK_STREAM, 0) );
 
-        connectHelper(ret, sa, timeout);
+       
+        ret.fd.connect(sa, timeout);
 
         // Nagle is only defined for TCP/IPv*
         if( (sa.family == AF_INET || sa.family == AF_INET6) && nodelay ) {
@@ -327,23 +327,6 @@ struct ConnectedSocket {
     }
 }
 
-private void connectHelper(ref Socket sock, SockAddr sa, Timeout timeout) @trusted @nogc {
-    int result = sock.osCall!(.connect)(&sa.base, sa.len);
-
-    while(result!=0 && errno==EINPROGRESS) {
-        // Wait for connect to finish
-        poller.waitForEvent(sock.ctx, sock.get.fileNo, Direction.Write, timeout);
-
-        socklen_t reslen = result.sizeof;
-
-        sock.osCallErrnoMsg!(.getsockopt)( SOL_SOCKET, SO_ERROR, &result, &reslen, "Fetching connect error status failed");
-    }
-
-    if( result!=0 ) {
-        errno = result;
-        errnoEnforceNGC(false, "connect");
-    }
-}
 
 /**
  * Base class for the different types of sockets
@@ -673,7 +656,8 @@ struct ReactorFD {
 private:
     FD fd;
     Poller.FdContext* ctx;
-
+public:    
+    TscTimePoint lastIOTime;
 public:
     @disable this(this);
 
@@ -715,15 +699,42 @@ public:
     }
 
     /// Cleanly closes an FD
-    void close() nothrow @safe @nogc {
+    int close() nothrow @safe @nogc {
+        int ret=-1;
         if( fd.isValid ) {
             DBG_ASSERT!"%s Asked to close fd %s with null context"(ctx !is null, &this, fd.fileNo);
 
             poller.deregisterFd( fd, ctx, true );
 
-            fd.close();
+            ret = fd.close();
             ctx = null;
         }
+        return ret;
+    }
+
+    auto connect(SockAddr sa, Timeout timeout=Timeout.infinite) @trusted @nogc {
+        return connect!(.connect)(&sa.base, sa.len, timeout);
+    }
+
+    auto connect(alias F, )(Parameters!F[1..$] args, Timeout timeout=Timeout.infinite) @trusted @nogc {
+        int result = cast(int)osCall!(F)(args);
+
+        while(result!=0 && errno==EINPROGRESS) {
+            DEBUG!"connect(result=0x%x, errno=%d)"(result, errno);
+            // Wait for connect to finish
+            poller.waitForEvent(ctx, fd.fileNo, Direction.Write, timeout);
+
+            socklen_t reslen = result.sizeof;
+
+            osCallErrnoMsg!(.getsockopt)( SOL_SOCKET, SO_ERROR, &result, &reslen, "Fetching connect error status failed");
+        }
+
+        if( result!=0 ) {
+            errno = cast(int)result;
+            errnoEnforceNGC(false, "connect");
+        }
+
+        return result;
     }
 
     /// Tests for open descriptor
@@ -804,8 +815,8 @@ public:
         poller.unregisterFdCallback(ctx, dir);
     }
 
-package(mecca.reactor):
-    auto blockingCall(alias F)(Direction dir, Parameters!F[1 .. $] args, Timeout timeout) @system @nogc {
+
+    auto blockingCall(alias F)(Direction dir, Parameters!F[1 .. $] args, Timeout timeout=Timeout.infinite) @system @nogc {
         static assert (is(Parameters!F[0] == int));
         static assert (isSigned!(ReturnType!F));
 
@@ -820,6 +831,7 @@ package(mecca.reactor):
                 }
             }
             else {
+                lastIOTime = TscTimePoint.hardNow;
                 return ret;
             }
         }
@@ -829,6 +841,7 @@ package(mecca.reactor):
         return fd.osCall!F(args);
     }
 
+package(mecca.reactor):
     auto osCallErrno(alias F)(Parameters!F[1..$] args) @system @nogc if(isSigned!(ReturnType!F) && isIntegral!(ReturnType!F)) {
         enum FuncFullName = fullyQualifiedName!F;
 

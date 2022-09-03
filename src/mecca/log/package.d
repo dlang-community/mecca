@@ -12,6 +12,7 @@ import mecca.lib.reflection: as;
 import mecca.lib.console;
 import mecca.lib.exception: extractStack, DefaultTraceInfoABI;
 import mecca.log.impl;
+import mecca.containers.arrays:FixedString;
 
 /// Report whether the loggin infra has been initialized
 enum loggingInitialized = true;
@@ -44,33 +45,44 @@ enum LEVEL_EXCEPTION = FG.iwhite | BG.red;
 enum LEVEL_META = FG.iwhite | BG.magenta;
 enum LEVEL_BT        = FG.red;
 
-private void internalLogOutput(ANSI level, T...)(string fmt, string file, size_t line, T args) nothrow @trusted @nogc {
+enum FMT_MAX     = 2048;
+
+enum FMT_PREFIX = FG.grey("%02d:%02d:%02d.%03d") ~ "\u2502" ~ FG.cyan("%s") ~ "\u2502" ~ FG.grey("%-20s") ~ "\u2502";
+
+
+private void internalLogOutput(ANSI level, string fmt, T...)(string file, size_t line, T args) nothrow @trusted @nogc {
     as!"nothrow @nogc"({
+        import std.algorithm.searching: until;
+        import std.range: retro;
+        import std.path: baseName;
         auto t = Clock.currTime();
-        auto loc = "%s:%s".format(file.split("/")[$-1], line);
-        writefln(FG.grey("%02d:%02d:%02d.%03d") ~ "\u2502" ~ FG.cyan("%s") ~ "\u2502" ~ FG.grey("%-20s") ~ "\u2502" ~ level(fmt),
-            t.hour, t.minute, t.second, t.fracSecs.total!"msecs", logSource, loc[$ > 20 ? $ - 20 : 0 .. $], args);
+        auto path = baseName(file);
+        FixedString!30 loc = path[$ > 20 ? $ - 20 : 0 .. $];
+        loc.nogcFormat!":%d"(line);
+        FixedString!FMT_MAX buf = FMT_PREFIX;
+        level.writeTo(buf, fmt);
+        writefln(buf, t.hour, t.minute, t.second, t.fracSecs.total!"msecs", logSource, loc, args);
     });
 }
 
 void DEBUG(string fmt, string file = __FILE_FULL_PATH__, string mod = __MODULE__, int line = __LINE__, T...)(T args) nothrow @safe @nogc {
-    internalLogOutput!LEVEL_DEBUG(fmt, file, line, args);
+    internalLogOutput!(LEVEL_DEBUG, fmt)(file, line, args);
 }
 
 void INFO(string fmt, string file = __FILE_FULL_PATH__, string mod = __MODULE__, int line = __LINE__, T...)(T args) nothrow @safe @nogc {
-    internalLogOutput!LEVEL_INFO(fmt, file, line, args);
+    internalLogOutput!(LEVEL_INFO, fmt)(file, line, args);
 }
 
 void WARN(string fmt, string file = __FILE_FULL_PATH__, string mod = __MODULE__, int line = __LINE__, T...)(T args) nothrow @safe @nogc {
-    internalLogOutput!LEVEL_WARN(fmt, file, line, args);
+    internalLogOutput!(LEVEL_WARN, fmt)(file, line, args);
 }
 
 void ERROR(string fmt, string file = __FILE_FULL_PATH__, string mod = __MODULE__, int line = __LINE__, T...)(T args) nothrow @safe @nogc {
-    internalLogOutput!LEVEL_ERROR(fmt, file, line, args);
+    internalLogOutput!(LEVEL_ERROR, fmt)(file, line, args);
 }
 
 void LOG_EXCEPTION(Throwable ex) nothrow @trusted @nogc {
-    internalLogOutput!LEVEL_EXCEPTION("%s@%s(%s): %s", ex.file, ex.line, typeid(ex).name, ex.file, ex.line, ex.msg);
+    internalLogOutput!(LEVEL_EXCEPTION, "%s@%s(%s): %s")(ex.file, ex.line, typeid(ex).name, ex.file, ex.line, ex.msg);
     if (ex.info) {
         foreach( ptr; DefaultTraceInfoABI.extract(ex.info).frames ) {
             as!"nothrow @nogc"({ writefln("\t0x%x", ptr); });
@@ -79,12 +91,12 @@ void LOG_EXCEPTION(Throwable ex) nothrow @trusted @nogc {
 }
 
 void META(string fmt, string file = __FILE_FULL_PATH__, string mod = __MODULE__, int line = __LINE__, T...)(T args) nothrow @safe @nogc {
-    internalLogOutput!LEVEL_META(fmt, file, line, args);
+    internalLogOutput!(LEVEL_META, fmt)( file, line, args);
 }
 
 void LOG_TRACEBACK(void*[] bt, string msg, string file = __FILE_FULL_PATH__, size_t line = __LINE__) nothrow @trusted @nogc
 {
-    internalLogOutput!LEVEL_BT(msg, file, line);
+    internalLogOutput!(LEVEL_BT, "%s")(file, line, msg);
     foreach( ptr; bt ) {
         as!"nothrow @nogc"({ writefln("\t0x%x", ptr); });
     }
