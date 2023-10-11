@@ -1,0 +1,55 @@
+workflows:
+  version: 2
+  test:
+    jobs:
+      - ldc-beta
+      - ldc
+      - ldc-1.8.0 # Weka's current compiler is based on this compiler
+      - dmd-beta
+      - dmd
+
+shared: &shared
+  macos:
+    xcode: "10.2.1"
+  steps:
+    - run:
+        name: Install gnupg
+        command: brew install gnupg
+    - run:
+        name: Install D Compiler
+        command: curl -fsS https://dlang.org/install.sh | bash -s ${CIRCLE_JOB}
+    - checkout
+    - run:
+        name: Run Unit Tests
+        command: |
+          source $(~/dlang/install.sh ${CIRCLE_JOB} -a)
+          dub run --config=mecca-ut
+    - run:
+        name: Build lordcmdr
+        command: |
+          source $(~/dlang/install.sh ${CIRCLE_JOB} -a)
+          dub build --config=lordcmdr
+    - run:
+        name: Build sleeper
+        command: |
+          source $(~/dlang/install.sh ${CIRCLE_JOB} -a)
+          dub build --config=sleeper
+    - run:
+        name: Build echo-server
+        command: |
+          source $(~/dlang/install.sh ${CIRCLE_JOB} -a)
+          dub build --config=echo-server
+
+version: 2
+jobs:
+  ldc-beta:
+    <<: *shared
+  ldc:
+    <<: *shared
+  ldc-1.8.0:
+    <<: *shared
+  dmd-beta:
+    <<: *shared
+  dmd:
+    <<: *shared
+
